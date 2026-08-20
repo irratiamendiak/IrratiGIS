@@ -3,14 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,viewport-fit=cover">
-
-<meta name="theme-color" content="#176b43">
-<meta name="description" content="GPX/KML bisorea: azalera, perimetroa, B5M/IGN kartografia, waypoint-ak, PDF txostena eta SHP poligono esportazioa EPSG:25830.">
-<meta name="color-scheme" content="light">
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="manifest" href="manifest.webmanifest">
-
-<title>GPX · KML · AZALERA</title>
+<title>GPX · KML · AZALERA V2.11.23f4</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{--bg:#f4f7f5;--panel:#fff;--ink:#16231c;--muted:#65736b;--green:#176b43;--line:#dce5df;--blue:#175f8f}
@@ -451,13 +444,50 @@ button,.filebtn,input,select{touch-action:manipulation}
   }
 }
 
+
+/* Fitxategiaren xehetasunak: panel trinkoagoa */
+.file-details-panel{
+  padding:9px 12px;
+  margin-bottom:10px;
+}
+.file-details-panel h2{
+  margin:0 0 6px;
+  font-size:16px;
+}
+.file-details-panel .details{
+  gap:6px;
+}
+.file-details-panel .details div{
+  padding:7px 9px;
+  min-height:0;
+}
+.file-details-panel .details span{
+  font-size:9px;
+}
+.file-details-panel .details strong{
+  margin-top:2px;
+  font-size:13px;
+  line-height:1.2;
+}
+@media(max-width:560px){
+  .file-details-panel{
+    padding:8px 9px;
+  }
+  .file-details-panel .details{
+    grid-template-columns:1fr 1fr;
+  }
+  .file-details-panel .details div{
+    padding:6px 7px;
+  }
+}
+
 </style>
 </head>
 <body>
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.23e WEB</h1>
+    <h1>Azalera eta mapa · V2.11.23f4</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -480,7 +510,7 @@ button,.filebtn,input,select{touch-action:manipulation}
     <div class="card"><span>GEOMETRIA</span><strong id="geom">—</strong><small id="rings">—</small></div>
   </section>
 
-  <section class="panel">
+  <section class="panel file-details-panel">
     <h2>Fitxategiaren xehetasunak</h2>
     <div class="details">
       <div><span>IZENA</span><strong id="dname">—</strong></div>
@@ -502,6 +532,7 @@ button,.filebtn,input,select{touch-action:manipulation}
     <div id="map"></div></div>
     <div class="tracktools">
       <button id="drawTrack">Track-a marraztu</button>
+<button id="closeTrack">Track-a itxi / azalera</button>
       <button id="undoTrack">Azken puntua desegin</button>
       <button id="clearTrack">Track-a ezabatu</button>
       <button id="exportTrack">GPX esportatu</button>
@@ -509,7 +540,7 @@ button,.filebtn,input,select{touch-action:manipulation}
       <button id="exportPdf">PDF sortu</button>
       <button id="exportPdfAlt">PDF alternatiboa</button>
       <button id="addWaypoint">Waypoint gehitu</button>
-      <button id="clearWaypoints">Waypoint-ak ezabatu</button>
+      <button id="clearMapWaypoints" type="button">Mapatik sortutako waypoint-ak ezabatu</button>
       <button id="exportWaypoints">Waypoint GPX esportatu</button>
     </div>
     <div class="trackstats">
@@ -585,7 +616,7 @@ button,.filebtn,input,select{touch-action:manipulation}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.23e WEB · GitHub Pages · Responsive · SHP azalera/poligonoa EPSG:25830 · MAPA TXOSTENA · B5M.</div>
+  <div class="footer">V2.11.23f4 · Track-a ezabatu = geometria + datuak garbitu · Fitxategiaren xehetasun trinkoak · SHP Polygon QGIS · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -593,7 +624,7 @@ button,.filebtn,input,select{touch-action:manipulation}
 <script src="https://cdn.jsdelivr.net/npm/proj4@2.12.1/dist/proj4.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mapbox/shp-write@0.4.3/shpwrite.js"></script>
+<script src="https://unpkg.com/@mapbox/shp-write@0.4.3/shpwrite.js"></script>
 <script>
 (function(){
 "use strict";
@@ -759,6 +790,7 @@ let waypoints=[];
 let waypointMode=false;
 let manualTrackPoints=[];
 let drawingTrack=false;
+let manualTrackClosed=false;
 
 L.control.layers(
   {
@@ -1057,6 +1089,11 @@ function escapeHtml(s){
   }[c]));
 }
 
+function clearMapCreatedWaypoints(){
+ const n=waypoints.length; waypoints=waypoints.filter(w=>w.origin!=="map"); refreshWaypoints();
+ $("message").textContent=(n-waypoints.length)+" mapako waypoint ezabatu dira.";
+}
+if($("clearMapWaypoints"))$("clearMapWaypoints").addEventListener("click",clearMapCreatedWaypoints);
 function refreshWaypoints(){
   waypointLayer.clearLayers();
   waypoints.forEach((w,i)=>{
@@ -1184,12 +1221,6 @@ $("addWaypoint").addEventListener("click",()=>{
 
 
 
-$("clearWaypoints").addEventListener("click",()=>{
-  waypoints=[];
-  waypointMode=false;
-  refreshWaypoints();
-  $("message").textContent="Waypoint guztiak ezabatu dira.";
-});
 
 $("exportWaypoints").addEventListener("click",()=>{
   if(!waypoints.length){
@@ -1203,7 +1234,7 @@ $("exportWaypoints").addEventListener("click",()=>{
   </wpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.23e WEB"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.23f4"
  xmlns="http://www.topografix.com/GPX/1/1">
 ${pts}
 </gpx>`;
@@ -1211,7 +1242,7 @@ ${pts}
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
   a.href=url;
-  a.download="waypoints-v2.11.23e-web.gpx";
+  a.download="waypoints-v2.11.23f4.gpx";
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -1232,24 +1263,63 @@ function updateManualTrack(){
   });
 
   if(manualTrackPoints.length>=2){
-    L.polyline(manualTrackPoints,{weight:4}).addTo(manualTrackLayer);
+    if(manualTrackClosed && manualTrackPoints.length>=3){
+      L.polygon(manualTrackPoints,{
+        color:"#d7191c",
+        weight:3,
+        fillColor:"#d7191c",
+        fillOpacity:.12
+      }).addTo(manualTrackLayer);
+    }else{
+      L.polyline(manualTrackPoints,{weight:4}).addTo(manualTrackLayer);
+    }
   }
 
   $("trackPointCount").textContent=String(manualTrackPoints.length);
 
-  let km=0;
+  let distanceKm=0;
+  let areaM2=0;
   if(manualTrackPoints.length>=2){
-    const coords=manualTrackPoints.map(p=>[p.lng,p.lat]);
-    km=turf.length(turf.lineString(coords),{units:"kilometers"});
+    let coords=manualTrackPoints.map(p=>[p.lng,p.lat]);
+
+    if(manualTrackClosed && manualTrackPoints.length>=3){
+      coords=coords.slice();
+      coords.push(coords[0].slice());
+      distanceKm=turf.length(turf.lineString(coords),{units:"kilometers"});
+      areaM2=turf.area(turf.polygon([coords]));
+      currentRings=[coords];
+
+      $("pm").textContent=fmt(distanceKm*1000,2)+" m";
+      $("pkm").textContent=fmt(distanceKm,3)+" km";
+      $("m2").textContent=fmt(areaM2,2)+" m²";
+      $("ha").textContent=fmt(areaM2/10000,4)+" ha";
+      $("km2").textContent=fmt(areaM2/1e6,6)+" km²";
+      $("points").textContent=fmt(manualTrackPoints.length,0)+" puntu";
+      $("geom").textContent="1";
+      $("rings").textContent="geometria";
+      $("dname").textContent="Eskuz marraztutako azalera";
+      $("dformat").textContent="TRACK";
+      $("dtype").textContent="Poligono itxia";
+      $("dpoints").textContent=fmt(manualTrackPoints.length,0);
+    }else{
+      distanceKm=turf.length(turf.lineString(coords),{units:"kilometers"});
+    }
   }
-  $("trackDistance").textContent=fmt(km,2)+" km";
-  $("trackState").textContent=drawingTrack?"marrazten":"geldituta";
+
+  $("trackDistance").textContent=fmt(distanceKm,2)+" km";
+  $("trackState").textContent=manualTrackClosed?"itxia":(drawingTrack?"marrazten":"geldituta");
   $("drawTrack").classList.toggle("active",drawingTrack);
   $("drawTrack").textContent=drawingTrack?"Marraztea gelditu":"Track-a marraztu";
+
+  if($("closeTrack")){
+    $("closeTrack").disabled=manualTrackPoints.length<3;
+    $("closeTrack").textContent=manualTrackClosed?"Track-a berriro ireki":"Track-a itxi / azalera";
+  }
 }
 
 $("drawTrack").addEventListener("click",()=>{
   drawingTrack=!drawingTrack;
+  if(drawingTrack && manualTrackClosed){manualTrackClosed=false;currentRings=null;}
   if(drawingTrack){ waypointMode=false; refreshWaypoints(); }
   updateManualTrack();
   $("message").textContent=drawingTrack
@@ -1259,6 +1329,8 @@ $("drawTrack").addEventListener("click",()=>{
 
 $("undoTrack").addEventListener("click",()=>{
   if(!manualTrackPoints.length)return;
+  manualTrackClosed=false;
+  currentRings=null;
   manualTrackPoints.pop();
   updateManualTrack();
 });
@@ -1266,9 +1338,57 @@ $("undoTrack").addEventListener("click",()=>{
 $("clearTrack").addEventListener("click",()=>{
   manualTrackPoints=[];
   drawingTrack=false;
+  manualTrackClosed=false;
+  currentRings=null;
+
+  // Ezabatu bai eskuzko geometria bai GPX/KMLtik kargatutako geometria.
+  manualTrackLayer.clearLayers();
+  drawings.clearLayers();
+
+  // Garbitu perimetroa, azalerak eta geometria-laburpena.
+  ["pm","pkm","m2","ha","km2","points","geom","rings"].forEach(id=>{
+    if($(id))$(id).textContent="—";
+  });
+
+  // Garbitu Fitxategiaren xehetasunak.
+  ["dname","dformat","dtype","dpoints"].forEach(id=>{
+    if($(id))$(id).textContent="—";
+  });
+
+  // Garbitu fitxategi-hautatzailea eta egoera.
+  if($("file"))$("file").value="";
+  if($("fileInfo"))$("fileInfo").textContent="Ez da fitxategirik hautatu.";
+
   updateManualTrack();
-  $("message").textContent="Eskuz marraztutako track-a ezabatu da.";
+  $("message").textContent="Track-a, perimetroa, azalerak eta fitxategiaren xehetasunak ezabatu dira.";
 });
+
+function closeManualTrackAsSurface(){
+  if(manualTrackPoints.length<3){
+    $("message").textContent="Azalera sortzeko gutxienez 3 puntu behar dira.";
+    return;
+  }
+
+  manualTrackClosed=!manualTrackClosed;
+  drawingTrack=false;
+  updateManualTrack();
+
+  if(manualTrackClosed){
+    const coords=manualTrackPoints.map(p=>[p.lng,p.lat]);
+    coords.push(coords[0].slice());
+    const areaHa=turf.area(turf.polygon([coords]))/10000;
+    const perimeterM=turf.length(turf.lineString(coords),{units:"kilometers"})*1000;
+    try{
+      const b=manualTrackLayer.getBounds();
+      if(b.isValid())map.fitBounds(b.pad(.12));
+    }catch(_){}
+    $("message").textContent="Track itxia: "+fmt(areaHa,4)+" ha · "+fmt(perimeterM,2)+" m.";
+  }else{
+    currentRings=null;
+    $("message").textContent="Track-a berriro ireki da.";
+  }
+}
+if($("closeTrack"))$("closeTrack").addEventListener("click",closeManualTrackAsSurface);
 
 $("exportTrack").addEventListener("click",()=>{
   if(manualTrackPoints.length<2){
@@ -1279,7 +1399,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.23e WEB"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.23f4"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -1292,7 +1412,7 @@ ${pts}
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
   a.href=url;
-  a.download="track-v2.11.23e-web.gpx";
+  a.download="track-v2.11.23f4.gpx";
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -1308,7 +1428,7 @@ map.on("click",async e=>{
       e.latlng.lng
     );
     if(data===null)return;
-    waypoints.push({lat:data.lat,lon:data.lon,name:data.name,icon:data.icon});
+    waypoints.push({lat:data.lat,lon:data.lon,name:data.name,icon:data.icon,origin:"map"});
     waypointMode=false;
     refreshWaypoints();
     map.panTo([data.lat,data.lon]);
@@ -1317,7 +1437,9 @@ map.on("click",async e=>{
   }
   if(coordPickMode)return;
   if(!drawingTrack)return;
-  manualTrackPoints.push(e.latlng);
+  manualTrackClosed=false;
+    currentRings=null;
+    manualTrackPoints.push(e.latlng);
   updateManualTrack();
 });
 
@@ -1472,165 +1594,116 @@ $("googleMaps").addEventListener("click",()=>{
 
 
 /* SHP esportazioa */
-/* Exportatzen den geometria BETI visor-eko azalera/poligonoa da.
-   Track irekia bada, lehen eta azken puntuak lotuz ixten da, visor-ak
-   azalera kalkulatzeko erabiltzen duen logika bera jarraituz. */
-
+/* QGIS-erako Polygon SHP: visor-eko azalera WGS84 / EPSG:4326. */
 function getSurfacePolygonForShp(){
-  let rings=null;
-  let sourceName="azalera";
+  let rings=null,name="azalera";
 
   if(currentRings && currentRings.length){
     rings=currentRings
       .map(r=>r.filter(c=>Number.isFinite(c[0])&&Number.isFinite(c[1])))
       .filter(r=>r.length>=3);
-    sourceName=$("dname").textContent||"azalera";
+    name=$("dname").textContent||"azalera";
   }else if(manualTrackPoints.length>=3){
     rings=[manualTrackPoints.map(p=>[p.lng,p.lat])];
-    sourceName="eskuzko_azalera";
+    name="eskuzko_azalera";
   }
 
   if(!rings || !rings.length)return null;
 
-  const polygons=[];
-  rings.forEach(r=>{
-    const ring=r.slice();
-    if(!coordsEqual(ring[0],ring[ring.length-1])){
-      ring.push(ring[0].slice());
-    }
-    if(ring.length>=4)polygons.push(ring);
-  });
+  const valid=rings.map(r=>{
+    const a=r.map(c=>[Number(c[0]),Number(c[1])]);
+    if(!coordsEqual(a[0],a[a.length-1]))a.push(a[0].slice());
+    return a;
+  }).filter(r=>r.length>=4);
 
-  if(!polygons.length)return null;
-  return {name:sourceName,rings:polygons};
+  return valid.length?{name,rings:valid}:null;
 }
 
-function shpBaseName(name){
-  return (name||"azalera")
+function shpBaseName(n){
+  return (n||"azalera")
     .replace(/\.[^.]+$/,"")
-    .replace(/[^\w\-]+/g,"_")
-    .replace(/^_+|_+$/g,"")
-    .slice(0,50) || "azalera";
+    .replace(/[^A-Za-z0-9_-]+/g,"_")
+    .slice(0,50)||"azalera";
 }
 
-function surfaceStatsForShp(rings){
-  let areaM2=0;
-  let perimeterM=0;
-
-  rings.forEach(r=>{
-    try{
-      const poly=turf.polygon([r]);
-      areaM2+=turf.area(poly);
-      perimeterM+=turf.length(turf.lineString(r),{units:"kilometers"})*1000;
-    }catch(_){}
-  });
-
-  return {
-    hectares:areaM2/10000,
-    perimeterM
-  };
+function downloadBlob(blob,filename){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
 }
 
-function reprojectRingTo25830(ring){
-  const srcDef="+proj=longlat +datum=WGS84 +no_defs +type=crs";
-  const dstDef="+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs +type=crs";
-  return ring.map(c=>proj4(srcDef,dstDef,c));
-}
-
-$("exportShp").addEventListener("click",()=>{
+$("exportShp").addEventListener("click",async()=>{
   if(typeof shpwrite==="undefined"){
-    $("message").textContent="SHP liburutegia ezin izan da kargatu. Egiaztatu Internet konexioa.";
+    $("message").textContent="SHP liburutegia ez da kargatu. Egiaztatu Internet konexioa.";
     return;
   }
 
   const surf=getSurfacePolygonForShp();
   if(!surf){
-    $("message").textContent="SHP esportatzeko, gutxienez 3 puntuko azalera/poligono bat behar da.";
+    $("message").textContent="SHP esportatzeko, visor-ean gutxienez 3 puntuko azalera behar da.";
     return;
   }
 
   try{
-    const stats=surfaceStatsForShp(surf.rings);
+    let areaM2=0, perimeterM=0;
+    surf.rings.forEach(r=>{
+      areaM2+=turf.area(turf.polygon([r]));
+      perimeterM+=turf.length(turf.lineString(r),{units:"kilometers"})*1000;
+    });
 
-    // Reproyección a ETRS89 / UTM 30N (EPSG:25830)
-    const projectedRings=surf.rings.map(reprojectRingTo25830);
-
-    const features=projectedRings.map((r,idx)=>({
+    const features=surf.rings.map((ring,i)=>({
       type:"Feature",
       properties:{
-        id:idx+1,
-        azal_ha:Number(stats.hectares.toFixed(4)),
-        perim_m:Number(stats.perimeterM.toFixed(2))
+        ID:i+1,
+        AZAL_HA:Number((areaM2/10000).toFixed(4)),
+        PERIM_M:Number(perimeterM.toFixed(2))
       },
       geometry:{
         type:"Polygon",
-        coordinates:[r]
+        coordinates:[ring]
       }
     }));
 
     const fc={type:"FeatureCollection",features};
 
-    const options={
-      folder:shpBaseName(surf.name),
-      types:{
-        polygon:"azalera"
-      }
-    };
+    /* zip() devuelve un ArrayBuffer ZIP con .shp/.shx/.dbf/.prj. */
+    const zipped=await Promise.resolve(shpwrite.zip(fc,{
+      folder:shpBaseName(surf.name)+"_azalera",
+      types:{polygon:"azalera"}
+    }));
 
-    /* shp-write no permite definir PRJ arbitrario en download(),
-       así que generamos el ZIP y sustituimos/añadimos manualmente el .prj. */
-    const zipData=shpwrite.zip(fc,options);
+    let blob;
+    if(zipped instanceof Blob){
+      blob=zipped;
+    }else if(zipped instanceof ArrayBuffer){
+      blob=new Blob([zipped],{type:"application/zip"});
+    }else if(ArrayBuffer.isView(zipped)){
+      blob=new Blob([zipped.buffer],{type:"application/zip"});
+    }else if(typeof zipped==="string"){
+      // Some older browser bundles return base64.
+      const bin=atob(zipped);
+      const bytes=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+      blob=new Blob([bytes],{type:"application/zip"});
+    }else{
+      throw new Error("ZIP formatua ez da ezagutzen.");
+    }
 
-    Promise.resolve(zipData).then(async data=>{
-      // shpwrite.zip puede devolver base64 o ArrayBuffer según versión.
-      let blob;
-      if(typeof data==="string"){
-        const bin=atob(data);
-        const arr=new Uint8Array(bin.length);
-        for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
-        blob=new Blob([arr],{type:"application/zip"});
-      }else{
-        blob=new Blob([data],{type:"application/zip"});
-      }
+    downloadBlob(
+      blob,
+      shpBaseName(surf.name)+"_azalera_WGS84.zip"
+    );
 
-      // Como shp-write genera coordenadas tal cual se proporcionan, el .prj
-      // debe corresponder a EPSG:25830. Reempaquetamos con JSZip si está disponible.
-      if(typeof JSZip!=="undefined"){
-        try{
-          const zip=await JSZip.loadAsync(blob);
-          const prj25830='PROJCS["ETRS89 / UTM zone 30N",GEOGCS["ETRS89",DATUM["European_Terrestrial_Reference_System_1989",SPHEROID["GRS 1980",6378137,298.257222101]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",-3],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["metre",1],AXIS["Easting",EAST],AXIS["Northing",NORTH]]';
-
-          Object.keys(zip.files).forEach(fn=>{
-            if(fn.toLowerCase().endsWith(".prj")){
-              zip.file(fn,prj25830);
-            }
-          });
-
-          blob=await zip.generateAsync({type:"blob"});
-        }catch(err){
-          console.warn("PRJ ezin izan da ordezkatu:",err);
-        }
-      }
-
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");
-      a.href=url;
-      a.download=shpBaseName(surf.name)+"_azalera_EPSG25830.zip";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(()=>URL.revokeObjectURL(url),1500);
-
-      $("message").textContent=
-        "SHP poligonoa esportatu da · ETRS89 / UTM 30N · "+
-        fmt(stats.hectares,4)+" ha · "+fmt(stats.perimeterM,2)+" m.";
-    }).catch(err=>{
-      console.error(err);
-      $("message").textContent="SHP ZIP errorea: "+err.message;
-    });
-
+    $("message").textContent=
+      "SHP Polygon esportatua · WGS84 / EPSG:4326 · "+
+      fmt(areaM2/10000,4)+" ha · "+fmt(perimeterM,2)+" m.";
   }catch(err){
-    console.error(err);
+    console.error("SHP export:",err);
     $("message").textContent="SHP esportazio errorea: "+err.message;
   }
 });
@@ -2371,7 +2444,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.23e WEB · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.23f4 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
