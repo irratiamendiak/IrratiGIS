@@ -1,0 +1,2583 @@
+<!doctype html>
+<html lang="eu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,viewport-fit=cover">
+
+<meta name="theme-color" content="#176b43">
+<meta name="description" content="GPX/KML bisorea: azalera, perimetroa, B5M/IGN kartografia, waypoint-ak, PDF txostena eta SHP poligono esportazioa EPSG:25830.">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+
+<title>GPX · KML · AZALERA</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--bg:#f4f7f5;--panel:#fff;--ink:#16231c;--muted:#65736b;--green:#176b43;--line:#dce5df;--blue:#175f8f}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:linear-gradient(135deg,#123e2b,#19734a);color:#fff;padding:22px 16px}
+.wrap{max-width:1180px;margin:auto}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.13em;opacity:.82}
+h1{margin:5px 0 4px;font-size:clamp(25px,6vw,40px)}
+header p{margin:0;opacity:.9}
+main{padding:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px;margin-bottom:14px;box-shadow:0 5px 20px rgba(0,0,0,.04)}
+.upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.filebtn,button{border:0;border-radius:10px;padding:11px 14px;font-weight:750;cursor:pointer}
+.filebtn{display:inline-block;background:var(--green);color:#fff}
+button{background:#edf3ef;color:#234233}
+input[type=file]{position:absolute;left:-9999px}
+.status{color:var(--muted);font-size:14px;flex:1;min-width:180px}
+.message{margin-top:10px;font-size:13px;color:var(--muted)}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px}
+.card span{display:block;color:var(--muted);font-size:12px;font-weight:750}
+.card strong{display:block;font-size:23px;margin:5px 0 1px}
+.card small{color:var(--muted)}
+.maphead{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.maphead h2{margin:0}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#e8f5ed;color:#176b43;font-size:12px;font-weight:800}
+.badge.blue{background:#e8f2f8;color:#175f8f}
+#map{height:62vh;min-height:430px;border-radius:13px;background:#e7ece9}
+.layers-note,.footer{font-size:12px;color:var(--muted)}
+.details{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.details div{padding:11px;background:#f7faf8;border-radius:10px;overflow-wrap:anywhere}
+.details span{display:block;color:var(--muted);font-size:11px}
+.details strong{display:block;margin-top:4px}
+.tracktools{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.tracktools button.active{background:#176b43;color:#fff}
+.trackstats{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;font-size:13px;color:var(--muted)}
+.trackstats strong{color:var(--ink)}
+@media(max-width:800px){.cards,.details{grid-template-columns:repeat(2,1fr)}#map{height:58vh}}
+@media(max-width:520px){main{padding:10px}.panel{padding:12px}.cards,.details{grid-template-columns:1fr 1fr}.card strong{font-size:20px}#map{height:62vh;min-height:390px}.leaflet-control-layers{max-width:78vw;max-height:50vh;overflow:auto}}
+
+.coordgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.coordbox{background:#f7faf8;border:1px solid var(--line);border-radius:12px;padding:12px}
+.coordbox h3{margin:0 0 10px;font-size:15px}
+.coordbox label{display:block;font-size:11px;font-weight:800;color:var(--muted);margin:8px 0 4px}
+.coordbox input,.coordbox select{width:100%;border:1px solid #cfdad3;border-radius:9px;padding:10px;background:#fff;color:var(--ink);font:inherit}
+.coordactions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.coordresult{margin-top:10px;padding:10px;border-radius:9px;background:#fff;border:1px solid var(--line);font-size:13px;overflow-wrap:anywhere}
+.coordhint{font-size:12px;color:var(--muted);margin-top:8px}
+@media(max-width:900px){.coordgrid{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.coordgrid{grid-template-columns:1fr}}
+
+
+.b5m-control{background:#fff;border-radius:6px;box-shadow:0 1px 5px rgba(0,0,0,.45);font:13px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.b5m-toggle{height:34px;border:0;border-radius:6px;background:#fff;cursor:pointer;font-weight:900;font-size:13px;padding:0 10px;white-space:nowrap}
+.b5m-panel{display:none;width:min(340px,78vw);max-height:56vh;overflow:auto;padding:10px}
+.b5m-control.open .b5m-panel{display:block}
+.b5m-control.open .b5m-toggle{display:none}
+.b5m-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+.b5m-head strong{font-size:14px}
+.b5m-close{border:0;background:#eef3ef;border-radius:7px;padding:5px 8px;cursor:pointer}
+.b5m-group{border-top:1px solid #dde5df;padding-top:8px;margin-top:8px}
+.b5m-group summary{cursor:pointer;font-weight:800;color:#184c34}
+.b5m-list{display:grid;gap:5px;margin-top:7px}
+.b5m-item{display:flex;align-items:flex-start;gap:7px;cursor:pointer}
+.b5m-item input{margin-top:3px}
+.b5m-loading,.b5m-error{font-size:12px;color:#65736b;padding:5px 0}
+.b5m-error{color:#8b2f2f}
+
+
+.map-fullscreen{
+  position:fixed !important;
+  inset:0 !important;
+  width:100vw !important;
+  height:100vh !important;
+  max-width:none !important;
+  min-height:100vh !important;
+  border-radius:0 !important;
+  z-index:9998 !important;
+}
+.map-expand-control{
+  background:#fff;
+  border:0;
+  border-radius:4px;
+  width:34px;
+  height:34px;
+  padding:0;
+  font-size:22px;
+  line-height:34px;
+  font-weight:700;
+  cursor:pointer;
+  box-shadow:0 1px 5px rgba(0,0,0,.4);
+}
+.map-expand-control:hover{background:#f4f4f4}
+body.map-is-fullscreen{overflow:hidden}
+
+
+.pdf-north{
+  position:absolute;
+  right:12px;
+  bottom:26px;
+  z-index:900;
+  width:58px;
+  height:74px;
+  background:rgba(255,255,255,.9);
+  border:1px solid rgba(0,0,0,.25);
+  border-radius:8px;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  font-weight:900;
+  box-shadow:0 1px 5px rgba(0,0,0,.25);
+  pointer-events:none;
+}
+.pdf-north .arrow{font-size:34px;line-height:30px}
+.pdf-north .n{font-size:15px;line-height:18px}
+.pdf-exporting .pdf-north{display:flex}
+.pdf-exporting .leaflet-control-container{visibility:hidden}
+.pdf-exporting .leaflet-control-attribution{visibility:visible!important}
+
+
+.print-report{display:none}
+@media print{
+  @page{size:A4 landscape;margin:8mm}
+  body.printing-alt > *:not(.print-report){display:none!important}
+  body.printing-alt .print-report{
+    display:block!important;
+    position:static!important;
+    width:100%!important;
+    background:#fff!important;
+    color:#111!important;
+    font-family:Arial,sans-serif!important;
+  }
+  .print-report h1{font-size:18pt;margin:0 0 2mm}
+  .print-report .pr-sub{font-size:9pt;margin-bottom:4mm}
+  .print-report .pr-grid{display:grid;grid-template-columns:3.35fr .65fr;gap:4mm}
+  .print-report .pr-map{
+    height:172mm;
+    overflow:hidden;
+    position:relative;
+    border:0.3mm solid #555;
+    background:#eee;
+  }
+  .print-report .pr-map #map{height:172mm!important;width:100%!important;min-height:0!important;border-radius:0!important}
+  .print-report .pr-map .leaflet-control-container{display:none!important}
+  .print-report .pr-data{font-size:9pt}
+  .print-report .pr-data h2{font-size:12pt;margin:0 0 3mm}
+  .print-report .pr-row{margin-bottom:3mm}
+  .print-report .pr-row b{display:block}
+  .print-report .pr-north{text-align:center;font-weight:700;font-size:11pt;margin:2mm 0 5mm}
+  .print-report .pr-north .arr{font-size:34pt;line-height:28pt}
+  .print-report .pr-foot{font-size:7pt;margin-top:3mm;color:#555}
+}
+
+
+.wp-icon{
+  background:transparent!important;
+  border:0!important;
+}
+.wp-icon-wrap{
+  width:30px;height:30px;border-radius:50%;
+  background:#fff;border:2px solid #176b43;
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;line-height:1;
+  box-shadow:0 1px 5px rgba(0,0,0,.35);
+}
+.wp-dialog-backdrop{
+  position:fixed;inset:0;z-index:12000;background:rgba(0,0,0,.38);
+  display:flex;align-items:center;justify-content:center;padding:16px
+}
+.wp-dialog{
+  width:min(430px,94vw);background:#fff;border-radius:15px;padding:16px;
+  box-shadow:0 12px 40px rgba(0,0,0,.3)
+}
+.wp-dialog h3{margin:0 0 12px}
+.wp-dialog input[type=text]{width:100%;padding:10px;border:1px solid #ccd8d0;border-radius:9px;font:inherit}
+.wp-icons{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:12px 0}
+.wp-choice{border:1px solid #d7e0da;background:#f7faf8;border-radius:10px;padding:8px 4px;text-align:center;cursor:pointer}
+.wp-choice.selected{outline:3px solid #176b43;background:#e9f5ee}
+.wp-choice .ico{display:block;font-size:23px}
+.wp-choice small{display:block;font-size:10px;margin-top:3px}
+.wp-dialog-actions{display:flex;justify-content:flex-end;gap:8px}
+
+
+.wp-coords{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.wp-coords label{font-size:11px;font-weight:800;color:#65736b}
+.wp-coords input{width:100%;padding:9px;border:1px solid #ccd8d0;border-radius:9px;font:inherit}
+
+
+/* ===== RESPONSIVE MULTIDISPOSITIVO ===== */
+html{-webkit-text-size-adjust:100%}
+body{overflow-x:hidden}
+img,svg,canvas{max-width:100%}
+button,.filebtn,input,select{touch-action:manipulation}
+
+.wrap{width:min(1180px,100%);padding-left:0;padding-right:0}
+.panel{overflow:hidden}
+
+.upload,
+.tracktools,
+.coordactions,
+.map-modebar{
+  align-items:center;
+}
+
+.filebtn,button{
+  min-height:42px;
+}
+
+#map{
+  width:100%;
+}
+
+/* Leaflet controls */
+.leaflet-control-container .leaflet-top,
+.leaflet-control-container .leaflet-bottom{
+  max-width:calc(100vw - 20px);
+}
+.leaflet-control-layers{
+  max-width:min(360px,82vw);
+}
+.leaflet-control-layers-expanded{
+  max-height:58vh;
+  overflow:auto;
+}
+
+/* B5M custom control */
+.b5m-panel{
+  width:min(360px,82vw)!important;
+  max-height:58vh!important;
+}
+
+/* Desktop ancho */
+@media (min-width:1200px){
+  #map{height:68vh;min-height:520px}
+  .cards{grid-template-columns:repeat(4,1fr)}
+  .details{grid-template-columns:repeat(4,1fr)}
+  .coordgrid{grid-template-columns:repeat(4,1fr)}
+}
+
+/* Portátil / tablet horizontal */
+@media (min-width:769px) and (max-width:1199px){
+  main{padding:12px}
+  #map{height:62vh;min-height:460px}
+  .cards{grid-template-columns:repeat(4,1fr)}
+  .details{grid-template-columns:repeat(2,1fr)}
+  .coordgrid{grid-template-columns:repeat(2,1fr)}
+  .coordactions button,.tracktools button{flex:1 1 auto}
+}
+
+/* Tablet vertical */
+@media (min-width:561px) and (max-width:768px){
+  header{padding:18px 14px}
+  main{padding:10px}
+  .panel{padding:12px;border-radius:13px}
+  #map{height:60vh;min-height:440px}
+
+  .cards{grid-template-columns:repeat(2,1fr)}
+  .details{grid-template-columns:repeat(2,1fr)}
+  .coordgrid{grid-template-columns:repeat(2,1fr)}
+
+  .upload>*{flex:1 1 220px}
+  .tracktools button,.coordactions button{
+    flex:1 1 calc(50% - 8px);
+  }
+
+  .leaflet-control-layers-expanded,
+  .b5m-panel{
+    max-height:48vh!important;
+  }
+}
+
+/* Teléfono */
+@media (max-width:560px){
+  header{padding:14px 10px}
+  h1{font-size:24px;line-height:1.05}
+  header p{font-size:12px;line-height:1.35}
+
+  main{padding:7px}
+  .panel{
+    padding:10px;
+    margin-bottom:8px;
+    border-radius:11px;
+  }
+
+  .maphead{
+    align-items:flex-start;
+    gap:6px;
+  }
+  .maphead h2,.panel h2{
+    font-size:18px;
+  }
+
+  .upload{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:7px;
+  }
+  .upload .status{
+    grid-column:1/-1;
+    min-width:0;
+  }
+  .filebtn,.upload button{
+    width:100%;
+    text-align:center;
+  }
+
+  .cards{
+    grid-template-columns:1fr 1fr;
+    gap:7px;
+    margin-bottom:8px;
+  }
+  .card{
+    padding:10px;
+    border-radius:10px;
+  }
+  .card strong{font-size:18px}
+  .card span{font-size:10px}
+  .card small{font-size:11px}
+
+  .details{grid-template-columns:1fr}
+  .details div{padding:9px}
+
+  .coordgrid{grid-template-columns:1fr}
+  .coordbox{padding:10px}
+  .coordbox input,.coordbox select{
+    font-size:16px; /* evita zoom automático en iPhone */
+    min-height:44px;
+  }
+
+  .coordactions,
+  .tracktools{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:7px;
+  }
+  .coordactions button,
+  .tracktools button{
+    width:100%;
+    padding:10px 8px;
+    font-size:12px;
+    min-height:44px;
+  }
+
+  .trackstats{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:5px 10px;
+    font-size:12px;
+  }
+
+  #map{
+    height:67vh;
+    min-height:430px;
+    border-radius:9px;
+  }
+
+  .leaflet-bar a{
+    width:36px!important;
+    height:36px!important;
+    line-height:36px!important;
+  }
+
+  .leaflet-control-layers{
+    font-size:12px;
+  }
+  .leaflet-control-layers-expanded{
+    max-width:84vw!important;
+    max-height:45vh!important;
+    overflow:auto!important;
+  }
+
+  .b5m-toggle{
+    min-height:36px!important;
+    height:36px!important;
+    padding:0 9px!important;
+    font-size:12px!important;
+  }
+  .b5m-panel{
+    width:84vw!important;
+    max-height:45vh!important;
+    padding:8px!important;
+    font-size:12px!important;
+  }
+
+  .map-expand-control{
+    width:36px!important;
+    height:36px!important;
+    line-height:36px!important;
+  }
+
+  .wp-dialog{
+    width:96vw;
+    max-height:88vh;
+    overflow:auto;
+    padding:12px;
+  }
+  .wp-icons{
+    grid-template-columns:repeat(4,1fr);
+  }
+  .wp-coords{
+    grid-template-columns:1fr;
+  }
+
+  .footer{font-size:10px;padding:4px 2px}
+}
+
+/* Teléfonos muy estrechos */
+@media (max-width:380px){
+  .cards{grid-template-columns:1fr}
+  .coordactions,.tracktools{grid-template-columns:1fr}
+  .trackstats{grid-template-columns:1fr}
+  .upload{grid-template-columns:1fr}
+  .wp-icons{grid-template-columns:repeat(3,1fr)}
+  #map{height:70vh;min-height:400px}
+}
+
+/* Orientación horizontal en móvil */
+@media (max-height:520px) and (orientation:landscape){
+  header{padding:8px 10px}
+  header p{display:none}
+  h1{font-size:20px}
+  main{padding:5px}
+  #map{height:78vh;min-height:300px}
+  .panel{margin-bottom:6px}
+  .leaflet-control-layers-expanded,.b5m-panel{max-height:70vh!important}
+}
+
+/* Safe areas para iPhone/iPad */
+@supports (padding:max(0px)){
+  body{
+    padding-left:env(safe-area-inset-left);
+    padding-right:env(safe-area-inset-right);
+  }
+  header{
+    padding-top:max(14px,env(safe-area-inset-top));
+  }
+}
+
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="eyebrow">GPX · KML · AZALERA</div>
+    <h1>Azalera eta mapa · V2.11.23e WEB</h1>
+    <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="panel">
+    <div class="upload">
+      <label class="filebtn" for="file">GPX edo KML kargatu</label>
+      <input id="file" type="file" accept=".gpx,.kml,application/gpx+xml,application/vnd.google-earth.kml+xml">
+      <div id="fileInfo" class="status">Ez da fitxategirik hautatu.</div>
+      <button id="clear">Garbitu</button>
+    </div>
+    <div id="message" class="message">Kalkuluak lokalean egiten dira nabigatzailean.</div>
+  </section>
+
+  <section class="cards">
+    <div class="card"><span>PERIMETROA</span><strong id="pm">—</strong><small id="pkm">—</small></div>
+    <div class="card"><span>AZALERA</span><strong id="m2">—</strong><small id="ha">—</small></div>
+    <div class="card"><span>AZALERA</span><strong id="km2">—</strong><small id="points">—</small></div>
+    <div class="card"><span>GEOMETRIA</span><strong id="geom">—</strong><small id="rings">—</small></div>
+  </section>
+
+  <section class="panel">
+    <h2>Fitxategiaren xehetasunak</h2>
+    <div class="details">
+      <div><span>IZENA</span><strong id="dname">—</strong></div>
+      <div><span>FORMATUA</span><strong id="dformat">—</strong></div>
+      <div><span>MOTA</span><strong id="dtype">—</strong></div>
+      <div><span>PUNTUAK</span><strong id="dpoints">—</strong></div>
+    </div>
+  </section>
+
+
+
+  <section class="panel">
+    <div class="maphead">
+      <div>
+        <h2>Mapa-bisorea</h2>
+        <div><span class="badge">GeoGipuzkoa</span> <span class="badge">PNOA</span> <span class="badge blue">Katastro WMS</span></div>
+      </div>
+    </div>
+    <div id="map"></div></div>
+    <div class="tracktools">
+      <button id="drawTrack">Track-a marraztu</button>
+      <button id="undoTrack">Azken puntua desegin</button>
+      <button id="clearTrack">Track-a ezabatu</button>
+      <button id="exportTrack">GPX esportatu</button>
+      <button id="exportShp">SHP esportatu</button>
+      <button id="exportPdf">PDF sortu</button>
+      <button id="exportPdfAlt">PDF alternatiboa</button>
+      <button id="addWaypoint">Waypoint gehitu</button>
+      <button id="clearWaypoints">Waypoint-ak ezabatu</button>
+      <button id="exportWaypoints">Waypoint GPX esportatu</button>
+    </div>
+    <div class="trackstats">
+      <span>Puntuak: <strong id="trackPointCount">0</strong></span>
+      <span>Distantzia: <strong id="trackDistance">0,00 km</strong></span>
+      <span>Egoera: <strong id="trackState">geldituta</strong></span>
+      <span>Waypoint-ak: <strong id="waypointCount">0</strong></span>
+    </div>
+    <p class="layers-note">
+      Geruzen kontrolean aukeratu oinarrizko mapa. Katastroa WMS geruza bisual gisa mantentzen da.
+      Track-a marrazteko, sakatu «Track-a marraztu» eta gero egin klik mapan.
+    </p>
+  </section>
+
+
+  <section class="panel">
+    <div class="maphead">
+      <div>
+        <h2>Koordenatu bihurgailua</h2>
+        <div><span class="badge">UTM ↔ Geografikoak</span> <span class="badge blue">Google Maps</span></div>
+      </div>
+    </div>
+
+    <div class="coordgrid">
+      <div class="coordbox">
+        <h3>UTM</h3>
+        <label for="utmE">Easting / X (m)</label>
+        <input id="utmE" type="number" step="0.01" placeholder="adib. 570000">
+        <label for="utmN">Northing / Y (m)</label>
+        <input id="utmN" type="number" step="0.01" placeholder="adib. 4770000">
+      </div>
+
+      <div class="coordbox">
+        <h3>UTM sistema</h3>
+        <label for="utmZone">Husoa / Zona</label>
+        <select id="utmZone"></select>
+        <label for="utmHem">Hemisferioa</label>
+        <select id="utmHem">
+          <option value="N" selected>Iparraldea / Norte</option>
+          <option value="S">Hegoaldea / Sur</option>
+        </select>
+        <label for="utmDatum">Datuma</label>
+        <select id="utmDatum">
+          <option value="ETRS89" selected>ETRS89</option>
+          <option value="WGS84">WGS84</option>
+        </select>
+      </div>
+
+      <div class="coordbox">
+        <h3>Geografikoak</h3>
+        <label for="geoLat">Latitudea</label>
+        <input id="geoLat" type="number" step="0.0000001" placeholder="43.1234567">
+        <label for="geoLon">Longitudea</label>
+        <input id="geoLon" type="number" step="0.0000001" placeholder="-2.1234567">
+      </div>
+
+      <div class="coordbox">
+        <h3>Emaitza / Resultado</h3>
+        <div id="coordResult" class="coordresult">Sartu koordenatuak edo hartu puntu bat mapatik.</div>
+        <div class="coordhint">Gipuzkoarako ohiko konfigurazioa: ETRS89 · UTM 30N.</div>
+      </div>
+    </div>
+
+    <div class="coordactions">
+      <button id="utmToGeo">UTM → geografikoak</button>
+      <button id="geoToUtm">Geografikoak → UTM</button>
+      <button id="pickCoord">Puntua mapatik hartu</button>
+      <button id="centerCoord">Mapan zentratu</button>
+      <button id="copyCoord">Koordenatuak kopiatu</button>
+      <button id="googleMaps">Google Maps-en ireki</button>
+    </div>
+  </section>
+
+  <div id="printReport" class="print-report"></div>
+
+  <div class="footer">V2.11.23e WEB · GitHub Pages · Responsive · SHP azalera/poligonoa EPSG:25830 · MAPA TXOSTENA · B5M.</div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/proj4@2.12.1/dist/proj4.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mapbox/shp-write@0.4.3/shpwrite.js"></script>
+<script>
+(function(){
+"use strict";
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>new Intl.NumberFormat("eu-ES",{minimumFractionDigits:d,maximumFractionDigits:d}).format(n);
+
+if(typeof L==="undefined"){ $("message").textContent="Ezin izan da Leaflet kargatu. Egiaztatu Internet konexioa."; return; }
+if(typeof turf==="undefined"){ $("message").textContent="Ezin izan da Turf kargatu. Egiaztatu Internet konexioa."; return; }
+if(typeof proj4==="undefined"){ $("message").textContent="Ezin izan da Proj4 kargatu. Koordenatu bihurgailuak Internet konexioa behar du lehen kargan."; return; }
+if(typeof html2canvas==="undefined"){ $("message").textContent="Ezin izan da html2canvas kargatu. PDF esportazioak Internet konexioa behar du."; return; }
+if(!window.jspdf||!window.jspdf.jsPDF){ $("message").textContent="Ezin izan da jsPDF kargatu. PDF esportazioak Internet konexioa behar du."; return; }
+const shpWriteAvailable=(typeof shpwrite!=="undefined");
+
+
+const map=L.map("map",{center:[43.05,-2.2],zoom:9});
+
+const osm=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+  maxZoom:20, attribution:"© OpenStreetMap contributors"
+}).addTo(map);
+
+const gipMap=L.tileLayer.wms("https://b5m.gipuzkoa.eus/ogc/wms/gipuzkoa_map_wms",{
+  layers:"udal_barrutiak_limites_municipales", format:"image/png", transparent:false,
+  version:"1.3.0", attribution:"Gipuzkoako Foru Aldundia · b5m"
+});
+
+const pnoa=L.tileLayer.wms("https://www.ign.es/wms-inspire/pnoa-ma",{
+  layers:"OI.OrthoimageCoverage", format:"image/jpeg", transparent:false,
+  version:"1.3.0", maxZoom:20, attribution:"PNOA Máxima Actualidad · IGN-CNIG"
+});
+
+const ignRaster=L.tileLayer.wms("https://www.ign.es/wms-inspire/mapa-raster",{
+  layers:"mtn_rasterizado", format:"image/png", transparent:false,
+  continuousWorld:true, attribution:"© Instituto Geográfico Nacional de España"
+});
+
+const euHuts=L.tileLayer("https://maps.refuges.info/hiking/{z}/{x}/{y}.png",{
+  maxZoom:18, attribution:"© OpenStreetMap | refuges.info"
+});
+
+
+/* B5M topographic WMTS.
+   The service is discovered from the official GetCapabilities document at runtime,
+   so the HTML does not hard-code a fragile WMTS layer/matrix identifier. */
+const b5mTopo=L.layerGroup();
+let b5mTopoLoaded=false;
+let b5mTopoLoading=false;
+
+async function loadB5mTopo(){
+  if(b5mTopoLoaded||b5mTopoLoading)return;
+  b5mTopoLoading=true;
+  const capUrl="https://b5m.gipuzkoa.eus/ogc/ogc_wmts/map/wmts?request=GetCapabilities&service=WMTS";
+  try{
+    const r=await fetch(capUrl);
+    if(!r.ok)throw new Error("WMTS GetCapabilities HTTP "+r.status);
+    const xml=new DOMParser().parseFromString(await r.text(),"application/xml");
+    if(xml.querySelector("parsererror"))throw new Error("WMTS XML baliogabea.");
+
+    const txt=(el,name)=>el?.getElementsByTagNameNS("*",name)?.[0]?.textContent?.trim()||"";
+    const layers=[...xml.getElementsByTagNameNS("*","Layer")];
+    if(!layers.length)throw new Error("Ez da WMTS geruzarik aurkitu.");
+
+    // Prefer a layer whose identifier/title looks like a general/topographic map.
+    const scoreLayer=el=>{
+      const s=(txt(el,"Identifier")+" "+txt(el,"Title")).toLowerCase();
+      let score=0;
+      if(/topo|mapa|map|carto|base/.test(s))score+=10;
+      if(/orto|photo|foto/.test(s))score-=20;
+      return score;
+    };
+    layers.sort((a,b)=>scoreLayer(b)-scoreLayer(a));
+    const layer=layers[0];
+
+    const layerId=txt(layer,"Identifier");
+    if(!layerId)throw new Error("WMTS layer identifier falta.");
+
+    const styleEls=[...layer.getElementsByTagNameNS("*","Style")];
+    let styleEl=styleEls.find(s=>(s.getAttribute("isDefault")||"").toLowerCase()==="true")||styleEls[0];
+    const styleId=txt(styleEl,"Identifier")||"default";
+    const format=txt(layer,"Format")||"image/png";
+
+    const links=[...layer.getElementsByTagNameNS("*","TileMatrixSetLink")];
+    if(!links.length)throw new Error("Ez dago TileMatrixSetLink erabilgarririk.");
+
+    const sets=[...xml.getElementsByTagNameNS("*","TileMatrixSet")];
+    const setById=new Map(sets.map(s=>[txt(s,"Identifier"),s]));
+
+    let chosenLink=null, chosenSet=null;
+    for(const link of links){
+      const id=txt(link,"TileMatrixSet");
+      const set=setById.get(id);
+      const crs=(txt(set,"SupportedCRS")||"").toLowerCase();
+      if(set && (/3857|900913|google/.test(crs)||/google|3857/i.test(id))){
+        chosenLink=link; chosenSet=set; break;
+      }
+    }
+    if(!chosenSet){
+      const id=txt(links[0],"TileMatrixSet");
+      chosenLink=links[0];
+      chosenSet=setById.get(id);
+    }
+    if(!chosenSet)throw new Error("Ez da WMTS matrix multzorik aurkitu.");
+
+    const matrixSetId=txt(chosenSet,"Identifier");
+    const matrices=[...chosenSet.getElementsByTagNameNS("*","TileMatrix")];
+    if(!matrices.length)throw new Error("Ez dago WMTS TileMatrix definiziorik.");
+
+    // Build matrix identifiers ordered from the coarsest to the finest scale.
+    const matrixIds=matrices.map(m=>({
+      id:txt(m,"Identifier"),
+      scale:parseFloat(txt(m,"ScaleDenominator"))||0
+    })).sort((a,b)=>b.scale-a.scale).map(x=>x.id);
+
+    const Wmts=L.TileLayer.extend({
+      getTileUrl:function(coords){
+        const z=Math.max(0,Math.min(coords.z,matrixIds.length-1));
+        const matrix=encodeURIComponent(matrixIds[z]);
+        const sep=capUrl.includes("?")?"&":"?";
+        return "https://b5m.gipuzkoa.eus/ogc/ogc_wmts/map/wmts"+
+          "?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"+
+          "&LAYER="+encodeURIComponent(layerId)+
+          "&STYLE="+encodeURIComponent(styleId)+
+          "&FORMAT="+encodeURIComponent(format)+
+          "&TILEMATRIXSET="+encodeURIComponent(matrixSetId)+
+          "&TILEMATRIX="+matrix+
+          "&TILEROW="+coords.y+
+          "&TILECOL="+coords.x;
+      }
+    });
+
+    const wmts=new Wmts("",{
+      minZoom:0,
+      maxZoom:Math.max(0,matrixIds.length-1),
+      attribution:"Gipuzkoako Foru Aldundia · b5m"
+    });
+    wmts.addTo(b5mTopo);
+    b5mTopoLoaded=true;
+    $("message").textContent="B5M mapa topografikoa kargatu da.";
+  }catch(err){
+    console.error(err);
+    $("message").textContent="Ezin izan da B5M mapa topografikoa kargatu: "+err.message;
+  }finally{
+    b5mTopoLoading=false;
+  }
+}
+b5mTopo.on("add",loadB5mTopo);
+
+
+/* Oinarrizko mapak: B5M ortoargazki bat hautatzean hauek kenduko dira.
+   B5M kartografia-geruzak ez dira zerrenda honetan sartzen; overlay gisa mantentzen dira. */
+const standardBaseLayers=[osm,gipMap,pnoa,ignRaster,euHuts,b5mTopo];
+
+const cadastralWms=L.tileLayer.wms("https://b5m.gipuzkoa.eus/inspire/wms/gipuzkoa_wms",{
+  layers:"CP.CadastralParcel", format:"image/png", transparent:true,
+  version:"1.3.0", opacity:0.8, attribution:"Gipuzkoako Foru Aldundia · Katastro INSPIRE"
+});
+
+const drawings=L.featureGroup().addTo(map);
+
+/* V2.11 fix: create this layer BEFORE using it in L.control.layers(). */
+const manualTrackLayer=L.featureGroup().addTo(map);
+const waypointLayer=L.featureGroup().addTo(map);
+let waypoints=[];
+let waypointMode=false;
+let manualTrackPoints=[];
+let drawingTrack=false;
+
+L.control.layers(
+  {
+    "OpenStreetMap":osm,
+    "GeoGipuzkoa · mapa":gipMap,
+    "B5M · Topografikoa":b5mTopo,
+    "PNOA · azken ortoargazkia":pnoa,
+    "SP IGM Raster · IGN":ignRaster,
+    "EU Huts":euHuts
+  },
+  {
+    "GPX / KML":drawings,
+    "Katastroko partzelak · WMS":cadastralWms,
+    "Eskuz marraztutako track-a":manualTrackLayer,
+    "Waypoint-ak":waypointLayer
+  },
+  {
+    collapsed:true,
+    position:"topright"
+  }
+).addTo(map);
+
+/* B5M geruza-katalogoa: benetako WMS GetCapabilities zerbitzuetatik kargatzen da. */
+const B5M_WMS = {
+  maps:"https://b5m.gipuzkoa.eus/ogc/wms/gipuzkoa_map_wms",
+  ortho:"https://b5m.gipuzkoa.eus/ogc/wms/gipuzkoa_ort_wms",
+  urban:"https://b5m.gipuzkoa.eus/ogc/wms/gipuzkoa_ort_urb_wms"
+};
+
+const b5mActiveLayers = new Map();
+let activeOrthoKey = null;
+
+function xmlText(el,name){
+  const n=el && el.getElementsByTagNameNS("*",name)[0];
+  return n ? n.textContent.trim() : "";
+}
+
+async function getWmsCapabilities(baseUrl){
+  const url=baseUrl+"?service=WMS&request=GetCapabilities";
+  const r=await fetch(url,{mode:"cors"});
+  if(!r.ok)throw new Error("HTTP "+r.status);
+  const xml=new DOMParser().parseFromString(await r.text(),"application/xml");
+  if(xml.querySelector("parsererror"))throw new Error("GetCapabilities XML baliogabea");
+  const version=xml.documentElement.getAttribute("version")||"1.3.0";
+  const formatNodes=[...xml.getElementsByTagNameNS("*","GetMap")]
+    .flatMap(x=>[...x.getElementsByTagNameNS("*","Format")]);
+  const formats=formatNodes.map(x=>x.textContent.trim());
+  const format=formats.find(x=>x==="image/png")||formats.find(x=>x.startsWith("image/"))||"image/png";
+
+  const layerNodes=[...xml.getElementsByTagNameNS("*","Layer")];
+  const layers=[];
+  for(const el of layerNodes){
+    const name=xmlText(el,"Name");
+    if(!name)continue;
+    const title=xmlText(el,"Title")||name;
+    layers.push({name,title});
+  }
+  // Remove duplicates while preserving order.
+  const seen=new Set();
+  return {
+    version,format,
+    layers:layers.filter(x=>{
+      if(seen.has(x.name))return false;
+      seen.add(x.name); return true;
+    })
+  };
+}
+
+function makeWmsLayer(baseUrl,info,layerName,opaque=false){
+  return L.tileLayer.wms(baseUrl,{
+    layers:layerName,
+    format:info.format,
+    transparent:!opaque,
+    version:info.version,
+    opacity:opaque?1:0.85,
+    attribution:"Gipuzkoako Foru Aldundia · b5m"
+  });
+}
+
+function addB5mCheckbox(container,baseUrl,info,item,prefix=""){
+  const label=document.createElement("label");
+  label.className="b5m-item";
+  const cb=document.createElement("input");
+  cb.type="checkbox";
+  const span=document.createElement("span");
+  span.textContent=(prefix?prefix+" · ":"")+item.title;
+  label.append(cb,span);
+  container.appendChild(label);
+
+  cb.addEventListener("change",()=>{
+    const key=baseUrl+"|"+item.name;
+    if(cb.checked){
+      const lyr=makeWmsLayer(baseUrl,info,item.name,false);
+      b5mActiveLayers.set(key,lyr);
+      lyr.addTo(map);
+    }else{
+      const lyr=b5mActiveLayers.get(key);
+      if(lyr){map.removeLayer(lyr);b5mActiveLayers.delete(key);}
+    }
+  });
+}
+
+function addB5mOrthoRadio(container,baseUrl,info,item,prefix){
+  const label=document.createElement("label");
+  label.className="b5m-item";
+  const rb=document.createElement("input");
+  rb.type="radio";
+  rb.name="b5m-ortho-radio";
+  const span=document.createElement("span");
+  span.textContent=prefix+" · "+item.title;
+  label.append(rb,span);
+  container.appendChild(label);
+
+  rb.addEventListener("change",()=>{
+    if(!rb.checked)return;
+
+    // Kendu aurreko B5M ortoargazkia.
+    if(activeOrthoKey){
+      const old=b5mActiveLayers.get(activeOrthoKey);
+      if(old)map.removeLayer(old);
+      b5mActiveLayers.delete(activeOrthoKey);
+    }
+
+    // Kendu une honetan aktibo dagoen oinarrizko mapa arrunta.
+    // B5M kartografia-geruzak overlay independenteak dira eta ez dira kentzen.
+    standardBaseLayers.forEach(base=>{
+      if(map.hasLayer(base))map.removeLayer(base);
+    });
+
+    const key=baseUrl+"|"+item.name;
+    const lyr=makeWmsLayer(baseUrl,info,item.name,true);
+    b5mActiveLayers.set(key,lyr);
+    activeOrthoKey=key;
+    lyr.addTo(map);
+
+    $("message").textContent="B5M ortoargazkia oinarrizko mapa gisa aktibatu da.";
+  });
+}
+
+const B5mCatalogControl=L.Control.extend({
+  options:{position:"topright"},
+  onAdd:function(){
+    const root=L.DomUtil.create("div","b5m-control leaflet-bar");
+    const toggle=L.DomUtil.create("button","b5m-toggle",root);
+    toggle.type="button";
+    toggle.title="B5M geruzak";
+    toggle.setAttribute("aria-label","B5M geruzak");
+    toggle.textContent="B5M geruzak";
+
+    const panel=L.DomUtil.create("div","b5m-panel",root);
+    panel.innerHTML=`
+      <div class="b5m-head">
+        <strong>B5M GERUZAK</strong>
+        <button type="button" class="b5m-close">✕</button>
+      </div>
+      <details class="b5m-group" open>
+        <summary>B5M · KARTOGRAFIA-GERUZAK · overlay</summary>
+        <div id="b5mMapList" class="b5m-list"><div class="b5m-loading">Geruzak kargatzen…</div></div>
+      </details>
+      <details class="b5m-group">
+        <summary>B5M · ORTOARGAZKIAK · oinarrizko mapa</summary>
+        <div id="b5mOrthoList" class="b5m-list"><div class="b5m-loading">Ortoargazkiak kargatzen…</div></div>
+      </details>`;
+
+    L.DomEvent.disableClickPropagation(root);
+    L.DomEvent.disableScrollPropagation(root);
+
+    toggle.addEventListener("click",()=>root.classList.toggle("open"));
+    panel.querySelector(".b5m-close").addEventListener("click",()=>root.classList.remove("open"));
+
+    setTimeout(()=>loadB5mCatalog(root),0);
+    return root;
+  }
+});
+map.addControl(new B5mCatalogControl());
+
+/* Leaflet-eko oinarrizko mapa bat hautatzean, B5M ortoargazkia kendu.
+   B5M KARTOGRAFIA-GERUZAK overlay gisa mantentzen dira. */
+map.on("baselayerchange",()=>{
+  if(activeOrthoKey){
+    const old=b5mActiveLayers.get(activeOrthoKey);
+    if(old)map.removeLayer(old);
+    b5mActiveLayers.delete(activeOrthoKey);
+    activeOrthoKey=null;
+  }
+  document.querySelectorAll('input[name="b5m-ortho-radio"]').forEach(r=>r.checked=false);
+});
+
+/* Itxi B5M geruzen panela mapa ukitzean. */
+map.on("click",()=>{
+  const ctl=document.querySelector(".b5m-control");
+  if(ctl)ctl.classList.remove("open");
+});
+
+async function loadB5mCatalog(root){
+  const mapList=root.querySelector("#b5mMapList");
+  const orthoList=root.querySelector("#b5mOrthoList");
+
+  try{
+    const info=await getWmsCapabilities(B5M_WMS.maps);
+    mapList.innerHTML="";
+    if(!info.layers.length)throw new Error("Ez dago geruzarik");
+    info.layers.forEach(item=>addB5mCheckbox(mapList,B5M_WMS.maps,info,item));
+  }catch(err){
+    console.error("B5M map WMS:",err);
+    mapList.innerHTML='<div class="b5m-error">Ezin izan dira kartografia-geruzak irakurri. WMS/CORS konexioa egiaztatu.</div>';
+  }
+
+  try{
+    const [ortho,urban]=await Promise.allSettled([
+      getWmsCapabilities(B5M_WMS.ortho),
+      getWmsCapabilities(B5M_WMS.urban)
+    ]);
+    orthoList.innerHTML="";
+    let total=0;
+    if(ortho.status==="fulfilled"){
+      ortho.value.layers.forEach(item=>{
+        addB5mOrthoRadio(orthoList,B5M_WMS.ortho,ortho.value,item,"Orto");
+        total++;
+      });
+    }
+    if(urban.status==="fulfilled"){
+      urban.value.layers.forEach(item=>{
+        addB5mOrthoRadio(orthoList,B5M_WMS.urban,urban.value,item,"Hiri");
+        total++;
+      });
+    }
+    if(!total)throw new Error("Ez dago ortoargazkirik");
+  }catch(err){
+    console.error("B5M ortho WMS:",err);
+    orthoList.innerHTML='<div class="b5m-error">Ezin izan dira ortoargazkiak irakurri. WMS/CORS konexioa egiaztatu.</div>';
+  }
+}
+
+L.control.scale({metric:true,imperial:false}).addTo(map);
+
+/* Mapa pantaila-zabalera / hasierako tamaina */
+let mapExpanded=false;
+const ExpandMapControl=L.Control.extend({
+  options:{position:"topleft"},
+  onAdd:function(){
+    const btn=L.DomUtil.create("button","map-expand-control");
+    btn.type="button";
+    btn.title="Mapa maximizatu";
+    btn.setAttribute("aria-label","Mapa maximizatu");
+    btn.innerHTML="⛶";
+
+    L.DomEvent.disableClickPropagation(btn);
+    L.DomEvent.on(btn,"click",function(e){
+      L.DomEvent.stop(e);
+      mapExpanded=!mapExpanded;
+      const mapEl=$("map");
+      mapEl.classList.toggle("map-fullscreen",mapExpanded);
+      document.body.classList.toggle("map-is-fullscreen",mapExpanded);
+
+      btn.innerHTML=mapExpanded?"✕":"⛶";
+      btn.title=mapExpanded?"Hasierako tamainara itzuli":"Mapa maximizatu";
+      btn.setAttribute("aria-label",btn.title);
+
+      // Leaflet-ek tamaina berria kalkulatu behar du.
+      setTimeout(()=>{
+        map.invalidateSize({animate:false});
+        if(mapExpanded){
+          $("message").textContent="Mapa pantaila osora zabaldu da. ✕ sakatu hasierako tamainara itzultzeko.";
+        }else{
+          $("message").textContent="Mapa hasierako tamainara itzuli da.";
+        }
+      },80);
+    });
+    return btn;
+  }
+});
+map.addControl(new ExpandMapControl());
+
+/* ESC teklarekin ere hasierako tamainara itzuli. */
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"&&mapExpanded){
+    mapExpanded=false;
+    $("map").classList.remove("map-fullscreen");
+    document.body.classList.remove("map-is-fullscreen");
+    const btn=document.querySelector(".map-expand-control");
+    if(btn){
+      btn.innerHTML="⛶";
+      btn.title="Mapa maximizatu";
+      btn.setAttribute("aria-label","Mapa maximizatu");
+    }
+    setTimeout(()=>map.invalidateSize({animate:false}),80);
+  }
+});
+cadastralWms.addTo(map);
+
+
+function escapeHtml(s){
+  return String(s??"").replace(/[&<>"']/g,c=>({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[c]));
+}
+
+function refreshWaypoints(){
+  waypointLayer.clearLayers();
+  waypoints.forEach((w,i)=>{
+    const iconSymbol=w.icon||"●";
+    const wpIcon=L.divIcon({
+      className:"wp-icon",
+      html:`<div class="wp-icon-wrap">${escapeHtml(iconSymbol)}</div>`,
+      iconSize:[30,30],
+      iconAnchor:[15,15]
+    });
+    const m=L.marker([w.lat,w.lon],{title:w.name||("WP "+(i+1)),icon:wpIcon});
+    m.bindTooltip(escapeHtml(w.name||("WP "+(i+1))),{
+      permanent:true,
+      direction:"top",
+      offset:[0,-8],
+      opacity:.95
+    });
+    m.bindPopup(
+      `<strong>${escapeHtml(iconSymbol)} ${escapeHtml(w.name||("WP "+(i+1)))}</strong><br>`+
+      `${w.lat.toFixed(7)}, ${w.lon.toFixed(7)}<br>`+
+      `<button type="button" onclick="window.__deleteWaypoint(${i})">Ezabatu</button>`
+    );
+    m.addTo(waypointLayer);
+  });
+  $("waypointCount").textContent=String(waypoints.length);
+  $("addWaypoint").classList.toggle("active",waypointMode);
+  $("addWaypoint").textContent=waypointMode?"Klik egin mapan…":"Waypoint gehitu";
+}
+
+window.__deleteWaypoint=function(i){
+  if(i>=0&&i<waypoints.length){
+    waypoints.splice(i,1);
+    refreshWaypoints();
+    map.closePopup();
+  }
+};
+
+
+const waypointIcons=[
+  {icon:"●",name:"Puntua"},
+  {icon:"⚑",name:"Bandera"},
+  {icon:"⌂",name:"Etxea"},
+  {icon:"🚗",name:"Autoa"},
+  {icon:"💧",name:"Ura"},
+  {icon:"🌲",name:"Zuhaitza"},
+  {icon:"▲",name:"Gailurra"},
+  {icon:"⚠",name:"Arriskua"},
+  {icon:"🔥",name:"Sua"},
+  {icon:"★",name:"Izarra"},
+  {icon:"✚",name:"Laguntza"}
+];
+
+function askWaypointData(defaultName,defaultLat,defaultLon){
+  return new Promise(resolve=>{
+    const back=document.createElement("div");
+    back.className="wp-dialog-backdrop";
+    const dlg=document.createElement("div");
+    dlg.className="wp-dialog";
+    dlg.innerHTML=`
+      <h3>Waypoint berria</h3>
+      <input type="text" class="wp-name" placeholder="Waypoint izena" value="${escapeHtml(defaultName)}">
+      <div class="wp-coords">
+        <label>Latitudea
+          <input type="number" step="0.0000001" class="wp-lat" value="${Number(defaultLat).toFixed(7)}">
+        </label>
+        <label>Longitudea
+          <input type="number" step="0.0000001" class="wp-lon" value="${Number(defaultLon).toFixed(7)}">
+        </label>
+      </div>
+      <div class="wp-icons"></div>
+      <div class="wp-dialog-actions">
+        <button type="button" class="wp-cancel">Utzi</button>
+        <button type="button" class="wp-ok">Gorde</button>
+      </div>`;
+    back.appendChild(dlg);
+    document.body.appendChild(back);
+
+    let selected=waypointIcons[0].icon;
+    const box=dlg.querySelector(".wp-icons");
+    waypointIcons.forEach((it,idx)=>{
+      const b=document.createElement("button");
+      b.type="button";
+      b.className="wp-choice"+(idx===0?" selected":"");
+      b.innerHTML=`<span class="ico">${escapeHtml(it.icon)}</span><small>${escapeHtml(it.name)}</small>`;
+      b.onclick=()=>{
+        selected=it.icon;
+        box.querySelectorAll(".wp-choice").forEach(x=>x.classList.remove("selected"));
+        b.classList.add("selected");
+      };
+      box.appendChild(b);
+    });
+
+    const finish=v=>{back.remove();resolve(v)};
+    dlg.querySelector(".wp-cancel").onclick=()=>finish(null);
+    dlg.querySelector(".wp-ok").onclick=()=>{
+      const name=dlg.querySelector(".wp-name").value.trim()||defaultName;
+      const lat=parseFloat(dlg.querySelector(".wp-lat").value);
+      const lon=parseFloat(dlg.querySelector(".wp-lon").value);
+
+      if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<-90||lat>90||lon<-180||lon>180){
+        alert("Latitude edo longitude baliogabea / Coordenadas no válidas.");
+        return;
+      }
+      finish({name,icon:selected,lat,lon});
+    };
+    back.addEventListener("click",e=>{if(e.target===back)finish(null)});
+    dlg.querySelector(".wp-name").focus();
+  });
+}
+
+$("addWaypoint").addEventListener("click",()=>{
+  waypointMode=!waypointMode;
+  if(waypointMode){
+    drawingTrack=false;
+    coordPickMode=false;
+    updateManualTrack();
+    $("pickCoord").classList.remove("active");
+    $("pickCoord").textContent="Puntua mapatik hartu";
+    $("message").textContent="Waypoint modua aktibatuta: egin klik mapan.";
+  }else{
+    $("message").textContent="Waypoint modua geldituta.";
+  }
+  refreshWaypoints();
+});
+
+
+
+$("clearWaypoints").addEventListener("click",()=>{
+  waypoints=[];
+  waypointMode=false;
+  refreshWaypoints();
+  $("message").textContent="Waypoint guztiak ezabatu dira.";
+});
+
+$("exportWaypoints").addEventListener("click",()=>{
+  if(!waypoints.length){
+    $("message").textContent="Ez dago esportatzeko waypoint-ik.";
+    return;
+  }
+  const pts=waypoints.map(w=>
+`  <wpt lat="${w.lat.toFixed(8)}" lon="${w.lon.toFixed(8)}">
+    <name>${escapeHtml(w.name||"Waypoint")}</name>
+    <sym>${escapeHtml(w.icon||"●")}</sym>
+  </wpt>`
+  ).join("\n");
+  const gpx=`<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.23e WEB"
+ xmlns="http://www.topografix.com/GPX/1/1">
+${pts}
+</gpx>`;
+  const blob=new Blob([gpx],{type:"application/gpx+xml;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download="waypoints-v2.11.23e-web.gpx";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  $("message").textContent="Waypoint-ak GPX gisa esportatu dira.";
+});
+
+refreshWaypoints();
+
+
+function updateManualTrack(){
+  manualTrackLayer.clearLayers();
+
+  manualTrackPoints.forEach((p,i)=>{
+    L.circleMarker(p,{radius:5,weight:2,fillOpacity:.9})
+      .bindTooltip(String(i+1),{direction:"top"})
+      .addTo(manualTrackLayer);
+  });
+
+  if(manualTrackPoints.length>=2){
+    L.polyline(manualTrackPoints,{weight:4}).addTo(manualTrackLayer);
+  }
+
+  $("trackPointCount").textContent=String(manualTrackPoints.length);
+
+  let km=0;
+  if(manualTrackPoints.length>=2){
+    const coords=manualTrackPoints.map(p=>[p.lng,p.lat]);
+    km=turf.length(turf.lineString(coords),{units:"kilometers"});
+  }
+  $("trackDistance").textContent=fmt(km,2)+" km";
+  $("trackState").textContent=drawingTrack?"marrazten":"geldituta";
+  $("drawTrack").classList.toggle("active",drawingTrack);
+  $("drawTrack").textContent=drawingTrack?"Marraztea gelditu":"Track-a marraztu";
+}
+
+$("drawTrack").addEventListener("click",()=>{
+  drawingTrack=!drawingTrack;
+  if(drawingTrack){ waypointMode=false; refreshWaypoints(); }
+  updateManualTrack();
+  $("message").textContent=drawingTrack
+    ?"Track marrazketa aktibatuta: egin klik mapan puntuak gehitzeko."
+    :"Track marrazketa geldituta.";
+});
+
+$("undoTrack").addEventListener("click",()=>{
+  if(!manualTrackPoints.length)return;
+  manualTrackPoints.pop();
+  updateManualTrack();
+});
+
+$("clearTrack").addEventListener("click",()=>{
+  manualTrackPoints=[];
+  drawingTrack=false;
+  updateManualTrack();
+  $("message").textContent="Eskuz marraztutako track-a ezabatu da.";
+});
+
+$("exportTrack").addEventListener("click",()=>{
+  if(manualTrackPoints.length<2){
+    $("message").textContent="Gutxienez 2 puntu behar dira GPX esportatzeko.";
+    return;
+  }
+  const pts=manualTrackPoints.map(
+    p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
+  ).join("\n");
+  const gpx=`<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.23e WEB"
+ xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Eskuz marraztutako track-a</name>
+    <trkseg>
+${pts}
+    </trkseg>
+  </trk>
+</gpx>`;
+  const blob=new Blob([gpx],{type:"application/gpx+xml;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download="track-v2.11.23e-web.gpx";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  $("message").textContent="GPX fitxategia esportatu da.";
+});
+
+map.on("click",async e=>{
+  if(waypointMode){
+    const data=await askWaypointData(
+      "WP "+(waypoints.length+1),
+      e.latlng.lat,
+      e.latlng.lng
+    );
+    if(data===null)return;
+    waypoints.push({lat:data.lat,lon:data.lon,name:data.name,icon:data.icon});
+    waypointMode=false;
+    refreshWaypoints();
+    map.panTo([data.lat,data.lon]);
+    $("message").textContent="Waypoint-a gehitu da: "+data.name;
+    return;
+  }
+  if(coordPickMode)return;
+  if(!drawingTrack)return;
+  manualTrackPoints.push(e.latlng);
+  updateManualTrack();
+});
+
+updateManualTrack();
+
+
+/* Koordenatu bihurgailua */
+for(let z=1;z<=60;z++){
+  const o=document.createElement("option");
+  o.value=String(z);
+  o.textContent=String(z);
+  if(z===30)o.selected=true;
+  $("utmZone").appendChild(o);
+}
+
+const coordMarker=L.featureGroup().addTo(map);
+let coordPickMode=false;
+let lastCoord=null;
+
+function utmDef(zone,hem,datum){
+  const ellps=datum==="ETRS89"?"GRS80":"WGS84";
+  return `+proj=utm +zone=${zone} ${hem==="S"?"+south ":""}+ellps=${ellps} +units=m +no_defs +type=crs`;
+}
+const geoDef="+proj=longlat +datum=WGS84 +no_defs +type=crs";
+
+function validLatLon(lat,lon){
+  return Number.isFinite(lat)&&Number.isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180;
+}
+function setGeo(lat,lon,alsoUtm=true){
+  if(!validLatLon(lat,lon))throw new Error("Latitude edo longitude baliogabea.");
+  $("geoLat").value=lat.toFixed(7);
+  $("geoLon").value=lon.toFixed(7);
+  lastCoord={lat,lon};
+  if(alsoUtm) convertGeoToUtm(false);
+  showCoordMarker(lat,lon);
+  updateCoordResult();
+}
+function showCoordMarker(lat,lon){
+  coordMarker.clearLayers();
+  L.marker([lat,lon]).bindPopup(
+    `<strong>Koordenatua</strong><br>${lat.toFixed(7)}, ${lon.toFixed(7)}`
+  ).addTo(coordMarker);
+}
+function convertUtmToGeo(center=true){
+  const e=parseFloat($("utmE").value);
+  const n=parseFloat($("utmN").value);
+  const zone=parseInt($("utmZone").value,10);
+  const hem=$("utmHem").value;
+  const datum=$("utmDatum").value;
+  if(!Number.isFinite(e)||!Number.isFinite(n))throw new Error("Sartu UTM X eta Y balioak.");
+  const [lon,lat]=proj4(utmDef(zone,hem,datum),geoDef,[e,n]);
+  setGeo(lat,lon,false);
+  if(center)map.setView([lat,lon],17);
+  return {lat,lon};
+}
+function convertGeoToUtm(center=false){
+  const lat=parseFloat($("geoLat").value);
+  const lon=parseFloat($("geoLon").value);
+  if(!validLatLon(lat,lon))throw new Error("Sartu latitude eta longitude baliozkoak.");
+  let zone=parseInt($("utmZone").value,10);
+  if(!Number.isInteger(zone)||zone<1||zone>60){
+    zone=Math.floor((lon+180)/6)+1;
+    $("utmZone").value=String(zone);
+  }
+  const hem=lat<0?"S":"N";
+  $("utmHem").value=hem;
+  const datum=$("utmDatum").value;
+  const [e,n]=proj4(geoDef,utmDef(zone,hem,datum),[lon,lat]);
+  $("utmE").value=e.toFixed(2);
+  $("utmN").value=n.toFixed(2);
+  lastCoord={lat,lon};
+  showCoordMarker(lat,lon);
+  updateCoordResult();
+  if(center)map.setView([lat,lon],17);
+  return {e,n,zone,hem,lat,lon};
+}
+function updateCoordResult(){
+  if(!lastCoord)return;
+  const lat=lastCoord.lat,lon=lastCoord.lon;
+  const e=$("utmE").value||"—",n=$("utmN").value||"—";
+  const z=$("utmZone").value, h=$("utmHem").value, d=$("utmDatum").value;
+  $("coordResult").innerHTML=
+    `<strong>Geografikoak:</strong> ${lat.toFixed(7)}, ${lon.toFixed(7)}<br>`+
+    `<strong>UTM:</strong> ${e} E · ${n} N · ${z}${h} · ${d}`;
+}
+function coordError(err){
+  console.error(err);
+  $("coordResult").textContent="Errorea: "+err.message;
+}
+
+$("utmToGeo").addEventListener("click",()=>{try{convertUtmToGeo(true)}catch(e){coordError(e)}});
+$("geoToUtm").addEventListener("click",()=>{try{convertGeoToUtm(true)}catch(e){coordError(e)}});
+
+$("pickCoord").addEventListener("click",()=>{
+  coordPickMode=!coordPickMode;
+  if(coordPickMode){
+    waypointMode=false;
+    refreshWaypoints();
+    drawingTrack=false;
+    updateManualTrack();
+  }
+  $("pickCoord").classList.toggle("active",coordPickMode);
+  $("pickCoord").textContent=coordPickMode?"Klik egin mapan…":"Puntua mapatik hartu";
+  $("message").textContent=coordPickMode
+    ?"Koordenatu modua aktibatuta: egin klik mapan puntu bat hartzeko."
+    :"Koordenatu modua geldituta.";
+});
+
+map.on("click",e=>{
+  if(!coordPickMode)return;
+  try{
+    setGeo(e.latlng.lat,e.latlng.lng,true);
+    coordPickMode=false;
+    $("pickCoord").classList.remove("active");
+    $("pickCoord").textContent="Puntua mapatik hartu";
+    $("message").textContent="Koordenatua mapatik hartu eta UTMra bihurtu da.";
+  }catch(err){coordError(err)}
+});
+
+$("centerCoord").addEventListener("click",()=>{
+  try{
+    const lat=parseFloat($("geoLat").value),lon=parseFloat($("geoLon").value);
+    if(!validLatLon(lat,lon))throw new Error("Ez dago koordenatu geografiko baliozkorik.");
+    showCoordMarker(lat,lon);
+    map.setView([lat,lon],17);
+  }catch(e){coordError(e)}
+});
+
+$("copyCoord").addEventListener("click",async()=>{
+  try{
+    const lat=parseFloat($("geoLat").value),lon=parseFloat($("geoLon").value);
+    if(!validLatLon(lat,lon))throw new Error("Ez dago kopiatzeko koordenaturik.");
+    const txt=`${lat.toFixed(7)}, ${lon.toFixed(7)} | UTM ${$("utmZone").value}${$("utmHem").value}: ${$("utmE").value}, ${$("utmN").value} (${$("utmDatum").value})`;
+    if(navigator.clipboard&&window.isSecureContext){
+      await navigator.clipboard.writeText(txt);
+    }else{
+      const ta=document.createElement("textarea");
+      ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();
+    }
+    $("message").textContent="Koordenatuak arbelean kopiatu dira.";
+  }catch(e){coordError(e)}
+});
+
+$("googleMaps").addEventListener("click",()=>{
+  try{
+    const lat=parseFloat($("geoLat").value),lon=parseFloat($("geoLon").value);
+    if(!validLatLon(lat,lon))throw new Error("Ez dago Google Maps-en irekitzeko koordenaturik.");
+    window.open(`https://www.google.com/maps?q=${lat},${lon}`,"_blank","noopener");
+  }catch(e){coordError(e)}
+});
+
+
+
+/* SHP esportazioa */
+/* Exportatzen den geometria BETI visor-eko azalera/poligonoa da.
+   Track irekia bada, lehen eta azken puntuak lotuz ixten da, visor-ak
+   azalera kalkulatzeko erabiltzen duen logika bera jarraituz. */
+
+function getSurfacePolygonForShp(){
+  let rings=null;
+  let sourceName="azalera";
+
+  if(currentRings && currentRings.length){
+    rings=currentRings
+      .map(r=>r.filter(c=>Number.isFinite(c[0])&&Number.isFinite(c[1])))
+      .filter(r=>r.length>=3);
+    sourceName=$("dname").textContent||"azalera";
+  }else if(manualTrackPoints.length>=3){
+    rings=[manualTrackPoints.map(p=>[p.lng,p.lat])];
+    sourceName="eskuzko_azalera";
+  }
+
+  if(!rings || !rings.length)return null;
+
+  const polygons=[];
+  rings.forEach(r=>{
+    const ring=r.slice();
+    if(!coordsEqual(ring[0],ring[ring.length-1])){
+      ring.push(ring[0].slice());
+    }
+    if(ring.length>=4)polygons.push(ring);
+  });
+
+  if(!polygons.length)return null;
+  return {name:sourceName,rings:polygons};
+}
+
+function shpBaseName(name){
+  return (name||"azalera")
+    .replace(/\.[^.]+$/,"")
+    .replace(/[^\w\-]+/g,"_")
+    .replace(/^_+|_+$/g,"")
+    .slice(0,50) || "azalera";
+}
+
+function surfaceStatsForShp(rings){
+  let areaM2=0;
+  let perimeterM=0;
+
+  rings.forEach(r=>{
+    try{
+      const poly=turf.polygon([r]);
+      areaM2+=turf.area(poly);
+      perimeterM+=turf.length(turf.lineString(r),{units:"kilometers"})*1000;
+    }catch(_){}
+  });
+
+  return {
+    hectares:areaM2/10000,
+    perimeterM
+  };
+}
+
+function reprojectRingTo25830(ring){
+  const srcDef="+proj=longlat +datum=WGS84 +no_defs +type=crs";
+  const dstDef="+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs +type=crs";
+  return ring.map(c=>proj4(srcDef,dstDef,c));
+}
+
+$("exportShp").addEventListener("click",()=>{
+  if(typeof shpwrite==="undefined"){
+    $("message").textContent="SHP liburutegia ezin izan da kargatu. Egiaztatu Internet konexioa.";
+    return;
+  }
+
+  const surf=getSurfacePolygonForShp();
+  if(!surf){
+    $("message").textContent="SHP esportatzeko, gutxienez 3 puntuko azalera/poligono bat behar da.";
+    return;
+  }
+
+  try{
+    const stats=surfaceStatsForShp(surf.rings);
+
+    // Reproyección a ETRS89 / UTM 30N (EPSG:25830)
+    const projectedRings=surf.rings.map(reprojectRingTo25830);
+
+    const features=projectedRings.map((r,idx)=>({
+      type:"Feature",
+      properties:{
+        id:idx+1,
+        azal_ha:Number(stats.hectares.toFixed(4)),
+        perim_m:Number(stats.perimeterM.toFixed(2))
+      },
+      geometry:{
+        type:"Polygon",
+        coordinates:[r]
+      }
+    }));
+
+    const fc={type:"FeatureCollection",features};
+
+    const options={
+      folder:shpBaseName(surf.name),
+      types:{
+        polygon:"azalera"
+      }
+    };
+
+    /* shp-write no permite definir PRJ arbitrario en download(),
+       así que generamos el ZIP y sustituimos/añadimos manualmente el .prj. */
+    const zipData=shpwrite.zip(fc,options);
+
+    Promise.resolve(zipData).then(async data=>{
+      // shpwrite.zip puede devolver base64 o ArrayBuffer según versión.
+      let blob;
+      if(typeof data==="string"){
+        const bin=atob(data);
+        const arr=new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+        blob=new Blob([arr],{type:"application/zip"});
+      }else{
+        blob=new Blob([data],{type:"application/zip"});
+      }
+
+      // Como shp-write genera coordenadas tal cual se proporcionan, el .prj
+      // debe corresponder a EPSG:25830. Reempaquetamos con JSZip si está disponible.
+      if(typeof JSZip!=="undefined"){
+        try{
+          const zip=await JSZip.loadAsync(blob);
+          const prj25830='PROJCS["ETRS89 / UTM zone 30N",GEOGCS["ETRS89",DATUM["European_Terrestrial_Reference_System_1989",SPHEROID["GRS 1980",6378137,298.257222101]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",-3],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["metre",1],AXIS["Easting",EAST],AXIS["Northing",NORTH]]';
+
+          Object.keys(zip.files).forEach(fn=>{
+            if(fn.toLowerCase().endsWith(".prj")){
+              zip.file(fn,prj25830);
+            }
+          });
+
+          blob=await zip.generateAsync({type:"blob"});
+        }catch(err){
+          console.warn("PRJ ezin izan da ordezkatu:",err);
+        }
+      }
+
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url;
+      a.download=shpBaseName(surf.name)+"_azalera_EPSG25830.zip";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1500);
+
+      $("message").textContent=
+        "SHP poligonoa esportatu da · ETRS89 / UTM 30N · "+
+        fmt(stats.hectares,4)+" ha · "+fmt(stats.perimeterM,2)+" m.";
+    }).catch(err=>{
+      console.error(err);
+      $("message").textContent="SHP ZIP errorea: "+err.message;
+    });
+
+  }catch(err){
+    console.error(err);
+    $("message").textContent="SHP esportazio errorea: "+err.message;
+  }
+});
+
+/* PDF esportazioa */
+function getActiveGeometryForPdf(){
+  // Lehenetsi kargatutako GPX/KML geometria; bestela eskuzko track-a.
+  if(currentRings && currentRings.length){
+    return {
+      source:"fitxategia",
+      name:$("dname").textContent||"GPX/KML",
+      rings:currentRings.map(r=>r.map(c=>[c[0],c[1]]))
+    };
+  }
+  if(manualTrackPoints.length>=2){
+    return {
+      source:"eskuzko track-a",
+      name:"Eskuz marraztutako track-a",
+      rings:[manualTrackPoints.map(p=>[p.lng,p.lat])]
+    };
+  }
+  return null;
+}
+
+function geometryPdfStats(geom){
+  let perimeterKm=0, area=0, count=0;
+  const all=[];
+  geom.rings.forEach(r=>{
+    const clean=r.filter(c=>Number.isFinite(c[0])&&Number.isFinite(c[1]));
+    if(clean.length<2)return;
+    clean.forEach(c=>all.push(c));
+    count+=clean.length;
+
+    const closed=clean.length>=4 && coordsEqual(clean[0],clean[clean.length-1]);
+    if(closed){
+      perimeterKm+=turf.length(turf.lineString(clean),{units:"kilometers"});
+      area+=turf.area(turf.polygon([clean]));
+    }else{
+      perimeterKm+=turf.length(turf.lineString(clean),{units:"kilometers"});
+      // Eskuzko track bat 3 puntutik gorakoa bada, azalera kalkulatu
+      // puntu-segida poligono gisa itxiz, informazio osagarri moduan.
+      if(geom.source==="eskuzko track-a" && clean.length>=3){
+        const ring=clean.slice();
+        ring.push(clean[0].slice());
+        try{ area+=turf.area(turf.polygon([ring])); }catch(_){}
+      }
+    }
+  });
+  if(!all.length)throw new Error("Ez dago PDFra eramateko geometria erabilgarririk.");
+
+  const fc=turf.featureCollection(all.map(c=>turf.point(c)));
+  const bbox=turf.bbox(fc);
+  const center=turf.center(fc).geometry.coordinates;
+
+  // Hasierako puntua: lehen geometria erabilgarriaren lehen koordenatua.
+  let start=null;
+  for(const r of geom.rings){
+    const c=r.find(p=>Number.isFinite(p[0])&&Number.isFinite(p[1]));
+    if(c){start=[c[1],c[0]];break;}
+  }
+  if(!start)start=[center[1],center[0]];
+
+  return {perimeterKm,area,count,bbox,center:[center[1],center[0]],start};
+}
+
+function fitGeometryForPdf(geom){
+  const latlngs=[];
+  geom.rings.forEach(r=>r.forEach(c=>latlngs.push([c[1],c[0]])));
+
+  if(Array.isArray(waypoints)){
+    waypoints.forEach(w=>{
+      if(Number.isFinite(w.lat)&&Number.isFinite(w.lon))latlngs.push([w.lat,w.lon]);
+    });
+  }
+
+  const b=L.latLngBounds(latlngs);
+  if(!b.isValid())return;
+
+  /* El contenedor ya tiene la proporción exacta del mapa del PDF.
+     fitBounds mostrará cartografía REAL adicional donde haga falta,
+     sin estirar ni recortar artificialmente la captura. */
+  map.fitBounds(b.pad(.12),{
+    animate:false,
+    padding:[18,18]
+  });
+}
+
+
+function waypointIconPng(symbol,size=64){
+  const c=document.createElement("canvas");
+  c.width=size;c.height=size;
+  const ctx=c.getContext("2d");
+  ctx.clearRect(0,0,size,size);
+
+  // White circular marker, matching the visual style on the map.
+  ctx.beginPath();
+  ctx.arc(size/2,size/2,size*0.44,0,Math.PI*2);
+  ctx.fillStyle="rgba(255,255,255,0.96)";
+  ctx.fill();
+  ctx.lineWidth=Math.max(2,size*0.055);
+  ctx.strokeStyle="#176b43";
+  ctx.stroke();
+
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+  ctx.font=`${Math.floor(size*0.48)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  ctx.fillStyle="#111";
+  ctx.fillText(symbol||"●",size/2,size/2+size*0.03);
+
+  return c.toDataURL("image/png");
+}
+
+function pdfSafe(s){
+  return String(s??"").replace(/[^\x20-\x7EÀ-ÿ]/g," ");
+}
+
+
+async function reverseGeocodeCartoCiudad(lat,lon){
+  const url="https://www.cartociudad.es/geocoder/api/geocoder/reverseGeocode?lon="+
+    encodeURIComponent(lon)+"&lat="+encodeURIComponent(lat);
+  const r=await fetch(url,{headers:{"Accept":"application/json"}});
+  if(!r.ok)throw new Error("CartoCiudad HTTP "+r.status);
+  const data=await r.json();
+
+  // The service normally returns one object; tolerate array/wrapped responses.
+  let x=data;
+  if(Array.isArray(x))x=x[0]||{};
+  if(x && Array.isArray(x.results))x=x.results[0]||{};
+  if(x && x.result && typeof x.result==="object")x=x.result;
+
+  const parts=[];
+  const street=x.address||x.street||x.name||"";
+  const portal=x.portalNumber||x.portal||"";
+  const ext=x.extension||"";
+  if(street)parts.push(street+(portal?" "+portal+(ext||""):""));
+  const cp=x.postalCode||x.codPostal||x.cod_postal||"";
+  const pop=x.poblacion||x.population||"";
+  if(cp||pop)parts.push([cp,pop].filter(Boolean).join(" "));
+  const muni=x.muni||x.municipio||x.municipality||"";
+  const prov=x.province||x.provincia||"";
+  if(muni||prov)parts.push([muni,prov].filter(Boolean).join(", "));
+
+  return {
+    address:parts.join(" · ") || "Ez dago hurbileko posta-helbiderik (350 m barruan).",
+    municipality:muni||"—",
+    population:pop||"—",
+    postalCode:cp||"—",
+    province:prov||"—"
+  };
+}
+
+
+function fireWaypointForPdf(){
+  if(!Array.isArray(waypoints))return null;
+  return waypoints.find(w=>w && w.icon==="🔥" &&
+    Number.isFinite(w.lat) && Number.isFinite(w.lon)) || null;
+}
+
+async function locationForPdf(stats){
+  try{
+    const fire=fireWaypointForPdf();
+    const lat=fire?fire.lat:stats.start[0];
+    const lon=fire?fire.lon:stats.start[1];
+    return await reverseGeocodeCartoCiudad(lat,lon);
+  }catch(err){
+    console.warn("CartoCiudad reverse geocode:",err);
+    return {
+      address:"Ezin izan da helbidea kontsultatu.",
+      municipality:"—",population:"—",postalCode:"—",province:"—"
+    };
+  }
+}
+
+function cloneMapForPrint(){
+  const source=$("map");
+  const clone=source.cloneNode(true);
+  clone.removeAttribute("id");
+  clone.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));
+  clone.classList.remove("map-fullscreen","pdf-exporting");
+  clone.style.width="100%";
+  clone.style.height="160mm";
+  clone.style.minHeight="0";
+  clone.style.borderRadius="0";
+  return clone;
+}
+
+
+function utmGridConfig(stats){
+  const lat=stats.start[0],lon=stats.start[1];
+  const zone=Math.max(1,Math.min(60,Math.floor((lon+180)/6)+1));
+  const hem=lat<0?"S":"N";
+  const def=utmDef(zone,hem,"ETRS89");
+
+  // Estimate width/height in metres from map bounds.
+  const b=map.getBounds();
+  const sw=proj4(geoDef,def,[b.getWest(),b.getSouth()]);
+  const ne=proj4(geoDef,def,[b.getEast(),b.getNorth()]);
+  const span=Math.max(Math.abs(ne[0]-sw[0]),Math.abs(ne[1]-sw[1]));
+
+  let step=1000;
+  if(span>80000)step=10000;
+  else if(span>40000)step=5000;
+  else if(span>18000)step=2000;
+
+  return {zone,hem,def,step};
+}
+
+function addTemporaryUtmGridOverlay(stats){
+  const mapEl=$("map");
+  const cfg=utmGridConfig(stats);
+  const b=map.getBounds();
+
+  const corners=[
+    [b.getWest(),b.getSouth()],
+    [b.getEast(),b.getSouth()],
+    [b.getWest(),b.getNorth()],
+    [b.getEast(),b.getNorth()]
+  ].map(c=>proj4(geoDef,cfg.def,c));
+
+  const xs=corners.map(c=>c[0]),ys=corners.map(c=>c[1]);
+  const minE=Math.min(...xs),maxE=Math.max(...xs);
+  const minN=Math.min(...ys),maxN=Math.max(...ys);
+
+  const w=mapEl.clientWidth,h=mapEl.clientHeight;
+  const ns="http://www.w3.org/2000/svg";
+  const svg=document.createElementNS(ns,"svg");
+  svg.setAttribute("width",String(w));
+  svg.setAttribute("height",String(h));
+  svg.setAttribute("viewBox",`0 0 ${w} ${h}`);
+  svg.style.position="absolute";
+  svg.style.left="0";
+  svg.style.top="0";
+  svg.style.width="100%";
+  svg.style.height="100%";
+  svg.style.pointerEvents="none";
+  svg.style.zIndex="850";
+  svg.classList.add("utm-pdf-grid");
+
+  const addLine=(pts,label,labelX,labelY)=>{
+    if(pts.length<2)return;
+    const pl=document.createElementNS(ns,"polyline");
+    pl.setAttribute("points",pts.map(p=>`${p.x},${p.y}`).join(" "));
+    pl.setAttribute("fill","none");
+    pl.setAttribute("stroke","#333");
+    pl.setAttribute("stroke-width","1");
+    pl.setAttribute("stroke-opacity","0.55");
+    svg.appendChild(pl);
+
+    if(label){
+      const t=document.createElementNS(ns,"text");
+      t.setAttribute("x",String(labelX));
+      t.setAttribute("y",String(labelY));
+      t.setAttribute("font-size","10");
+      t.setAttribute("font-family","Arial,sans-serif");
+      t.setAttribute("fill","#111");
+      t.setAttribute("paint-order","stroke");
+      t.setAttribute("stroke","#fff");
+      t.setAttribute("stroke-width","3");
+      t.setAttribute("stroke-linejoin","round");
+      t.textContent=label;
+      svg.appendChild(t);
+    }
+  };
+
+  const startE=Math.floor(minE/cfg.step)*cfg.step;
+  const endE=Math.ceil(maxE/cfg.step)*cfg.step;
+  for(let e=startE;e<=endE;e+=cfg.step){
+    const pts=[];
+    for(let n=minN;n<=maxN;n+=(maxN-minN)/24||1){
+      try{
+        const ll=proj4(cfg.def,geoDef,[e,n]);
+        const p=map.latLngToContainerPoint([ll[1],ll[0]]);
+        pts.push(p);
+      }catch(_){}
+    }
+    if(pts.length) addLine(pts,String(Math.round(e)),Math.max(3,pts[0].x+3),14);
+  }
+
+  const startN=Math.floor(minN/cfg.step)*cfg.step;
+  const endN=Math.ceil(maxN/cfg.step)*cfg.step;
+  for(let n=startN;n<=endN;n+=cfg.step){
+    const pts=[];
+    for(let e=minE;e<=maxE;e+=(maxE-minE)/24||1){
+      try{
+        const ll=proj4(cfg.def,geoDef,[e,n]);
+        const p=map.latLngToContainerPoint([ll[1],ll[0]]);
+        pts.push(p);
+      }catch(_){}
+    }
+    if(pts.length) addLine(pts,String(Math.round(n)),4,Math.min(h-4,Math.max(12,pts[0].y-3)));
+  }
+
+  // Etiqueta UTM separada de la numeración de la cuadrícula.
+  const labelText=`UTM ${cfg.zone}${cfg.hem} · ${cfg.step/1000} km`;
+
+  const bg=document.createElementNS(ns,"rect");
+  const boxW=118,boxH=22;
+  bg.setAttribute("x",String(w-boxW-8));
+  bg.setAttribute("y",String(h-boxH-8));
+  bg.setAttribute("width",String(boxW));
+  bg.setAttribute("height",String(boxH));
+  bg.setAttribute("rx","4");
+  bg.setAttribute("fill","#ffffff");
+  bg.setAttribute("fill-opacity","0.92");
+  bg.setAttribute("stroke","#444");
+  bg.setAttribute("stroke-width","0.8");
+  svg.appendChild(bg);
+
+  const badge=document.createElementNS(ns,"text");
+  badge.setAttribute("x",String(w-14));
+  badge.setAttribute("y",String(h-14));
+  badge.setAttribute("text-anchor","end");
+  badge.setAttribute("font-size","11");
+  badge.setAttribute("font-family","Arial,sans-serif");
+  badge.setAttribute("font-weight","700");
+  badge.setAttribute("fill","#111");
+  badge.textContent=labelText;
+  svg.appendChild(badge);
+
+  mapEl.appendChild(svg);
+  return svg;
+}
+
+function removeTemporaryUtmGridOverlay(){
+  document.querySelectorAll(".utm-pdf-grid").forEach(x=>x.remove());
+}
+
+function prepareAltPrintReport(geom,stats,loc){
+  const report=$("printReport");
+  report.innerHTML="";
+
+  const h=document.createElement("h1");
+  h.textContent="GPX · KML · AZALERA - MAPA TXOSTENA";
+  report.appendChild(h);
+
+  const sub=document.createElement("div");
+  sub.className="pr-sub";
+  sub.textContent="MAPA TXOSTENA";
+  report.appendChild(sub);
+
+  const grid=document.createElement("div");
+  grid.className="pr-grid";
+
+  const mapHolder=document.createElement("div");
+  mapHolder.className="pr-map";
+  mapHolder.appendChild(cloneMapForPrint());
+
+  const data=document.createElement("div");
+  data.className="pr-data";
+  data.innerHTML=`
+    <div class="pr-north"><div>N</div><div class="arr">↑</div></div>
+    <h2>DATUAK</h2>
+    <div class="pr-row"><b>Perimetroa</b>${fmt(stats.perimeterKm*1000,2)} m</div>
+    <div class="pr-row"><b>Azalera</b>${fmt(stats.area/10000,4)} ha</div>
+    <div class="pr-row"><b>Sua / Fuego</b>${(()=>{
+      const fw=fireWaypointForPdf();
+      return fw ? `🔥 ${escapeHtml(fw.name||"Waypoint")}` : "—";
+    })()}</div>
+    <div class="pr-row"><b>Posta-helbide hurbilena</b>${pdfSafe(loc.address)}</div>
+    <div class="pr-row"><b>Udalerria / Municipio</b>${pdfSafe(loc.municipality)}</div>
+    <div class="pr-row"><b>Herrigunea / Población</b>${pdfSafe(loc.population)}</div>
+    <div class="pr-row"><b>Posta-kodea</b>${pdfSafe(loc.postalCode)}</div>
+    <div class="pr-row"><b>Probintzia</b>${pdfSafe(loc.province)}</div>
+`;
+  grid.append(mapHolder,data);
+  report.appendChild(grid);
+
+  const foot=document.createElement("div");
+  foot.className="pr-foot";
+  foot.textContent="CartoCiudad: helbide hurbilena suaren waypoint-etik; sua ez badago, hasierako puntutik. Track irekien azalera puntu-segida itxiz kalkulatzen da.";
+  report.appendChild(foot);
+}
+
+async function generateAlternativePdf(){
+  const geom=getActiveGeometryForPdf();
+  if(!geom){
+    $("message").textContent="PDF sortzeko, lehenengo GPX/KML bat kargatu edo track bat marraztu.";
+    return;
+  }
+  const btn=$("exportPdfAlt");
+  btn.disabled=true;
+  const old=btn.textContent;
+  btn.textContent="Prestatzen…";
+
+  const oldCenter=map.getCenter(),oldZoom=map.getZoom();
+  try{
+    const stats=geometryPdfStats(geom);
+    fitGeometryForPdf(geom);
+    await new Promise(r=>setTimeout(r,1000));
+    const loc=await locationForPdf(stats);
+    const utmGrid=addTemporaryUtmGridOverlay(stats);
+    prepareAltPrintReport(geom,stats,loc);
+
+    document.body.classList.add("printing-alt");
+    $("message").textContent="Inprimatze leihoan aukeratu «Gorde PDF gisa / Guardar como PDF».";
+    await new Promise(r=>setTimeout(r,250));
+    window.print();
+  }catch(err){
+    console.error(err);
+    $("message").textContent="PDF alternatiboa ezin izan da prestatu: "+err.message;
+  }finally{
+    setTimeout(()=>{
+      document.body.classList.remove("printing-alt");
+      $("printReport").innerHTML="";
+      removeTemporaryUtmGridOverlay();
+      map.setView(oldCenter,oldZoom,{animate:false});
+      map.invalidateSize({animate:false});
+      btn.disabled=false;
+      btn.textContent=old;
+    },700);
+  }
+}
+
+$("exportPdfAlt").addEventListener("click",generateAlternativePdf);
+
+
+
+function prepareMapForPdfViewport(){
+  const mapEl=$("map");
+
+  const state={
+    style:mapEl.getAttribute("style"),
+    className:mapEl.className,
+    parentStyle:mapEl.parentElement?mapEl.parentElement.getAttribute("style"):null,
+    center:map.getCenter(),
+    zoom:map.getZoom()
+  };
+
+  /* El área de mapa del PDF es 208 x 160 mm -> relación 1,30.
+     Usamos un viewport grande con esa proporción para obtener más cartografía
+     real y suficiente resolución, no una captura alargada. */
+  const pdfViewW=1300;
+  const pdfViewH=1000;
+
+  mapEl.classList.remove("map-fullscreen");
+  mapEl.style.width=pdfViewW+"px";
+  mapEl.style.height=pdfViewH+"px";
+  mapEl.style.minHeight=pdfViewH+"px";
+  mapEl.style.maxWidth="none";
+  mapEl.style.position="absolute";
+  mapEl.style.left="-20000px";
+  mapEl.style.top="0";
+  mapEl.style.zIndex="-1";
+  mapEl.style.borderRadius="0";
+
+  map.invalidateSize({animate:false});
+
+  return state;
+}
+
+function restoreMapAfterPdfViewport(state){
+  const mapEl=$("map");
+
+  if(state.style===null)mapEl.removeAttribute("style");
+  else mapEl.setAttribute("style",state.style);
+
+  mapEl.className=state.className;
+
+  map.invalidateSize({animate:false});
+  map.setView(state.center,state.zoom,{animate:false});
+  setTimeout(()=>map.invalidateSize({animate:false}),80);
+}
+
+async function waitForMapTiles(timeout=5000){
+  const started=Date.now();
+  while(Date.now()-started<timeout){
+    const imgs=[...$("map").querySelectorAll(".leaflet-tile")];
+    const pending=imgs.some(img=>!img.complete || img.naturalWidth===0);
+    if(!pending)return;
+    await new Promise(r=>setTimeout(r,120));
+  }
+}
+
+async function generateMapPdf(){
+  const geom=getActiveGeometryForPdf();
+  if(!geom){
+    $("message").textContent="PDF sortzeko, lehenengo GPX/KML bat kargatu edo track bat marraztu.";
+    return;
+  }
+
+  const btn=$("exportPdf");
+  btn.disabled=true;
+  const oldText=btn.textContent;
+  btn.textContent="PDF sortzen…";
+
+  // Guardar el estado completo del visor y crear un viewport específico para el PDF.
+  let pdfViewportState=null;
+
+  try{
+    const stats=geometryPdfStats(geom);
+    const loc=await locationForPdf(stats);
+
+    pdfViewportState=prepareMapForPdfViewport();
+
+    // El encuadre se calcula DESPUÉS de dar al mapa la proporción exacta del PDF.
+    fitGeometryForPdf(geom);
+    map.invalidateSize({animate:false});
+    await waitForMapTiles(5000);
+    await new Promise(r=>setTimeout(r,350));
+
+    const mapEl=$("map");
+    const utmGrid=addTemporaryUtmGridOverlay(stats);
+    mapEl.classList.add("pdf-exporting");
+
+    /* La geometría SVG de Leaflet puede desplazarse con html2canvas.
+       Se captura la cartografía sin los overlays y se redibuja después
+       usando las coordenadas proyectadas del propio mapa. */
+    const overlayPane=map.getPane("overlayPane");
+    const markerPane=map.getPane("markerPane");
+    const tooltipPane=map.getPane("tooltipPane");
+    const oldOverlayVis=overlayPane?overlayPane.style.visibility:"";
+    const oldMarkerVis=markerPane?markerPane.style.visibility:"";
+    const oldTooltipVis=tooltipPane?tooltipPane.style.visibility:"";
+
+    const projectedRings=geom.rings.map(r=>r.map(c=>{
+      const p=map.latLngToContainerPoint([c[1],c[0]]);
+      return [p.x,p.y];
+    }));
+    const projectedWaypoints=(Array.isArray(waypoints)?waypoints:[]).map(w=>{
+      const p=map.latLngToContainerPoint([w.lat,w.lon]);
+      return {...w,px:p.x,py:p.y};
+    });
+
+    if(overlayPane)overlayPane.style.visibility="hidden";
+    if(markerPane)markerPane.style.visibility="hidden";
+    if(tooltipPane)tooltipPane.style.visibility="hidden";
+
+    const canvas=await html2canvas(mapEl,{
+      useCORS:true,
+      allowTaint:false,
+      backgroundColor:"#ffffff",
+      logging:false,
+      scale:2,
+      imageTimeout:15000
+    });
+
+    if(overlayPane)overlayPane.style.visibility=oldOverlayVis;
+    if(markerPane)markerPane.style.visibility=oldMarkerVis;
+    if(tooltipPane)tooltipPane.style.visibility=oldTooltipVis;
+
+    mapEl.classList.remove("pdf-exporting");
+    removeTemporaryUtmGridOverlay();
+
+    const {jsPDF}=window.jspdf;
+    const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4",compress:true});
+    const W=297,H=210;
+    const margin=10;
+
+    // Cabecera profesional
+    pdf.setFillColor(24,78,52);
+    pdf.rect(0,0,W,22,"F");
+
+    pdf.setTextColor(255,255,255);
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(16);
+    pdf.text("GPX · KML · AZALERA",margin,10);
+
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(9);
+    pdf.text("MAPA TXOSTENA",margin,16);
+
+    pdf.setTextColor(20,20,20);
+
+    // Map image
+    const img=canvas.toDataURL("image/jpeg",0.90);
+    const mapX=10,mapY=28,mapW=208,mapH=160;
+    /* La captura ya tiene exactamente la relación del área de mapa del PDF.
+       Por eso puede ocuparla entera sin deformación. */
+    const drawW=mapW;
+    const drawH=mapH;
+    const drawX=mapX;
+    const drawY=mapY;
+    pdf.addImage(img,"JPEG",drawX,drawY,drawW,drawH);
+
+    /* Escala exacta de la captura dentro del PDF.
+       La imagen no siempre ocupa todo mapW/mapH: usamos drawW/drawH. */
+    const viewW=mapEl.clientWidth||1;
+    const viewH=mapEl.clientHeight||1;
+    const imgX=drawX;
+    const imgY=drawY;
+    const imgW=drawW;
+    const imgH=drawH;
+
+    projectedRings.forEach((ring,ri)=>{
+      if(ring.length<2)return;
+      const pts=ring.map(p=>[
+        imgX+(p[0]/viewW)*imgW,
+        imgY+(p[1]/viewH)*imgH
+      ]);
+      const original=geom.rings[ri];
+      const closed=original && original.length>=4 &&
+        coordsEqual(original[0],original[original.length-1]);
+
+      pdf.setDrawColor(210,30,30);
+      pdf.setLineWidth(0.8);
+
+      if(closed){
+        // Superficie transparente: solo borde, sin relleno, para no tapar la cartografía.
+        for(let i=1;i<pts.length;i++){
+          pdf.line(pts[i-1][0],pts[i-1][1],pts[i][0],pts[i][1]);
+        }
+      }else{
+        for(let i=1;i<pts.length;i++){
+          pdf.line(pts[i-1][0],pts[i-1][1],pts[i][0],pts[i][1]);
+        }
+      }
+    });
+
+    // Waypoints: el icono se rasteriza como PNG para conservar su aspecto original.
+    projectedWaypoints.forEach(w=>{
+      const x=imgX+(w.px/viewW)*imgW;
+      const y=imgY+(w.py/viewH)*imgH;
+      if(x<imgX||x>imgX+imgW||y<imgY||y>imgY+imgH)return;
+
+      try{
+        const iconPng=waypointIconPng(w.icon||"●",72);
+        pdf.addImage(iconPng,"PNG",x-2.6,y-2.6,5.2,5.2);
+      }catch(_){
+        pdf.setFillColor(255,255,255);
+        pdf.setDrawColor(20,20,20);
+        pdf.circle(x,y,2.3,"FD");
+      }
+
+      pdf.setFont("helvetica","bold");
+      pdf.setFontSize(6.5);
+      pdf.setTextColor(20,20,20);
+      pdf.text(pdfSafe(w.name||"WP"),x+3.3,y-0.7);
+    });
+
+    // Frame around reserved map area
+    pdf.setDrawColor(80);
+    pdf.setLineWidth(0.3);
+    pdf.rect(drawX,drawY,drawW,drawH);
+
+    // North compass in PDF vector form, independent of screenshot
+    const nx=203,ny=38;
+    pdf.setFillColor(255,255,255);
+    pdf.setDrawColor(150,160,154);
+    pdf.circle(nx,ny+5,8,"FD");
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(9);
+    pdf.setTextColor(24,78,52);
+    pdf.text("N",nx,ny,{align:"center"});
+    pdf.setLineWidth(0.7);
+    pdf.setDrawColor(24,78,52);
+    pdf.line(nx,ny+12,nx,ny+3);
+    pdf.line(nx,ny+3,nx-2.2,ny+7);
+    pdf.line(nx,ny+3,nx+2.2,ny+7);
+    pdf.setTextColor(20,20,20);
+
+    // Panel lateral profesional
+    const x=225;
+    const sideW=62;
+
+    pdf.setFillColor(247,249,248);
+    pdf.setDrawColor(210,220,214);
+    pdf.roundedRect(x-3,28,sideW+3,160,2,2,"FD");
+
+    pdf.setFillColor(231,242,235);
+    pdf.roundedRect(x,32,sideW-3,22,1.5,1.5,"F");
+
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(9);
+    pdf.setTextColor(24,78,52);
+    pdf.text("PERIMETROA",x+3,39);
+    pdf.text("AZALERA",x+3,48);
+
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(10.5);
+    pdf.setTextColor(20,20,20);
+    pdf.text(fmt(stats.perimeterKm*1000,2)+" m",x+sideW-6,39,{align:"right"});
+    pdf.text(fmt(stats.area/10000,4)+" ha",x+sideW-6,48,{align:"right"});
+
+    let y=62;
+
+    // Waypoint laburpena / resumen
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(8.5);
+    pdf.setTextColor(24,78,52);
+    pdf.text("WAYPOINT-AK",x,y);
+    y+=5;
+
+    const summaryWaypoints=Array.isArray(waypoints)?waypoints:[];
+    if(summaryWaypoints.length){
+      summaryWaypoints.slice(0,8).forEach(w=>{
+        try{
+          const iconPng=waypointIconPng(w.icon||"●",64);
+          pdf.addImage(iconPng,"PNG",x,y-3.2,4.5,4.5);
+        }catch(_){}
+
+        pdf.setTextColor(20,20,20);
+        pdf.setFont("helvetica","bold");
+        pdf.setFontSize(7.2);
+        const nm=pdfSafe(w.name||"Waypoint");
+        pdf.text(nm,x+6,y);
+
+        pdf.setFont("helvetica","normal");
+        pdf.setFontSize(6.2);
+        pdf.setTextColor(85,85,85);
+        pdf.text(w.lat.toFixed(6)+", "+w.lon.toFixed(6),x+6,y+3.5);
+        y+=9;
+      });
+      if(summaryWaypoints.length>8){
+        pdf.setFontSize(6.5);
+        pdf.setTextColor(90,90,90);
+        pdf.text("+"+(summaryWaypoints.length-8)+" waypoint gehiago",x,y);
+        y+=6;
+      }
+    }else{
+      pdf.setFont("helvetica","normal");
+      pdf.setFontSize(7);
+      pdf.setTextColor(90,90,90);
+      pdf.text("—",x,y);
+      y+=7;
+    }
+
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(8.5);
+    pdf.setTextColor(24,78,52);
+    pdf.text("KOKAPENA",x,y); y+=5;
+
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(7.2);
+    pdf.setTextColor(20,20,20);
+    pdf.text("Posta-helbide hurbilena",x,y); y+=4;
+    pdf.setFont("helvetica","normal");
+    const addrLines=pdf.splitTextToSize(pdfSafe(loc.address),64);
+    pdf.text(addrLines,x,y); y+=addrLines.length*4+3;
+
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(7.2);
+    pdf.text("Udalerria / Municipio",x,y); y+=4;
+    pdf.setFont("helvetica","normal");
+    pdf.text(pdfSafe(loc.municipality),x,y); y+=7;
+
+    // Footer
+    pdf.setDrawColor(210,220,214);
+    pdf.line(10,196,287,196);
+    pdf.setFontSize(6.5);
+    pdf.setTextColor(95,95,95);
+    pdf.text("V2.11.23e WEB · GPX KML AZALERA",margin,201);
+    pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
+
+    const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
+    pdf.save(base+"_mapa.pdf");
+    $("message").textContent="PDFa sortu da PDFaren proportziora egokitutako mapa errealarekin, kartografia gehiago erakutsiz eta deformaziorik gabe.";
+  }catch(err){
+    console.error(err);
+    try{
+      const op=map.getPane("overlayPane"),mp=map.getPane("markerPane"),tp=map.getPane("tooltipPane");
+      if(op)op.style.visibility="";
+      if(mp)mp.style.visibility="";
+      if(tp)tp.style.visibility="";
+    }catch(_){}
+    $("map").classList.remove("pdf-exporting");
+    removeTemporaryUtmGridOverlay();
+    let msg="Ezin izan da PDFa sortu: "+err.message;
+    if(/taint|cors|canvas|image/i.test(String(err.message))){
+      msg+=". Aukeratutako mapa-geruzak CORS bidezko pantaila-kaptura blokeatu dezake. Erabili «PDF alternatiboa».";
+    }
+    $("message").textContent=msg;
+  }finally{
+    if(pdfViewportState)restoreMapAfterPdfViewport(pdfViewportState);
+    btn.disabled=false;
+    btn.textContent=oldText;
+  }
+}
+
+$("exportPdf").addEventListener("click",generateMapPdf);
+
+
+let currentRings=null;
+
+function coordsEqual(a,b){
+  return Math.abs(a[0]-b[0])<1e-12 && Math.abs(a[1]-b[1])<1e-12;
+}
+function cleanCoords(arr){
+  return arr.filter(c=>Number.isFinite(c[0])&&Number.isFinite(c[1])&&Math.abs(c[0])<=180&&Math.abs(c[1])<=90);
+}
+function closeRing(arr){
+  const a=cleanCoords(arr.slice());
+  if(a.length>=3&&!coordsEqual(a[0],a[a.length-1]))a.push(a[0].slice());
+  return a;
+}
+function parseXml(text){
+  const xml=new DOMParser().parseFromString(text,"application/xml");
+  if(xml.querySelector("parsererror"))throw new Error("XML fitxategia ez da baliozkoa.");
+  return xml;
+}
+
+function parseGpx(xml){
+  let nodes=[...xml.getElementsByTagNameNS("*","trkpt")], type="GPX track-a";
+  if(!nodes.length){nodes=[...xml.getElementsByTagNameNS("*","rtept")];type="GPX ibilbidea";}
+  if(!nodes.length){nodes=[...xml.getElementsByTagNameNS("*","wpt")];type="GPX waypoint-ak";}
+  const coords=cleanCoords(nodes.map(n=>[
+    parseFloat(n.getAttribute("lon")),
+    parseFloat(n.getAttribute("lat"))
+  ]));
+  if(coords.length<2)throw new Error("GPX fitxategiak gutxienez 2 puntu erabilgarri behar ditu.");
+  return {rings:[coords.length>=3?closeRing(coords):coords],type};
+}
+
+function parseCoordText(s){
+  return cleanCoords(s.trim().split(/\s+/).map(x=>{
+    const p=x.split(",");
+    return [parseFloat(p[0]),parseFloat(p[1])];
+  }));
+}
+
+function parseKml(xml){
+  const polys=[...xml.getElementsByTagNameNS("*","Polygon")];
+  let rings=[];
+  polys.forEach(p=>{
+    const outer=p.getElementsByTagNameNS("*","outerBoundaryIs")[0];
+    const co=outer&&outer.getElementsByTagNameNS("*","coordinates")[0];
+    if(co){
+      const r=closeRing(parseCoordText(co.textContent));
+      if(r.length>=4)rings.push(r);
+    }
+  });
+  if(rings.length)return {rings,type:rings.length>1?"KML multipoligonoa":"KML poligonoa"};
+
+  const lines=[...xml.getElementsByTagNameNS("*","LineString")];
+  lines.forEach(l=>{
+    const co=l.getElementsByTagNameNS("*","coordinates")[0];
+    if(co){
+      const r=parseCoordText(co.textContent);
+      if(r.length>=2)rings.push(r);
+    }
+  });
+  if(rings.length)return {rings,type:rings.length>1?"KML lerro anitz":"KML lerroa"};
+
+  const coords=[...xml.getElementsByTagNameNS("*","coordinates")];
+  coords.forEach(co=>{
+    const r=parseCoordText(co.textContent);
+    if(r.length>=2)rings.push(r);
+  });
+  if(rings.length)return {rings,type:"KML koordenatuak"};
+
+  throw new Error("Ez da KML geometria erabilgarririk aurkitu.");
+}
+
+function calculate(rings){
+  let area=0,perimeterKm=0,totalPoints=0;
+  rings.forEach(r=>{
+    if(r.length>=2){
+      perimeterKm+=turf.length(turf.lineString(r),{units:"kilometers"});
+      totalPoints+=r.length;
+    }
+    if(r.length>=4 && coordsEqual(r[0],r[r.length-1])){
+      area+=turf.area(turf.polygon([r]));
+      totalPoints-=1;
+    }
+  });
+  return {area,perimeterKm,totalPoints};
+}
+
+function draw(rings){
+  drawings.clearLayers();
+  rings.forEach(r=>{
+    const latlng=r.map(c=>[c[1],c[0]]);
+    const closed=r.length>=4 && coordsEqual(r[0],r[r.length-1]);
+    if(closed){
+      L.polygon(latlng,{weight:3,fillOpacity:.18}).addTo(drawings);
+    }else{
+      L.polyline(latlng,{weight:4}).addTo(drawings);
+    }
+    if(r.length<=300){
+      const pts=closed?r.slice(0,-1):r;
+      pts.forEach((c,i)=>{
+        L.circleMarker([c[1],c[0]],{radius:3,weight:1,fillOpacity:.8})
+          .bindTooltip(String(i+1),{direction:"top"}).addTo(drawings);
+      });
+    }
+  });
+  const b=drawings.getBounds();
+  if(b.isValid())map.fitBounds(b.pad(.12));
+}
+
+function reset(){
+  drawings.clearLayers();
+  currentRings=null;
+  ["pm","pkm","m2","ha","km2","points","geom","rings","dname","dformat","dtype","dpoints"]
+    .forEach(id=>$(id).textContent="—");
+  $("fileInfo").textContent="Ez da fitxategirik hautatu.";
+  $("message").textContent="Kalkuluak lokalean egiten dira nabigatzailean.";
+  $("file").value="";
+  map.setView([43.05,-2.2],9);
+}
+$("clear").addEventListener("click",reset);
+
+$("file").addEventListener("change",async e=>{
+  const f=e.target.files&&e.target.files[0];
+  if(!f)return;
+  $("fileInfo").textContent=f.name+" · "+fmt(f.size/1024,1)+" KB";
+  $("message").textContent="Prozesatzen…";
+  try{
+    const text=await f.text();
+    const xml=parseXml(text);
+    const ext=(f.name.toLowerCase().split(".").pop()||"").trim();
+    const root=(xml.documentElement.localName||"").toLowerCase();
+    let data;
+
+    if(ext==="gpx"||root==="gpx") data=parseGpx(xml);
+    else if(ext==="kml"||root==="kml") data=parseKml(xml);
+    else throw new Error("Formatu ezezaguna. Erabili .gpx edo .kml.");
+
+    const res=calculate(data.rings);
+    currentRings=data.rings;
+    draw(data.rings);
+
+    $("pm").textContent=fmt(res.perimeterKm*1000,2)+" m";
+    $("pkm").textContent=fmt(res.perimeterKm,3)+" km";
+    $("m2").textContent=fmt(res.area,2)+" m²";
+    $("ha").textContent=fmt(res.area/10000,4)+" ha";
+    $("km2").textContent=fmt(res.area/1e6,6)+" km²";
+    $("points").textContent=fmt(res.totalPoints,0)+" puntu";
+    $("geom").textContent=data.rings.length;
+    $("rings").textContent=data.rings.length===1?"geometria":"geometriak";
+    $("dname").textContent=f.name;
+    $("dformat").textContent=ext.toUpperCase();
+    $("dtype").textContent=data.type;
+    $("dpoints").textContent=fmt(res.totalPoints,0);
+    $("message").textContent="Fitxategia prest. Geruzen kontrolean mapa aldatu dezakezu.";
+  }catch(err){
+    console.error(err);
+    $("message").textContent="Errorea: "+err.message;
+  }
+});
+
+/* Responsive runtime: recalcular Leaflet al cambiar orientación/tamaño. */
+let resizeTimer=null;
+function responsiveMapResize(){
+  clearTimeout(resizeTimer);
+  resizeTimer=setTimeout(()=>{
+    try{map.invalidateSize({animate:false});}catch(_){}
+  },120);
+}
+window.addEventListener("resize",responsiveMapResize);
+window.addEventListener("orientationchange",()=>{
+  setTimeout(responsiveMapResize,250);
+});
+if(window.visualViewport){
+  window.visualViewport.addEventListener("resize",responsiveMapResize);
+}
+
+})();
+</script>
+</body>
+</html>
