@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,viewport-fit=cover">
-<title>GPX · KML · AZALERA V2.11.23f4</title>
+<title>GPX · KML · AZALERA V2.11.23f5</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{--bg:#f4f7f5;--panel:#fff;--ink:#16231c;--muted:#65736b;--green:#176b43;--line:#dce5df;--blue:#175f8f}
@@ -487,7 +487,7 @@ button,.filebtn,input,select{touch-action:manipulation}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.23f4</h1>
+    <h1>Azalera eta mapa · V2.11.23f5</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -540,8 +540,8 @@ button,.filebtn,input,select{touch-action:manipulation}
       <button id="exportPdf">PDF sortu</button>
       <button id="exportPdfAlt">PDF alternatiboa</button>
       <button id="addWaypoint">Waypoint gehitu</button>
-      <button id="clearMapWaypoints" type="button">Mapatik sortutako waypoint-ak ezabatu</button>
-      <button id="exportWaypoints">Waypoint GPX esportatu</button>
+      <button id="clearMapWaypoints" type="button">Waypoint-ak ezabatu</button>
+      <button id="exportWaypoints" type="button">Waypoint GPX esportatu</button>
     </div>
     <div class="trackstats">
       <span>Puntuak: <strong id="trackPointCount">0</strong></span>
@@ -616,7 +616,7 @@ button,.filebtn,input,select{touch-action:manipulation}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.23f4 · Track-a ezabatu = geometria + datuak garbitu · Fitxategiaren xehetasun trinkoak · SHP Polygon QGIS · B5M.</div>
+  <div class="footer">V2.11.23f5 · Waypoint-ak ezabatu zuzenduta · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1090,8 +1090,14 @@ function escapeHtml(s){
 }
 
 function clearMapCreatedWaypoints(){
- const n=waypoints.length; waypoints=waypoints.filter(w=>w.origin!=="map"); refreshWaypoints();
- $("message").textContent=(n-waypoints.length)+" mapako waypoint ezabatu dira.";
+  const removed=waypoints.length;
+  waypoints=[];
+  waypointMode=false;
+  waypointLayer.clearLayers();
+  refreshWaypoints();
+  $("message").textContent=removed
+    ? removed+" waypoint ezabatu dira."
+    : "Ez dago waypoint-ik ezabatzeko.";
 }
 if($("clearMapWaypoints"))$("clearMapWaypoints").addEventListener("click",clearMapCreatedWaypoints);
 function refreshWaypoints(){
@@ -1223,31 +1229,53 @@ $("addWaypoint").addEventListener("click",()=>{
 
 
 $("exportWaypoints").addEventListener("click",()=>{
-  if(!waypoints.length){
+  if(!Array.isArray(waypoints) || !waypoints.length){
     $("message").textContent="Ez dago esportatzeko waypoint-ik.";
     return;
   }
-  const pts=waypoints.map(w=>
-`  <wpt lat="${w.lat.toFixed(8)}" lon="${w.lon.toFixed(8)}">
-    <name>${escapeHtml(w.name||"Waypoint")}</name>
-    <sym>${escapeHtml(w.icon||"●")}</sym>
-  </wpt>`
-  ).join("\n");
-  const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.23f4"
- xmlns="http://www.topografix.com/GPX/1/1">
+
+  try{
+    const xmlEscape=s=>String(s??"")
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;")
+      .replace(/'/g,"&apos;");
+
+    const pts=waypoints
+      .filter(w=>Number.isFinite(w.lat)&&Number.isFinite(w.lon))
+      .map((w,i)=>`  <wpt lat="${w.lat.toFixed(8)}" lon="${w.lon.toFixed(8)}">
+    <name>${xmlEscape(w.name||("WP "+(i+1)))}</name>
+    <sym>${xmlEscape(w.icon||"Waypoint")}</sym>
+  </wpt>`)
+      .join("\n");
+
+    if(!pts){
+      $("message").textContent="Ez dago baliozko waypoint-koordenaturik.";
+      return;
+    }
+
+    const gpx=`<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.23f5">
 ${pts}
 </gpx>`;
-  const blob=new Blob([gpx],{type:"application/gpx+xml;charset=utf-8"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url;
-  a.download="waypoints-v2.11.23f4.gpx";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),1000);
-  $("message").textContent="Waypoint-ak GPX gisa esportatu dira.";
+
+    const blob=new Blob([gpx],{type:"application/gpx+xml;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download="waypoints.gpx";
+    a.style.display="none";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1500);
+
+    $("message").textContent=waypoints.length+" waypoint GPX gisa esportatu dira.";
+  }catch(err){
+    console.error("Waypoint GPX export:",err);
+    $("message").textContent="Waypoint GPX esportazio errorea: "+err.message;
+  }
 });
 
 refreshWaypoints();
@@ -1399,7 +1427,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.23f4"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.23f5"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -1412,7 +1440,7 @@ ${pts}
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
   a.href=url;
-  a.download="track-v2.11.23f4.gpx";
+  a.download="track-v2.11.23f5.gpx";
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -2444,7 +2472,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.23f4 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.23f5 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
