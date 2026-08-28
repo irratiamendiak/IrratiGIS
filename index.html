@@ -767,7 +767,7 @@ async function loadB5mTopo(){
     console.error(err);
     $("message").textContent="Ezin izan da B5M mapa topografikoa kargatu: "+err.message;
   }finally{
-    b5mTopoLoading=false;
+    b5mTopoLoading=false;gpx
   }
 }
 b5mTopo.on("add",loadB5mTopo);
@@ -787,6 +787,84 @@ const drawings=L.featureGroup().addTo(map);
 /* V2.11 fix: create this layer BEFORE using it in L.control.layers(). */
 const manualTrackLayer=L.featureGroup().addTo(map);
 const waypointLayer=L.featureGroup().addTo(map);
+// 🔥 Baimendutako erreketak
+const controlledBurnLayer = L.featureGroup();
+
+let controlledBurnsLoaded = false;
+let controlledBurnsLoading = false;
+
+async function loadControlledBurns(){
+  if(controlledBurnsLoaded || controlledBurnsLoading) return;
+
+  const token = window.IrratiGISAuth?.getToken?.();
+  const api = window.IrratiGISAuth?.API;
+
+  if(!token || !api){
+    console.warn("IrratiGIS: autentifikazio-tokena falta da.");
+    return;
+  }
+
+  controlledBurnsLoading = true;
+
+  try{
+    const response = await fetch(`${api}/api/active`, {
+      method:"GET",
+      headers:{
+        "Authorization":`Bearer ${token}`
+      }
+    });
+
+    if(!response.ok){
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const fires = Array.isArray(data.fires) ? data.fires : [];
+
+    controlledBurnLayer.clearLayers();
+
+    fires.forEach((fire)=>{
+      const lat = Number(fire.latitudea);
+      const lon = Number(fire.longitudea);
+
+      if(!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+      const marker = L.circleMarker([lat,lon],{
+        radius:8,
+        weight:2,
+        fillOpacity:.85
+      });
+
+      marker.bindPopup(
+        `<strong>🔥 Baimendutako erreketak</strong><br><br>`+
+        `<strong>Baimena:</strong> ${escapeHtml(fire.baimena || "-")}<br>`+
+        `<strong>Udalerria:</strong> ${escapeHtml(fire.udalerria || "-")}<br>`+
+        `<strong>Hasiera-data:</strong> ${escapeHtml(fire.fechaInicio || "-")}<br>`+
+        `<strong>Egoera:</strong> ${escapeHtml(fire.egoera || "-")}<br>`+
+        `<strong>Koordenatuak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}`
+      );
+
+      marker.addTo(controlledBurnLayer);
+    });
+
+    controlledBurnsLoaded = true;
+
+    $("message").textContent =
+      `${fires.length} baimendutako erreketak kargatu dira.`;
+
+  }catch(error){
+    console.error(
+      "Ezin izan dira baimendutako erreketak kargatu:",
+      error
+    );
+
+    $("message").textContent =
+      "Ezin izan dira baimendutako erreketak kargatu.";
+
+  }finally{
+    controlledBurnsLoading = false;
+  }
+}  
 let waypoints=[];
 let waypointMode=false;
 let manualTrackPoints=[];
@@ -803,11 +881,12 @@ L.control.layers(
     "EU Huts":euHuts
   },
   {
-    "GPX / KML":drawings,
-    "Katastroko partzelak · WMS":cadastralWms,
-    "Eskuz marraztutako track-a":manualTrackLayer,
-    "Waypoint-ak":waypointLayer
-  },
+  "GPX / KML":drawings,
+  "🔥 Baimendutako erreketak":controlledBurnLayer,
+  "Katastroko partzelak · WMS":cadastralWms,
+  "Eskuz marraztutako track-a":manualTrackLayer,
+  "Waypoint-ak":waypointLayer
+},
   {
     collapsed:true,
     position:"topright"
@@ -2662,7 +2741,10 @@ $("file").addEventListener("change",async e=>{
     $("message").textContent="Errorea: "+err.message;
   }
 });
-
+/* 🔥 Baimendutako erreketak: kargatu autentifikazioa amaitu ondoren */
+window.IrratiGISAuthReady.then(()=>{
+  loadControlledBurns();
+});
 /* Responsive runtime: recalcular Leaflet al cambiar orientación/tamaño. */
 let resizeTimer=null;
 function responsiveMapResize(){
