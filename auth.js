@@ -51,12 +51,6 @@
       .finally(() => clearTimeout(timer));
   }
 
-  async function getHealth() {
-    const response = await apiFetch("/api/health", { method: "GET" });
-    const data = await response.json().catch(() => null);
-    return { response, data };
-  }
-
   function showLogin(message = "") {
     let overlay = document.getElementById("irratiLoginOverlay");
     if (overlay) {
@@ -134,7 +128,7 @@
       } catch (error) {
         msg.className = "";
         if (error && error.name === "AbortError") {
-          msg.textContent = "No responde el Worker de Cloudflare. Espera unos segundos y recarga.";
+          msg.textContent = "El Worker de Cloudflare no responde. El problema está en el despliegue del Worker, no en el usuario o la contraseña.";
         } else if (error && error.message === "Unauthorized") {
           msg.textContent = "Usuario o contraseña no coinciden con Cloudflare.";
         } else if (error && error.message === "Login no configurado") {
@@ -167,21 +161,9 @@
       clearToken();
     }
 
-    try {
-      const { response, data } = await getHealth();
-      if (!response.ok || !data || !data.ok) {
-        showLogin("El Worker responde con un error HTTP " + response.status + ".");
-        return;
-      }
-    } catch (error) {
-      if (error && error.name === "AbortError") {
-        showLogin("El Worker de Cloudflare no responde. Revisa el despliegue de irratigis-erreketak.");
-      } else {
-        showLogin("No se puede conectar con el Worker de Cloudflare.");
-      }
-      return;
-    }
-
+    // No bloqueamos la pantalla con /api/health: el diagnóstico real debe
+    // hacerse contra /api/login. Así conservamos siempre el usuario/contraseña
+    // y distinguimos claramente entre credenciales incorrectas y Worker caído.
     showLogin();
     await new Promise(resolve => {
       window.addEventListener("irratiGISAuthenticated", resolve, { once: true });
