@@ -1,23 +1,21 @@
 const ALLOWED_ORIGIN = "https://irratiamendiak.github.io";
-const GITHUB_PAGES_ORIGIN = "https://irratiamendiak.github.io";
 const TOKEN_TTL_SECONDS = 60 * 60 * 12;
 
-function corsHeaders(origin) {
-  const allowed = origin === ALLOWED_ORIGIN ? origin : ALLOWED_ORIGIN;
+function corsHeaders() {
   return {
-    "Access-Control-Allow-Origin": allowed,
+    "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Vary": "Origin"
   };
 }
 
-function json(data, status = 200, origin = ALLOWED_ORIGIN) {
+function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      ...corsHeaders(origin)
+      ...corsHeaders()
     }
   });
 }
@@ -49,7 +47,9 @@ async function createToken(user, secret) {
     sub: user,
     exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS
   };
-  const payloadPart = base64urlEncode(new TextEncoder().encode(JSON.stringify(payload)));
+  const payloadPart = base64urlEncode(
+    new TextEncoder().encode(JSON.stringify(payload))
+  );
   const key = await getSigningKey(secret);
   const signature = await crypto.subtle.sign(
     "HMAC",
@@ -90,14 +90,14 @@ async function verifyToken(token, secret) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const origin = request.headers.get("Origin") || ALLOWED_ORIGIN;
 
     if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+      return new Response(null, { status: 204, headers: corsHeaders() });
     }
 
+    // Endpoint sencillo para comprobar que el Worker desplegado responde.
     if (url.pathname === "/api/health" && request.method === "GET") {
-      return json({ ok: true, worker: "irratigis-erreketak" }, 200, origin);
+      return json({ ok: true, worker: "irratigis-erreketak" });
     }
 
     if (url.pathname === "/api/login" && request.method === "POST") {
@@ -105,20 +105,21 @@ export default {
         const body = await request.json();
         const user = String(body.user || "").trim();
         const password = String(body.password || "");
-        const validUser = env.IRRATIGIS_LOGIN_USER;
-        const validPassword = env.IRRATIGIS_LOGIN_PASSWORD;
+        const validUser = String(env.IRRATIGIS_LOGIN_USER || "").trim();
+        const validPassword = String(env.IRRATIGIS_LOGIN_PASSWORD || "");
 
         if (!validUser || !validPassword) {
-          return json({ ok: false, error: "Login no configurado" }, 500, origin);
+          return json({ ok: false, error: "Login no configurado" }, 500);
         }
+
         if (user !== validUser || password !== validPassword) {
-          return json({ ok: false, error: "Unauthorized" }, 401, origin);
+          return json({ ok: false, error: "Unauthorized" }, 401);
         }
 
         const token = await createToken(user, validPassword);
-        return json({ ok: true, token }, 200, origin);
+        return json({ ok: true, token });
       } catch (_) {
-        return json({ ok: false, error: "Invalid request" }, 400, origin);
+        return json({ ok: false, error: "Invalid request" }, 400);
       }
     }
 
@@ -128,20 +129,12 @@ export default {
       const payload = await verifyToken(token, env.IRRATIGIS_LOGIN_PASSWORD);
 
       if (!payload) {
-        return json({ ok: false, error: "Unauthorized" }, 401, origin);
+        return json({ ok: false, error: "Unauthorized" }, 401);
       }
-      return json({ ok: true, user: payload.sub }, 200, origin);
+      return json({ ok: true, user: payload.sub });
     }
 
-    // El Worker se usa solo para la API. El sitio estático lo sirve GitHub Pages.
-    // Así evitamos que un binding ASSETS mal conectado deje la web en timeout/404.
-    if (request.method === "GET" || request.method === "HEAD") {
-      const target = new URL(GITHUB_PAGES_ORIGIN);
-      target.pathname = "/IrratiGIS/";
-      target.search = url.search;
-      return Response.redirect(target.toString(), 302);
-    }
-
-    return json({ ok: false, error: "Not found" }, 404, origin);
+    // No intentamos servir GitHub Pages desde este Worker. La web ya la sirve GitHub Pages.
+    return json({ ok: false, error: "Not found" }, 404);
   }
 };
