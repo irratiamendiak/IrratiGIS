@@ -1,4 +1,5 @@
 const ALLOWED_ORIGIN = "https://irratiamendiak.github.io";
+const GITHUB_PAGES_ORIGIN = "https://irratiamendiak.github.io";
 const TOKEN_TTL_SECONDS = 60 * 60 * 12;
 
 function corsHeaders(origin) {
@@ -96,14 +97,38 @@ async function verifyToken(token, secret) {
   }
 }
 
+async function serveAssets(request, env) {
+  if (env.ASSETS) {
+    const response = await env.ASSETS.fetch(request);
+    if (response.status !== 404 || request.method !== "GET") {
+      return response;
+    }
+
+    // Fallback explícito para SPA: si el asset no existe, servir index.html.
+    const indexUrl = new URL(request.url);
+    indexUrl.pathname = "/index.html";
+    return env.ASSETS.fetch(new Request(indexUrl, request));
+  }
+
+  // Fallback de emergencia si el binding ASSETS no quedó conectado en el despliegue.
+  // GitHub Pages sigue alojando los mismos archivos estáticos.
+  if (request.method === "GET" || request.method === "HEAD") {
+    const pagesUrl = new URL(request.url);
+    const pathname = pagesUrl.pathname === "/" ? "/IrratiGIS/" : `/IrratiGIS${pagesUrl.pathname}`;
+    pagesUrl.protocol = "https:";
+    pagesUrl.hostname = new URL(GITHUB_PAGES_ORIGIN).hostname;
+    pagesUrl.pathname = pathname;
+    return fetch(new Request(pagesUrl, request));
+  }
+
+  return json({ ok: false, error: "Assets binding no configurado" }, 500);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const origin = request.headers.get("Origin") || ALLOWED_ORIGIN;
 
-    // =========================
-    // CORS preflight
-    // =========================
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
@@ -111,9 +136,11 @@ export default {
       });
     }
 
-    // =========================
-    // LOGIN
-    // =========================
+    // Endpoint de diagnóstico para comprobar que el Worker está vivo.
+    if (url.pathname === "/api/health" && request.method === "GET") {
+      return json({ ok: true, worker: "irratigis-erreketak" }, 200, origin);
+    }
+
     if (url.pathname === "/api/login" && request.method === "POST") {
       try {
         const body = await request.json();
@@ -138,9 +165,6 @@ export default {
       }
     }
 
-    // =========================
-    // VALIDAR SESIÓN
-    // =========================
     if (url.pathname === "/api/me" && request.method === "GET") {
       const auth = request.headers.get("Authorization") || "";
       const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
@@ -154,16 +178,7 @@ export default {
       return json({ ok: true, user: payload.sub }, 200, origin);
     }
 
-    // =========================
-    // ARCHIVOS ESTÁTICOS
-    // =========================
-    // El Worker debe entregar index.html, JS, CSS, favicon, etc.
-    // a través del binding ASSETS. Sin este fallback, todas las rutas
-    // que no sean /api/login o /api/me terminan en 404.
-    if (env.ASSETS) {
-      return env.ASSETS.fetch(request);
-    }
-
-    return json({ ok: false, error: "Assets binding no configurado" }, 500, origin);
+    // Todo lo que no sea API se entrega como contenido estático.
+    return serveAssets(request, env);
   }
 };
