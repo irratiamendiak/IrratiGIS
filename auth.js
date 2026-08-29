@@ -2,27 +2,176 @@
   "use strict";
 
   const API = "https://irratigis-erreketak.kulixka-mendiak.workers.dev";
+
   const TOKEN_KEY = "irratigis_session_token";
+  const SESSION_TOKEN_KEY = "irratigis_session_token_temp";
 
   const css = `
-    #irratiLoginOverlay{position:fixed;inset:0;z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg,#123e2b,#19734a);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-    #irratiLoginCard{width:min(390px,100%);background:#fff;border-radius:18px;padding:30px;box-shadow:0 18px 55px rgba(0,0,0,.30)}
-    #irratiLoginCard h1{margin:0 0 5px;color:#123e2b;font-size:30px}
-    #irratiLoginCard .subtitle{margin:0 0 24px;color:#65736b}
-    #irratiLoginCard label{display:block;margin:0 0 6px;font-weight:750;color:#16231c}
-    #irratiLoginCard input{display:block;width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccd8d0;border-radius:9px;margin:0 0 15px;font:inherit;font-size:16px;background:#fff;color:#16231c}
-    #irratiLoginButton{width:100%;border:0;border-radius:10px;padding:13px;background:#176b43;color:#fff;font:inherit;font-weight:800;font-size:16px;cursor:pointer}
-    #irratiLoginButton:disabled{opacity:.65;cursor:wait}
-    #irratiLoginMessage{min-height:22px;margin-top:14px;text-align:center;color:#a12626;font-size:14px}
-    #irratiLoginCard .loading{color:#65736b}
+    #irratiLoginOverlay{
+      position:fixed;
+      inset:0;
+      z-index:999999;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+      background:linear-gradient(135deg,#123e2b,#19734a);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif
+    }
+
+    #irratiLoginCard{
+      width:min(390px,100%);
+      background:#fff;
+      border-radius:18px;
+      padding:30px;
+      box-shadow:0 18px 55px rgba(0,0,0,.30)
+    }
+
+    #irratiLoginCard h1{
+      margin:0 0 5px;
+      color:#123e2b;
+      font-size:30px
+    }
+
+    #irratiLoginCard .subtitle{
+      margin:0 0 24px;
+      color:#65736b
+    }
+
+    #irratiLoginCard label{
+      display:block;
+      margin:0 0 6px;
+      font-weight:750;
+      color:#16231c
+    }
+
+    #irratiLoginCard input{
+      display:block;
+      width:100%;
+      box-sizing:border-box;
+      padding:12px;
+      border:1px solid #ccd8d0;
+      border-radius:9px;
+      margin:0 0 15px;
+      font:inherit;
+      font-size:16px;
+      background:#fff;
+      color:#16231c
+    }
+
+    .irratiPasswordWrap{
+      position:relative;
+      width:100%;
+    }
+
+    .irratiPasswordWrap input{
+      padding-right:50px !important;
+      margin-bottom:15px !important;
+    }
+
+    #irratiTogglePassword{
+      position:absolute;
+      right:8px;
+      top:50%;
+      transform:translateY(-50%);
+      width:40px;
+      height:40px;
+      border:0;
+      background:transparent;
+      cursor:pointer;
+      font-size:20px;
+      padding:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    #irratiRememberRow{
+      display:flex;
+      align-items:center;
+      gap:9px;
+      margin:2px 0 18px;
+      color:#39463f;
+      font-size:14px;
+      cursor:pointer;
+    }
+
+    #irratiRememberMe{
+      width:17px !important;
+      height:17px;
+      margin:0 !important;
+      padding:0 !important;
+      cursor:pointer;
+    }
+
+    #irratiLoginButton{
+      width:100%;
+      border:0;
+      border-radius:10px;
+      padding:13px;
+      background:#176b43;
+      color:#fff;
+      font:inherit;
+      font-weight:800;
+      font-size:16px;
+      cursor:pointer
+    }
+
+    #irratiLoginButton:disabled{
+      opacity:.65;
+      cursor:wait
+    }
+
+    #irratiLoginMessage{
+      min-height:22px;
+      margin-top:14px;
+      text-align:center;
+      color:#a12626;
+      font-size:14px
+    }
+
+    #irratiLoginCard .loading{
+      color:#65736b
+    }
   `;
 
   const style = document.createElement("style");
   style.textContent = css;
   document.head.appendChild(style);
 
+
+  function getStoredToken() {
+    return (
+      localStorage.getItem(TOKEN_KEY) ||
+      sessionStorage.getItem(SESSION_TOKEN_KEY)
+    );
+  }
+
+
+  function saveToken(token, remember) {
+    // Limpiamos posibles sesiones anteriores
+    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(SESSION_TOKEN_KEY);
+
+    if (remember) {
+      // Mantener conectado
+      localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      // Solo durante la sesión actual del navegador
+      sessionStorage.setItem(SESSION_TOKEN_KEY, token);
+    }
+  }
+
+
+  function clearToken() {
+    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(SESSION_TOKEN_KEY);
+  }
+
+
   function showLogin(message = "") {
     let overlay = document.getElementById("irratiLoginOverlay");
+
     if (overlay) {
       const msg = document.getElementById("irratiLoginMessage");
       if (msg) msg.textContent = message;
@@ -31,94 +180,325 @@
 
     overlay = document.createElement("div");
     overlay.id = "irratiLoginOverlay";
+
     overlay.innerHTML = `
-      <div id="irratiLoginCard" role="dialog" aria-labelledby="irratiLoginTitle">
+      <div id="irratiLoginCard"
+           role="dialog"
+           aria-labelledby="irratiLoginTitle">
+
         <h1 id="irratiLoginTitle">IrratiGIS</h1>
+
         <p class="subtitle">Saioa hasi</p>
+
         <form id="irratiLoginForm" autocomplete="on">
-          <label for="irratiLoginUser">Erabiltzailea</label>
-          <input id="irratiLoginUser" name="username" type="text" autocomplete="username" required>
-          <label for="irratiLoginPassword">Pasahitza</label>
-          <input id="irratiLoginPassword" name="password" type="password" autocomplete="current-password" required>
-          <button id="irratiLoginButton" type="submit">Sartu</button>
-          <div id="irratiLoginMessage" aria-live="polite">${message}</div>
+
+          <label for="irratiLoginUser">
+            Erabiltzailea
+          </label>
+
+          <input
+            id="irratiLoginUser"
+            name="username"
+            type="text"
+            autocomplete="username"
+            required
+          >
+
+          <label for="irratiLoginPassword">
+            Pasahitza
+          </label>
+
+          <div class="irratiPasswordWrap">
+
+            <input
+              id="irratiLoginPassword"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+            >
+
+            <button
+              id="irratiTogglePassword"
+              type="button"
+              aria-label="Mostrar contraseña"
+              title="Mostrar contraseña"
+            >
+              👁️
+            </button>
+
+          </div>
+
+          <label id="irratiRememberRow" for="irratiRememberMe">
+
+            <input
+              id="irratiRememberMe"
+              type="checkbox"
+            >
+
+            <span>Mantenerme conectado</span>
+
+          </label>
+
+          <button
+            id="irratiLoginButton"
+            type="submit"
+          >
+            Sartu
+          </button>
+
+          <div
+            id="irratiLoginMessage"
+            aria-live="polite"
+          >
+            ${message}
+          </div>
+
         </form>
       </div>
     `;
+
     document.body.appendChild(overlay);
+
 
     const form = document.getElementById("irratiLoginForm");
     const button = document.getElementById("irratiLoginButton");
     const msg = document.getElementById("irratiLoginMessage");
 
+    const passwordInput =
+      document.getElementById("irratiLoginPassword");
+
+    const togglePassword =
+      document.getElementById("irratiTogglePassword");
+
+    const rememberMe =
+      document.getElementById("irratiRememberMe");
+
+
+    // Mostrar / ocultar contraseña
+    togglePassword.addEventListener("click", () => {
+
+      const showing =
+        passwordInput.type === "text";
+
+      if (showing) {
+
+        passwordInput.type = "password";
+
+        togglePassword.textContent = "👁️";
+        togglePassword.setAttribute(
+          "aria-label",
+          "Mostrar contraseña"
+        );
+        togglePassword.setAttribute(
+          "title",
+          "Mostrar contraseña"
+        );
+
+      } else {
+
+        passwordInput.type = "text";
+
+        togglePassword.textContent = "🙈";
+        togglePassword.setAttribute(
+          "aria-label",
+          "Ocultar contraseña"
+        );
+        togglePassword.setAttribute(
+          "title",
+          "Ocultar contraseña"
+        );
+
+      }
+    });
+
+
     form.addEventListener("submit", async (event) => {
+
       event.preventDefault();
+
       button.disabled = true;
+
       msg.className = "loading";
       msg.textContent = "Egiaztatzen...";
 
-      const user = document.getElementById("irratiLoginUser").value.trim();
-      const password = document.getElementById("irratiLoginPassword").value;
+      const user =
+        document.getElementById("irratiLoginUser")
+          .value
+          .trim();
+
+      const password =
+        document.getElementById("irratiLoginPassword")
+          .value;
+
+      const remember =
+        rememberMe.checked;
+
 
       try {
-        const response = await fetch(`${API}/api/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user, password })
-        });
 
-        const data = await response.json().catch(() => null);
-        if (!response.ok || !data || !data.ok || !data.token) {
-          throw new Error((data && data.error) || "Unauthorized");
+        const response = await fetch(
+          `${API}/api/login`,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+              user,
+              password
+            })
+          }
+        );
+
+
+        const data =
+          await response
+            .json()
+            .catch(() => null);
+
+
+        if (
+          !response.ok ||
+          !data ||
+          !data.ok ||
+          !data.token
+        ) {
+          throw new Error(
+            (data && data.error) ||
+            "Unauthorized"
+          );
         }
 
-        localStorage.setItem(TOKEN_KEY, data.token);
+
+        // Guardamos el token según la opción elegida
+        saveToken(
+          data.token,
+          remember
+        );
+
+
+        // Cerramos el formulario
         overlay.remove();
-        window.dispatchEvent(new CustomEvent("irratiGISAuthenticated"));
+
+
+        // Avisamos al resto de IrratiGIS
+        window.dispatchEvent(
+          new CustomEvent(
+            "irratiGISAuthenticated"
+          )
+        );
+
+
       } catch (error) {
+
         msg.className = "";
-        msg.textContent = "Erabiltzailea edo pasahitza okerrak dira.";
+
+        msg.textContent =
+          "Erabiltzailea edo pasahitza okerrak dira.";
+
         button.disabled = false;
-        document.getElementById("irratiLoginPassword").select();
+
+        passwordInput.select();
       }
+
     });
   }
+
 
   async function validateToken(token) {
-    const response = await fetch(`${API}/api/me`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!response.ok) return false;
-    const data = await response.json().catch(() => null);
-    return !!(data && data.ok !== false);
+
+    const response = await fetch(
+      `${API}/api/me`,
+      {
+        method: "GET",
+
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+
+
+    if (!response.ok) {
+      return false;
+    }
+
+
+    const data =
+      await response
+        .json()
+        .catch(() => null);
+
+
+    return !!(
+      data &&
+      data.ok !== false
+    );
   }
+
 
   async function startAuth() {
-    const token = localStorage.getItem(TOKEN_KEY);
+
+    const token = getStoredToken();
+
 
     if (token) {
+
       try {
-        if (await validateToken(token)) return;
+
+        if (
+          await validateToken(token)
+        ) {
+
+          return;
+        }
+
       } catch (_) {}
-      localStorage.removeItem(TOKEN_KEY);
+
+      // Token caducado o inválido
+      clearToken();
     }
 
+
     showLogin();
+
+
     await new Promise(resolve => {
-      window.addEventListener("irratiGISAuthenticated", resolve, { once: true });
+
+      window.addEventListener(
+        "irratiGISAuthenticated",
+        resolve,
+        { once: true }
+      );
+
     });
   }
 
+
   window.IrratiGISAuth = {
+
     API,
+
     TOKEN_KEY,
-    getToken: () => localStorage.getItem(TOKEN_KEY),
+
+    getToken: () =>
+      getStoredToken(),
+
     logout: () => {
-      localStorage.removeItem(TOKEN_KEY);
+
+      clearToken();
+
       location.reload();
+
     }
+
   };
 
-  window.IrratiGISAuthReady = startAuth();
+
+  window.IrratiGISAuthReady =
+    startAuth();
+
 })();
