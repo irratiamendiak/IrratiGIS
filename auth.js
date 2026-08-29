@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const API = "https://irratigis-erreketak.kulixka-mediak.workers.dev";
+  const API = "https://irratigis-erreketak.kulixka-mendiak.workers.dev";
   const TOKEN_KEY = "irratigis_session_token";
 
   const css = `
