@@ -118,7 +118,8 @@
         const data = await response.json().catch(() => null);
 
         if (!response.ok || !data || !data.ok || !data.token) {
-          throw new Error((data && data.error) || "Unauthorized");
+          const serverError = data && data.error ? String(data.error) : "Respuesta HTTP " + response.status;
+          throw new Error(serverError);
         }
 
         saveToken(data.token, remember);
@@ -126,9 +127,15 @@
         window.dispatchEvent(new CustomEvent("irratiGISAuthenticated"));
       } catch (error) {
         msg.className = "";
-        msg.textContent = error && error.name === "AbortError"
-          ? "Zerbitzaria ez dago erabilgarri. Saiatu berriro minutu batean."
-          : "Erabiltzailea edo pasahitza okerrak dira.";
+        if (error && error.name === "AbortError") {
+          msg.textContent = "Zerbitzaria ez dago erabilgarri. Saiatu berriro minutu batean.";
+        } else if (error && error.message === "Unauthorized") {
+          msg.textContent = "Erabiltzailea edo pasahitza okerrak dira.";
+        } else if (error && error.message === "Login no configurado") {
+          msg.textContent = "Cloudflare: IRRATIGIS_LOGIN_USER edo IRRATIGIS_LOGIN_PASSWORD ez dago konfiguratuta.";
+        } else {
+          msg.textContent = "Errorea: " + ((error && error.message) || "ezezaguna");
+        }
         button.disabled = false;
         passwordInput.select();
       }
