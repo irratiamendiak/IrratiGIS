@@ -25,10 +25,7 @@ function json(data, status = 200, origin = ALLOWED_ORIGIN) {
 function base64urlEncode(bytes) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 function base64urlDecode(text) {
@@ -52,22 +49,18 @@ async function createToken(user, secret) {
     sub: user,
     exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS
   };
-
-  const payloadText = JSON.stringify(payload);
-  const payloadPart = base64urlEncode(new TextEncoder().encode(payloadText));
+  const payloadPart = base64urlEncode(new TextEncoder().encode(JSON.stringify(payload)));
   const key = await getSigningKey(secret);
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
     new TextEncoder().encode(payloadPart)
   );
-
   return `${payloadPart}.${base64urlEncode(new Uint8Array(signature))}`;
 }
 
 async function verifyToken(token, secret) {
   if (!token || !secret) return null;
-
   const parts = token.split(".");
   if (parts.length !== 2) return null;
 
@@ -80,48 +73,18 @@ async function verifyToken(token, secret) {
       base64urlDecode(signaturePart),
       new TextEncoder().encode(payloadPart)
     );
-
     if (!valid) return null;
 
     const payload = JSON.parse(
       new TextDecoder().decode(base64urlDecode(payloadPart))
     );
-
     if (!payload.sub || !payload.exp || payload.exp < Math.floor(Date.now() / 1000)) {
       return null;
     }
-
     return payload;
   } catch (_) {
     return null;
   }
-}
-
-async function serveAssets(request, env) {
-  if (env.ASSETS) {
-    const response = await env.ASSETS.fetch(request);
-    if (response.status !== 404 || request.method !== "GET") {
-      return response;
-    }
-
-    // Fallback explícito para SPA: si el asset no existe, servir index.html.
-    const indexUrl = new URL(request.url);
-    indexUrl.pathname = "/index.html";
-    return env.ASSETS.fetch(new Request(indexUrl, request));
-  }
-
-  // Fallback de emergencia si el binding ASSETS no quedó conectado en el despliegue.
-  // GitHub Pages sigue alojando los mismos archivos estáticos.
-  if (request.method === "GET" || request.method === "HEAD") {
-    const pagesUrl = new URL(request.url);
-    const pathname = pagesUrl.pathname === "/" ? "/IrratiGIS/" : `/IrratiGIS${pagesUrl.pathname}`;
-    pagesUrl.protocol = "https:";
-    pagesUrl.hostname = new URL(GITHUB_PAGES_ORIGIN).hostname;
-    pagesUrl.pathname = pathname;
-    return fetch(new Request(pagesUrl, request));
-  }
-
-  return json({ ok: false, error: "Assets binding no configurado" }, 500);
 }
 
 export default {
@@ -130,13 +93,9 @@ export default {
     const origin = request.headers.get("Origin") || ALLOWED_ORIGIN;
 
     if (request.method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: corsHeaders(origin)
-      });
+      return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
 
-    // Endpoint de diagnóstico para comprobar que el Worker está vivo.
     if (url.pathname === "/api/health" && request.method === "GET") {
       return json({ ok: true, worker: "irratigis-erreketak" }, 200, origin);
     }
@@ -146,14 +105,12 @@ export default {
         const body = await request.json();
         const user = String(body.user || "").trim();
         const password = String(body.password || "");
-
         const validUser = env.IRRATIGIS_LOGIN_USER;
         const validPassword = env.IRRATIGIS_LOGIN_PASSWORD;
 
         if (!validUser || !validPassword) {
           return json({ ok: false, error: "Login no configurado" }, 500, origin);
         }
-
         if (user !== validUser || password !== validPassword) {
           return json({ ok: false, error: "Unauthorized" }, 401, origin);
         }
@@ -168,17 +125,23 @@ export default {
     if (url.pathname === "/api/me" && request.method === "GET") {
       const auth = request.headers.get("Authorization") || "";
       const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-      const validPassword = env.IRRATIGIS_LOGIN_PASSWORD;
-      const payload = await verifyToken(token, validPassword);
+      const payload = await verifyToken(token, env.IRRATIGIS_LOGIN_PASSWORD);
 
       if (!payload) {
         return json({ ok: false, error: "Unauthorized" }, 401, origin);
       }
-
       return json({ ok: true, user: payload.sub }, 200, origin);
     }
 
-    // Todo lo que no sea API se entrega como contenido estático.
-    return serveAssets(request, env);
+    // El Worker se usa solo para la API. El sitio estático lo sirve GitHub Pages.
+    // Así evitamos que un binding ASSETS mal conectado deje la web en timeout/404.
+    if (request.method === "GET" || request.method === "HEAD") {
+      const target = new URL(GITHUB_PAGES_ORIGIN);
+      target.pathname = "/IrratiGIS/";
+      target.search = url.search;
+      return Response.redirect(target.toString(), 302);
+    }
+
+    return json({ ok: false, error: "Not found" }, 404, origin);
   }
 };
