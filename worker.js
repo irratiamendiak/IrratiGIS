@@ -155,8 +155,15 @@ export default {
     }
 
     // =========================
-    // API desconocida
+    // ARCHIVOS ESTÁTICOS
     // =========================
-    return json({ ok: false, error: "Not found" }, 404, origin);
+    // El Worker debe entregar index.html, JS, CSS, favicon, etc.
+    // a través del binding ASSETS. Sin este fallback, todas las rutas
+    // que no sean /api/login o /api/me terminan en 404.
+    if (env.ASSETS) {
+      return env.ASSETS.fetch(request);
+    }
+
+    return json({ ok: false, error: "Assets binding no configurado" }, 500, origin);
   }
 };
