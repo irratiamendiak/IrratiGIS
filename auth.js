@@ -4,7 +4,7 @@
   const API = "https://irratigis-erreketak.kulixka-mendiak.workers.dev";
   const TOKEN_KEY = "irratigis_session_token";
   const SESSION_TOKEN_KEY = "irratigis_session_token_temp";
-  const API_TIMEOUT_MS = 10000;
+  const API_TIMEOUT_MS = 15000;
 
   const css = `
     #irratiLoginOverlay{position:fixed;inset:0;z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg,#123e2b,#19734a);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
@@ -49,6 +49,12 @@
     const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
     return fetch(`${API}${path}`, { ...options, signal: controller.signal })
       .finally(() => clearTimeout(timer));
+  }
+
+  async function getHealth() {
+    const response = await apiFetch("/api/health", { method: "GET" });
+    const data = await response.json().catch(() => null);
+    return { response, data };
   }
 
   function showLogin(message = "") {
@@ -128,13 +134,13 @@
       } catch (error) {
         msg.className = "";
         if (error && error.name === "AbortError") {
-          msg.textContent = "Zerbitzaria ez dago erabilgarri. Saiatu berriro minutu batean.";
+          msg.textContent = "No responde el Worker de Cloudflare. Espera unos segundos y recarga.";
         } else if (error && error.message === "Unauthorized") {
-          msg.textContent = "Erabiltzailea edo pasahitza okerrak dira.";
+          msg.textContent = "Usuario o contraseña no coinciden con Cloudflare.";
         } else if (error && error.message === "Login no configurado") {
-          msg.textContent = "Cloudflare: IRRATIGIS_LOGIN_USER edo IRRATIGIS_LOGIN_PASSWORD ez dago konfiguratuta.";
+          msg.textContent = "Falta configurar IRRATIGIS_LOGIN_USER o IRRATIGIS_LOGIN_PASSWORD en Cloudflare.";
         } else {
-          msg.textContent = "Errorea: " + ((error && error.message) || "ezezaguna");
+          msg.textContent = "Error del servidor: " + ((error && error.message) || "desconocido");
         }
         button.disabled = false;
         passwordInput.select();
@@ -159,6 +165,23 @@
         if (await validateToken(token)) return;
       } catch (_) {}
       clearToken();
+    }
+
+    // Comprobamos el Worker antes de mostrar el formulario para distinguir
+    // un problema de despliegue de un problema real de credenciales.
+    try {
+      const { response, data } = await getHealth();
+      if (!response.ok || !data || !data.ok) {
+        showLogin("El Worker responde con un error HTTP " + response.status + ".");
+        return;
+      }
+    } catch (error) {
+      if (error && error.name === "AbortError") {
+        showLogin("El Worker de Cloudflare no responde. Revisa el despliegue de irratigis-erreketak.");
+      } else {
+        showLogin("No se puede conectar con el Worker de Cloudflare.");
+      }
+      return;
     }
 
     showLogin();
