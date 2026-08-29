@@ -1,21 +1,23 @@
 const ALLOWED_ORIGIN = "https://irratiamendiak.github.io";
 const TOKEN_TTL_SECONDS = 60 * 60 * 12;
 
-function corsHeaders() {
+function corsHeaders(origin = "") {
+  const allowedOrigin = origin === ALLOWED_ORIGIN ? origin : ALLOWED_ORIGIN;
   return {
-    "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+    "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Vary": "Origin"
   };
 }
 
-function json(data, status = 200) {
+function json(data, status = 200, origin = "") {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      ...corsHeaders()
+      "Cache-Control": "no-store",
+      ...corsHeaders(origin)
     }
   });
 }
@@ -90,14 +92,26 @@ async function verifyToken(token, secret) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const origin = request.headers.get("Origin") || "";
 
     if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: corsHeaders() });
+      return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
 
-    // Endpoint sencillo para comprobar que el Worker desplegado responde.
+    // Diagnóstico: debe responder inmediatamente si el Worker está bien desplegado.
+    if (url.pathname === "/" && request.method === "GET") {
+      return json({ ok: true, worker: "irratigis-erreketak", status: "online" }, 200, origin);
+    }
+
     if (url.pathname === "/api/health" && request.method === "GET") {
-      return json({ ok: true, worker: "irratigis-erreketak" });
+      const configuredUser = String(env.IRRATIGIS_LOGIN_USER || "").trim();
+      const configuredPassword = String(env.IRRATIGIS_LOGIN_PASSWORD || "");
+      return json({
+        ok: true,
+        worker: "irratigis-erreketak",
+        loginConfigured: !!configuredUser && !!configuredPassword,
+        configuredUser: configuredUser || null
+      }, 200, origin);
     }
 
     if (url.pathname === "/api/login" && request.method === "POST") {
@@ -109,17 +123,17 @@ export default {
         const validPassword = String(env.IRRATIGIS_LOGIN_PASSWORD || "");
 
         if (!validUser || !validPassword) {
-          return json({ ok: false, error: "Login no configurado" }, 500);
+          return json({ ok: false, error: "Login no configurado" }, 500, origin);
         }
 
         if (user !== validUser || password !== validPassword) {
-          return json({ ok: false, error: "Unauthorized" }, 401);
+          return json({ ok: false, error: "Unauthorized" }, 401, origin);
         }
 
         const token = await createToken(user, validPassword);
-        return json({ ok: true, token });
+        return json({ ok: true, token }, 200, origin);
       } catch (_) {
-        return json({ ok: false, error: "Invalid request" }, 400);
+        return json({ ok: false, error: "Invalid request" }, 400, origin);
       }
     }
 
@@ -129,12 +143,11 @@ export default {
       const payload = await verifyToken(token, env.IRRATIGIS_LOGIN_PASSWORD);
 
       if (!payload) {
-        return json({ ok: false, error: "Unauthorized" }, 401);
+        return json({ ok: false, error: "Unauthorized" }, 401, origin);
       }
-      return json({ ok: true, user: payload.sub });
+      return json({ ok: true, user: payload.sub }, 200, origin);
     }
 
-    // No intentamos servir GitHub Pages desde este Worker. La web ya la sirve GitHub Pages.
-    return json({ ok: false, error: "Not found" }, 404);
+    return json({ ok: false, error: "Not found" }, 404, origin);
   }
 };
