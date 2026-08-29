@@ -157,8 +157,22 @@ export default {
     // =========================
     // ARCHIVOS DE LA WEB
     // =========================
-    if (env.ASSETS) {
-      return env.ASSETS.fetch(request);
+    // Primero intentamos servir desde el binding ASSETS.
+    if (env.ASSETS && (request.method === "GET" || request.method === "HEAD")) {
+      const assetResponse = await env.ASSETS.fetch(request);
+      if (assetResponse.status !== 404) {
+        return assetResponse;
+      }
+    }
+
+    // El Worker del dashboard puede no tener los archivos estáticos cargados.
+    // En ese caso usamos GitHub Pages como origen de la web.
+    if (request.method === "GET" || request.method === "HEAD") {
+      const pagesUrl = new URL(request.url);
+      pagesUrl.hostname = "irratiamendiak.github.io";
+      pagesUrl.pathname = `/IrratiGIS${url.pathname === "/" ? "/" : url.pathname}`;
+
+      return fetch(new Request(pagesUrl.toString(), request));
     }
 
     return new Response("Not found", {
