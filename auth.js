@@ -22,6 +22,9 @@
     #irratiLoginButton:disabled{opacity:.65;cursor:wait}
     #irratiLoginMessage{min-height:22px;margin-top:14px;text-align:center;color:#a12626;font-size:14px}
     #irratiLoginCard .loading{color:#65736b}
+    #irratiLogoutButton{position:fixed;top:14px;right:14px;z-index:99998;border:0;border-radius:10px;padding:10px 14px;background:#fff;color:#176b43;font:inherit;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+    #irratiLogoutButton:hover{background:#f2f7f4}
+    @media(max-width:560px){#irratiLogoutButton{top:8px;right:8px;padding:9px 11px;font-size:13px}}
   `;
 
   const style = document.createElement("style");
@@ -42,6 +45,22 @@
   function clearToken() {
     localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(SESSION_TOKEN_KEY);
+  }
+
+  function addLogoutButton() {
+    if (document.getElementById("irratiLogoutButton")) return;
+
+    const button = document.createElement("button");
+    button.id = "irratiLogoutButton";
+    button.type = "button";
+    button.textContent = "Irten";
+    button.title = "Saioa itxi";
+    button.setAttribute("aria-label", "Saioa itxi");
+    button.addEventListener("click", () => {
+      clearToken();
+      location.reload();
+    });
+    document.body.appendChild(button);
   }
 
   function apiFetch(path, options = {}) {
@@ -124,6 +143,7 @@
 
         saveToken(data.token, remember);
         overlay.remove();
+        addLogoutButton();
         window.dispatchEvent(new CustomEvent("irratiGISAuthenticated"));
       } catch (error) {
         msg.className = "";
@@ -156,7 +176,10 @@
     const token = getStoredToken();
     if (token) {
       try {
-        if (await validateToken(token)) return;
+        if (await validateToken(token)) {
+          addLogoutButton();
+          return;
+        }
       } catch (_) {}
       clearToken();
     }
