@@ -24,12 +24,20 @@
     return fetch(`${API}${path}`, options);
   }
 
+  function exposeBurnLayerGlobals() {
+    try {
+      if (typeof map !== "undefined") window.__irratiGISMap = map;
+      if (typeof controlledBurnLayer !== "undefined") window.__irratiGISControlledBurnLayer = controlledBurnLayer;
+    } catch (_) {}
+  }
+
   function loadFirePopupModule() {
+    exposeBurnLayerGlobals();
     const existing = document.getElementById("irratiFirePopupScript");
     if (existing) return window.IrratiGISFirePopupReady || Promise.resolve(window.IrratiGISFirePopup);
     const script = document.createElement("script");
     script.id = "irratiFirePopupScript";
-    script.src = "fire-popup.js?v=20260901-2";
+    script.src = "fire-popup.js?v=20260901-3";
     script.defer = true;
     window.IrratiGISFirePopupReady = new Promise(resolve => {
       script.onload = () => resolve(window.IrratiGISFirePopup);
@@ -92,7 +100,9 @@
   }
 
   async function startAuth() {
+    exposeBurnLayerGlobals();
     await loadFirePopupModule();
+    exposeBurnLayerGlobals();
     const token = getToken();
     if (token) {
       try {
@@ -117,6 +127,7 @@
   window.IrratiGISAuthReady = startAuth();
 
   window.addEventListener("load", () => {
+    exposeBurnLayerGlobals();
     loadFirePopupModule();
   });
 })();
