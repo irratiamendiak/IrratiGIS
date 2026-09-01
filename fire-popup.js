@@ -6,8 +6,6 @@
   const val=(o,keys)=>{for(const k of keys){const v=o?.[k];if(v!=null&&String(v).trim()!=="")return v}return "-"};
   const num=v=>{if(v==null)return NaN;const n=Number(String(v).trim().replace(",",".").replace(/\s+/g,""));return Number.isFinite(n)?n:NaN};
 
-  // GFA entrega X/Y en UTM. En el visor de GFA, X corresponde a longitud/este
-  // y Y a latitud/norte. Gipuzkoa: ETRS89 / UTM zona 30N (EPSG:25830).
   function utm30ToWgs84(easting,northing){
     const a=6378137.0,eccSquared=0.00669438002290,k0=0.9996;
     const e1=(1-Math.sqrt(1-eccSquared))/(1+Math.sqrt(1-eccSquared));
@@ -29,14 +27,10 @@
       [f?.latitudea,f?.longitudea],[f?.latitud,f?.longitud],[f?.latitude,f?.longitude],[f?.lat,f?.lon],[f?.lat,f?.lng],
       [s?.latitudea,s?.longitudea],[s?.latitud,s?.longitud],[s?.latitude,s?.longitude],[s?.lat,s?.lon],[s?.lat,s?.lng]
     ];
-    // Primero: coordenadas geográficas ya expresadas como lat/lon.
     for(const [a,b] of pairs){const lat=num(a),lon=num(b);if(Number.isFinite(lat)&&Number.isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180)return[lat,lon]}
-    // Después: UTM. Probamos ambos órdenes porque GFA puede entregar X/Y como
-    // longitud/latitud (X=Este, Y=Norte) aunque los nombres del JSON sean latitud/longitud.
     for(const [a,b] of pairs){
       const v1=num(a),v2=num(b);
-      const candidates=[[v1,v2],[v2,v1]];
-      for(const [x,y] of candidates){
+      for(const [x,y] of [[v1,v2],[v2,v1]]){
         if(Number.isFinite(x)&&Number.isFinite(y)&&x>=100000&&x<=900000&&y>=4000000&&y<=5000000){
           const p=utm30ToWgs84(x,y);
           if(p[0]>=35&&p[0]<=50&&p[1]>=-10&&p[1]<=5)return p;
@@ -74,7 +68,9 @@
       console.log("IrratiGIS /api/active",r.status,data);
       if(!r.ok)throw new Error(`HTTP ${r.status}`);
       const fires=Array.isArray(data.fires)?data.fires:[];
+      layer.__irratiInternalClear=true;
       layer.clearLayers();
+      layer.__irratiInternalClear=false;
       let shown=0; const bounds=[];
       for(const f of fires){const m=fireMarker(f);if(m){m.addTo(layer);bounds.push(m.getLatLng());shown++}}
       console.log(`IrratiGIS quemas: API=${fires.length}, coordenadas visibles=${shown}`);
@@ -82,14 +78,33 @@
       if(shown&&map)map.fitBounds(L.latLngBounds(bounds),{padding:[35,35],maxZoom:13});
       const msg=document.getElementById("message");if(msg)msg.textContent=`${shown} baimendutako erreketak kargatu dira.`;
     }catch(e){console.error("IrratiGIS: error cargando quemas",e);const msg=document.getElementById("message");if(msg)msg.textContent="Ezin izan dira baimendutako errekak kargatu."}
-    finally{layer.__irratiLoading=false}
+    finally{layer.__irratiLoading=false;layer.__irratiInternalClear=false}
+  }
+
+  function protectLayer(layer){
+    if(!layer||layer.__irratiClearProtected)return;
+    const original=layer.clearLayers.bind(layer);
+    layer.__irratiClearProtected=true;
+    layer.__irratiOriginalClearLayers=original;
+    layer.clearLayers=function(){
+      const internal=layer.__irratiInternalClear;
+      const result=original();
+      if(!internal && mapHasLayer(layer)){
+        clearTimeout(layer.__irratiReloadTimer);
+        layer.__irratiReloadTimer=setTimeout(()=>loadBurnsIntoLayer(layer),80);
+      }
+      return result;
+    };
+  }
+
+  function mapHasLayer(layer){
+    const map=window.__irratiGISMap||layer?._map;
+    return !!(map&&map.hasLayer(layer));
   }
 
   function getMap(){return window.__irratiGISMap||window.map||null}
   function getBurnLayer(){return window.__irratiGISControlledBurnLayer||null}
 
-  // Si la referencia global no estuviera disponible, recuperamos la capa real
-  // directamente desde el checkbox de Leaflet (input.layerId -> map._layers).
   function findBurnLayerFromControl(map){
     try{
       const inputs=[...document.querySelectorAll(".leaflet-control-layers input")];
@@ -107,13 +122,14 @@
   function bindMap(map,layer){
     if(!map||!layer||map.__irratiBurnMapBound)return false;
     map.__irratiBurnMapBound=true;
+    protectLayer(layer);
     map.on("overlayadd",e=>{
       const burn=getBurnLayer()||layer||findBurnLayerFromControl(map);
       if(e.layer===burn){console.log("IrratiGIS: overlayadd quemas");loadBurnsIntoLayer(burn)}
     });
     map.on("overlayremove",e=>{
       const burn=getBurnLayer()||layer||findBurnLayerFromControl(map);
-      if(e.layer===burn){console.log("IrratiGIS: overlayremove quemas");burn.clearLayers()}
+      if(e.layer===burn){console.log("IrratiGIS: overlayremove quemas");burn.__irratiInternalClear=true;burn.clearLayers();burn.__irratiInternalClear=false}
     });
     if(map.hasLayer(layer))loadBurnsIntoLayer(layer);
     return true;
@@ -125,6 +141,7 @@
     if(!layer&&map)layer=findBurnLayerFromControl(map);
     if(!map||!layer||!window.L)return false;
     window.__irratiGISControlledBurnLayer=layer;
+    protectLayer(layer);
     bindMap(map,layer);
     return true;
   }
