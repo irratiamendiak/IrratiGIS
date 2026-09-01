@@ -24,6 +24,16 @@
     return fetch(`${API}${path}`, options);
   }
 
+  function loadFirePopupModule() {
+    if (document.getElementById("irratiFirePopupScript")) return;
+    const script = document.createElement("script");
+    script.id = "irratiFirePopupScript";
+    script.src = "fire-popup.js";
+    script.defer = true;
+    script.onerror = () => console.error("IrratiGIS: no se pudo cargar fire-popup.js");
+    document.head.appendChild(script);
+  }
+
   function triggerBurnLoad() {
     let tries = 0;
     const run = () => {
@@ -96,6 +106,7 @@
   }
 
   async function startAuth() {
+    loadFirePopupModule();
     const token = getToken();
     if (token) {
       try {
@@ -121,6 +132,7 @@
   window.IrratiGISAuthReady = startAuth();
 
   window.addEventListener("load", () => {
+    loadFirePopupModule();
     setTimeout(() => {
       if (getToken()) triggerBurnLoad();
     }, 1500);
