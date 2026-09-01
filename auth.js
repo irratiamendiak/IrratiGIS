@@ -39,49 +39,6 @@
     return window.IrratiGISFirePopupReady;
   }
 
-  function ensureBurnLayerVisible() {
-    if (!window.L || !L.Control || !L.Control.Layers) return;
-    const proto = L.Control.Layers.prototype;
-    if (proto.__irratiBurnAutoVisible) return;
-    const originalOnAdd = proto.onAdd;
-    proto.onAdd = function(map) {
-      const result = originalOnAdd.call(this, map);
-      setTimeout(() => {
-        try {
-          (this._layers || []).forEach(entry => {
-            if (entry && entry.layer && String(entry.name || "").includes("Baimendutako erreketak")) {
-              entry.layer.addTo(map);
-            }
-          });
-        } catch (e) {
-          console.warn("IrratiGIS: ezin izan da erreketen geruza mapan aktibatu", e);
-        }
-      }, 0);
-      return result;
-    };
-    proto.__irratiBurnAutoVisible = true;
-  }
-
-  function triggerBurnLoad() {
-    let tries = 0;
-    const run = async () => {
-      tries++;
-      try {
-        if (typeof window.loadControlledBurns === "function") {
-          console.log("IrratiGIS: solicitando quemas activas al Worker", tries);
-          await loadFirePopupModule();
-          ensureBurnLayerVisible();
-          window.loadControlledBurns();
-          return;
-        }
-      } catch (e) {
-        console.error("IrratiGIS: error iniciando carga de quemas", e);
-      }
-      if (tries < 10) setTimeout(run, 1000);
-    };
-    run();
-  }
-
   function addLogoutButton() {
     if (document.getElementById("irratiLogoutButton")) return;
     const b = document.createElement("button");
@@ -122,7 +79,6 @@
         overlay.remove();
         addLogoutButton();
         window.dispatchEvent(new CustomEvent("irratiGISAuthenticated"));
-        triggerBurnLoad();
       } catch (err) {
         msg.textContent = "Error: " + (err.message || err);
         button.disabled = false;
@@ -137,13 +93,11 @@
 
   async function startAuth() {
     await loadFirePopupModule();
-    ensureBurnLayerVisible();
     const token = getToken();
     if (token) {
       try {
         if (await validateToken(token)) {
           addLogoutButton();
-          triggerBurnLoad();
           return;
         }
       } catch (_) {}
@@ -164,9 +118,5 @@
 
   window.addEventListener("load", () => {
     loadFirePopupModule();
-    ensureBurnLayerVisible();
-    setTimeout(() => {
-      if (getToken()) triggerBurnLoad();
-    }, 1500);
   });
 })();
