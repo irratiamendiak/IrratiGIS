@@ -201,4 +201,30 @@
   };
 
   window.IrratiGISAuthReady = startAuth();
+
+  function hookControlledBurnLayer() {
+    try {
+      if (
+        typeof map === "undefined" ||
+        typeof controlledBurnLayer === "undefined" ||
+        typeof loadControlledBurns !== "function"
+      ) {
+        return false;
+      }
+
+      map.on("overlayadd", event => {
+        if (event.layer === controlledBurnLayer) {
+          loadControlledBurns();
+        }
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  if (!hookControlledBurnLayer()) {
+    window.addEventListener("load", hookControlledBurnLayer, { once: true });
+    setTimeout(hookControlledBurnLayer, 500);
+  }
 })();
