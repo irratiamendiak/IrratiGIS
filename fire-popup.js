@@ -8,6 +8,7 @@
 
   // GFA entrega X/Y en UTM. Gipuzkoa: ETRS89 / UTM zona 30N (EPSG:25830).
   // Leaflet necesita lat/lon en grados (EPSG:4326).
+  // IMPORTANTE: el meridiano central de la zona UTM 30 es -3°, no +3°.
   function utm30ToWgs84(easting,northing){
     const a=6378137.0,eccSquared=0.00669438002290,k0=0.9996;
     const e1=(1-Math.sqrt(1-eccSquared))/(1+Math.sqrt(1-eccSquared));
@@ -19,7 +20,7 @@
     const N1=a/Math.sqrt(1-eccSquared*sin*sin),T1=tan*tan,C1=eccPrimeSquared*cos*cos;
     const R1=a*(1-eccSquared)/Math.pow(1-eccSquared*sin*sin,1.5),D=x/(N1*k0);
     const lat=phi1Rad-(N1*tan/R1)*(D*D/2-(5+3*T1+10*C1-4*C1*C1-9*eccPrimeSquared)*Math.pow(D,4)/24+(61+90*T1+298*C1+45*T1*T1-252*eccPrimeSquared-3*C1*C1)*Math.pow(D,6)/720);
-    const lon0Rad=3*Math.PI/180;
+    const lon0Rad=-3*Math.PI/180;
     const lon=lon0Rad+(D-(1+2*T1+C1)*Math.pow(D,3)/6+(5-2*C1+28*T1-3*C1*C1+8*eccPrimeSquared+24*T1*T1)*Math.pow(D,5)/120)/cos;
     return [lat*180/Math.PI,lon*180/Math.PI];
   }
@@ -30,9 +31,7 @@
       [f?.latitudea,f?.longitudea],[f?.latitud,f?.longitud],[f?.latitude,f?.longitude],[f?.lat,f?.lon],[f?.lat,f?.lng],
       [s?.latitudea,s?.longitudea],[s?.latitud,s?.longitud],[s?.latitude,s?.longitude],[s?.lat,s?.lon],[s?.lat,s?.lng]
     ];
-    // Coordenadas geográficas ya convertidas.
     for(const [a,b] of pairs){const lat=num(a),lon=num(b);if(Number.isFinite(lat)&&Number.isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180)return[lat,lon]}
-    // Coordenadas UTM X/Y (p.ej. 5xxxxx / 47xxxxx).
     for(const [xv,yv] of pairs){const x=num(xv),y=num(yv);if(Number.isFinite(x)&&Number.isFinite(y)&&x>=100000&&x<=900000&&y>=4000000&&y<=5000000){const p=utm30ToWgs84(x,y);if(p[0]>=-90&&p[0]<=90&&p[1]>=-180&&p[1]<=180)return p}}
     return null;
   }
@@ -73,7 +72,6 @@
   }
 
   function isBurnLayer(layer){return !!layer&&layer===window.__irratiGISControlledBurnLayer}
-
   function bindMap(map,layer){
     if(!map||!layer||map.__irratiBurnMapBound)return;
     map.__irratiBurnMapBound=true;
@@ -81,14 +79,11 @@
     map.on("overlayremove",e=>{if(isBurnLayer(e.layer)){console.log("IrratiGIS: overlayremove quemas");layer.clearLayers()}});
     if(map.hasLayer(layer)){console.log("IrratiGIS: capa quemas ya activa");loadBurnsIntoLayer(layer)}
   }
-
   function hookLayerControl(){
     const map=window.__irratiGISMap,layer=window.__irratiGISControlledBurnLayer;
     if(!map||!layer||!window.L)return false;
-    bindMap(map,layer);
-    return true;
+    bindMap(map,layer);return true;
   }
-
   let tries=0;
   const timer=setInterval(()=>{if(hookLayerControl()||++tries>240)clearInterval(timer)},250);
   window.IrratiGISFirePopup={loadBurnsIntoLayer,hookLayerControl};
