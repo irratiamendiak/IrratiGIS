@@ -2742,8 +2742,25 @@ $("file").addEventListener("change",async e=>{
   }
 });
 /* 🔥 Baimendutako erreketak: kargatu autentifikazioa amaitu ondoren */
-window.IrratiGISAuthReady.then(()=>{
-  loadControlledBurns();
+function waitForIrratiGISAuth() {
+  const ready = window.IrratiGISAuthReady;
+
+  if (ready && typeof ready.then === "function") {
+    ready.then(() => {
+      loadControlledBurns();
+    });
+  } else {
+    window.addEventListener("irratiGISAuthenticated", () => {
+      loadControlledBurns();
+    }, { once: true });
+  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", waitForIrratiGISAuth);
+} else {
+  waitForIrratiGISAuth();
+}
 });
 /* Responsive runtime: recalcular Leaflet al cambiar orientación/tamaño. */
 let resizeTimer=null;
