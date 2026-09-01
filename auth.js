@@ -25,22 +25,52 @@
   }
 
   function loadFirePopupModule() {
-    if (document.getElementById("irratiFirePopupScript")) return;
+    const existing = document.getElementById("irratiFirePopupScript");
+    if (existing) return window.IrratiGISFirePopupReady || Promise.resolve(window.IrratiGISFirePopup);
     const script = document.createElement("script");
     script.id = "irratiFirePopupScript";
     script.src = "fire-popup.js";
     script.defer = true;
-    script.onerror = () => console.error("IrratiGIS: no se pudo cargar fire-popup.js");
+    window.IrratiGISFirePopupReady = new Promise(resolve => {
+      script.onload = () => resolve(window.IrratiGISFirePopup);
+      script.onerror = () => { console.error("IrratiGIS: no se pudo cargar fire-popup.js"); resolve(null); };
+    });
     document.head.appendChild(script);
+    return window.IrratiGISFirePopupReady;
+  }
+
+  function ensureBurnLayerVisible() {
+    if (!window.L || !L.Control || !L.Control.Layers) return;
+    const proto = L.Control.Layers.prototype;
+    if (proto.__irratiBurnAutoVisible) return;
+    const originalOnAdd = proto.onAdd;
+    proto.onAdd = function(map) {
+      const result = originalOnAdd.call(this, map);
+      setTimeout(() => {
+        try {
+          (this._layers || []).forEach(entry => {
+            if (entry && entry.layer && String(entry.name || "").includes("Baimendutako erreketak")) {
+              entry.layer.addTo(map);
+            }
+          });
+        } catch (e) {
+          console.warn("IrratiGIS: ezin izan da erreketen geruza mapan aktibatu", e);
+        }
+      }, 0);
+      return result;
+    };
+    proto.__irratiBurnAutoVisible = true;
   }
 
   function triggerBurnLoad() {
     let tries = 0;
-    const run = () => {
+    const run = async () => {
       tries++;
       try {
         if (typeof window.loadControlledBurns === "function") {
           console.log("IrratiGIS: solicitando quemas activas al Worker", tries);
+          await loadFirePopupModule();
+          ensureBurnLayerVisible();
           window.loadControlledBurns();
           return;
         }
@@ -106,7 +136,8 @@
   }
 
   async function startAuth() {
-    loadFirePopupModule();
+    await loadFirePopupModule();
+    ensureBurnLayerVisible();
     const token = getToken();
     if (token) {
       try {
@@ -133,6 +164,7 @@
 
   window.addEventListener("load", () => {
     loadFirePopupModule();
+    ensureBurnLayerVisible();
     setTimeout(() => {
       if (getToken()) triggerBurnLoad();
     }, 1500);
