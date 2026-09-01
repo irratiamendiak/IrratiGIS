@@ -49,25 +49,20 @@
 
   function addLogoutButton() {
     if (document.getElementById("irratiLogoutButton")) return;
-
     const button = document.createElement("button");
     button.id = "irratiLogoutButton";
     button.type = "button";
     button.textContent = "Irten";
     button.title = "Saioa itxi";
     button.setAttribute("aria-label", "Saioa itxi");
-    button.addEventListener("click", () => {
-      clearToken();
-      location.reload();
-    });
+    button.addEventListener("click", () => { clearToken(); location.reload(); });
     document.body.appendChild(button);
   }
 
   function apiFetch(path, options = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
-    return fetch(`${API}${path}`, { ...options, signal: controller.signal })
-      .finally(() => clearTimeout(timer));
+    return fetch(`${API}${path}`, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
   }
 
   function showLogin(message = "") {
@@ -77,7 +72,6 @@
       if (msg) msg.textContent = message;
       return;
     }
-
     overlay = document.createElement("div");
     overlay.id = "irratiLoginOverlay";
     overlay.innerHTML = `
@@ -92,15 +86,11 @@
             <input id="irratiLoginPassword" name="password" type="password" autocomplete="current-password" required>
             <button id="irratiTogglePassword" type="button" aria-label="Mostrar contraseña" title="Mostrar contraseña">👁️</button>
           </div>
-          <label id="irratiRememberRow" for="irratiRememberMe">
-            <input id="irratiRememberMe" type="checkbox">
-            <span>Mantenerme conectado</span>
-          </label>
+          <label id="irratiRememberRow" for="irratiRememberMe"><input id="irratiRememberMe" type="checkbox"><span>Mantenerme conectado</span></label>
           <button id="irratiLoginButton" type="submit">Sartu</button>
           <div id="irratiLoginMessage" aria-live="polite">${message}</div>
         </form>
       </div>`;
-
     document.body.appendChild(overlay);
 
     const form = document.getElementById("irratiLoginForm");
@@ -114,20 +104,16 @@
       const showing = passwordInput.type === "text";
       passwordInput.type = showing ? "password" : "text";
       togglePassword.textContent = showing ? "👁️" : "🙈";
-      togglePassword.setAttribute("aria-label", showing ? "Mostrar contraseña" : "Ocultar contraseña");
-      togglePassword.setAttribute("title", showing ? "Mostrar contraseña" : "Ocultar contraseña");
     });
 
-    form.addEventListener("submit", async (event) => {
+    form.addEventListener("submit", async event => {
       event.preventDefault();
       button.disabled = true;
       msg.className = "loading";
       msg.textContent = "Egiaztatzen...";
-
       const user = document.getElementById("irratiLoginUser").value.trim();
       const password = document.getElementById("irratiLoginPassword").value;
       const remember = rememberMe.checked;
-
       try {
         const response = await apiFetch("/api/login", {
           method: "POST",
@@ -135,27 +121,19 @@
           body: JSON.stringify({ user, password })
         });
         const data = await response.json().catch(() => null);
-
         if (!response.ok || !data || !data.ok || !data.token) {
-          const serverError = data && data.error ? String(data.error) : "Respuesta HTTP " + response.status;
-          throw new Error(serverError);
+          throw new Error(data && data.error ? String(data.error) : "Respuesta HTTP " + response.status);
         }
-
         saveToken(data.token, remember);
         overlay.remove();
         addLogoutButton();
         window.dispatchEvent(new CustomEvent("irratiGISAuthenticated"));
       } catch (error) {
         msg.className = "";
-        if (error && error.name === "AbortError") {
-          msg.textContent = "El Worker de Cloudflare no responde. El problema está en el despliegue del Worker, no en el usuario o la contraseña.";
-        } else if (error && error.message === "Unauthorized") {
-          msg.textContent = "Usuario o contraseña no coinciden con Cloudflare.";
-        } else if (error && error.message === "Login no configurado") {
-          msg.textContent = "Falta configurar IRRATIGIS_LOGIN_USER o IRRATIGIS_LOGIN_PASSWORD en Cloudflare.";
-        } else {
-          msg.textContent = "Error del servidor: " + ((error && error.message) || "desconocido");
-        }
+        if (error?.name === "AbortError") msg.textContent = "El Worker de Cloudflare no responde.";
+        else if (error?.message === "Unauthorized") msg.textContent = "Usuario o contraseña no coinciden con Cloudflare.";
+        else if (error?.message === "Login no configurado") msg.textContent = "Falta configurar IRRATIGIS_LOGIN_USER o IRRATIGIS_LOGIN_PASSWORD en Cloudflare.";
+        else msg.textContent = "Error del servidor: " + (error?.message || "desconocido");
         button.disabled = false;
         passwordInput.select();
       }
@@ -163,10 +141,7 @@
   }
 
   async function validateToken(token) {
-    const response = await apiFetch("/api/me", {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const response = await apiFetch("/api/me", { method: "GET", headers: { Authorization: `Bearer ${token}` } });
     if (!response.ok) return false;
     const data = await response.json().catch(() => null);
     return !!(data && data.ok !== false);
@@ -176,55 +151,99 @@
     const token = getStoredToken();
     if (token) {
       try {
-        if (await validateToken(token)) {
-          addLogoutButton();
-          return;
-        }
+        if (await validateToken(token)) { addLogoutButton(); return; }
       } catch (_) {}
       clearToken();
     }
-
-    // No bloqueamos la pantalla con /api/health: el diagnóstico real debe
-    // hacerse contra /api/login. Así conservamos siempre el usuario/contraseña
-    // y distinguimos claramente entre credenciales incorrectas y Worker caído.
     showLogin();
-    await new Promise(resolve => {
-      window.addEventListener("irratiGISAuthenticated", resolve, { once: true });
-    });
+    await new Promise(resolve => window.addEventListener("irratiGISAuthenticated", resolve, { once: true }));
   }
 
-  window.IrratiGISAuth = {
-    API,
-    TOKEN_KEY,
-    getToken: () => getStoredToken(),
-    logout: () => { clearToken(); location.reload(); }
-  };
-
+  window.IrratiGISAuth = { API, TOKEN_KEY, getToken: () => getStoredToken(), logout: () => { clearToken(); location.reload(); } };
   window.IrratiGISAuthReady = startAuth();
 
-  function hookControlledBurnLayer() {
-    try {
-      if (
-        typeof map === "undefined" ||
-        typeof controlledBurnLayer === "undefined" ||
-        typeof loadControlledBurns !== "function"
-      ) {
-        return false;
-      }
+  function escapeBurnHtml(value) {
+    return String(value ?? "-").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#039;");
+  }
 
-      map.on("overlayadd", event => {
-        if (event.layer === controlledBurnLayer) {
-          loadControlledBurns();
-        }
+  function firstValue(obj, keys, fallback = "-") {
+    for (const key of keys) {
+      const value = obj?.[key];
+      if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+    }
+    return fallback;
+  }
+
+  async function loadControlledBurnsFallback() {
+    try {
+      if (typeof map === "undefined" || typeof controlledBurnLayer === "undefined" || typeof L === "undefined") return;
+      if (controlledBurnLayer.getLayers().length > 0) return;
+      const token = getStoredToken();
+      if (!token) return;
+
+      const response = await apiFetch("/api/active", { method: "GET", headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      const fires = Array.isArray(data?.fires) ? data.fires : (Array.isArray(data) ? data : []);
+
+      fires.forEach(fire => {
+        const q = fire?.datosQuema || fire?.quema || fire;
+        const lat = Number(firstValue(q, ["latitud", "latitude", "lat", "latitudea"]));
+        const lon = Number(firstValue(q, ["longitud", "longitude", "lon", "lng", "longitudea"]));
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+        const solicitante = q?.solicitante || fire?.solicitante || {};
+        const marker = L.marker([lat, lon], {
+          icon: L.divIcon({ className: "irrati-burn-icon", html: "<div style=\"font-size:30px;line-height:30px;text-shadow:0 1px 3px rgba(0,0,0,.55)\">🔥</div>", iconSize: [32,32], iconAnchor: [16,30] }),
+          zIndexOffset: 1000
+        });
+
+        const nombre = firstValue(q, ["nombreYApellidos", "nombreApellidos", "titular", "nombre"], firstValue(solicitante, ["nombreYApellidos", "nombre"], "-"));
+        const permiso = firstValue(q, ["numeroAutorizacion", "baimena", "numeroPermiso", "permiso"]);
+        const telefono = firstValue(q, ["telefonoMovil", "telefonoFijo", "telefono", "telefonoQuema", "telefonoPermiso"]);
+        const telefonoQuema = firstValue(q, ["telefonoQuema", "telefonoMovil", "telefonoFijo", "telefono"]);
+        const tipo = firstValue(q, ["descripcionMaterial", "tipoQuema", "tipo", "descripcionTipoQuema"]);
+        const ubicacion = firstValue(q, ["descripcionRecinto", "ubicacion", "parcela", "nombreParcela"]);
+
+        marker.bindPopup(
+          `<strong>🔥 Baimendutako erreketak</strong><br><br>` +
+          `<strong>Titularra:</strong> ${escapeBurnHtml(nombre)}<br>` +
+          `<strong>Nº permiso de quema:</strong> ${escapeBurnHtml(permiso)}<br>` +
+          `<strong>Teléfono del permiso:</strong> ${escapeBurnHtml(telefono)}<br>` +
+          `<strong>Teléfono de la quema:</strong> ${escapeBurnHtml(telefonoQuema)}<br>` +
+          `<strong>Tipo de quema:</strong> ${escapeBurnHtml(tipo)}<br>` +
+          `<strong>Ubicación:</strong> ${escapeBurnHtml(ubicacion)}<br>` +
+          `<strong>Coordenadas:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}`
+        );
+        marker.addTo(controlledBurnLayer);
       });
-      return true;
-    } catch (_) {
-      return false;
+
+      if (controlledBurnLayer.getLayers().length > 0 && !map.hasLayer(controlledBurnLayer)) controlledBurnLayer.addTo(map);
+    } catch (error) {
+      console.error("IrratiGIS: fallback de quemas activas fallido", error);
     }
   }
 
+  function hookControlledBurnLayer() {
+    try {
+      if (typeof map === "undefined" || typeof controlledBurnLayer === "undefined") return false;
+      map.on("overlayadd", event => {
+        if (event.layer === controlledBurnLayer) {
+          if (typeof loadControlledBurns === "function") loadControlledBurns();
+          setTimeout(loadControlledBurnsFallback, 1200);
+        }
+      });
+      return true;
+    } catch (_) { return false; }
+  }
+
   if (!hookControlledBurnLayer()) {
-    window.addEventListener("load", hookControlledBurnLayer, { once: true });
+    window.addEventListener("load", () => { hookControlledBurnLayer(); }, { once: true });
     setTimeout(hookControlledBurnLayer, 500);
   }
+
+  window.addEventListener("irratiGISAuthenticated", () => {
+    setTimeout(loadControlledBurnsFallback, 1200);
+    setTimeout(loadControlledBurnsFallback, 3000);
+  });
 })();
