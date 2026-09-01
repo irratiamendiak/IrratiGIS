@@ -19,6 +19,9 @@ async function key(secret) { return crypto.subtle.importKey("raw", new TextEncod
 async function createToken(user, secret) { const part = b64(new TextEncoder().encode(JSON.stringify({ sub: user, exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS }))); const sig = await crypto.subtle.sign("HMAC", await key(secret), new TextEncoder().encode(part)); return `${part}.${b64(new Uint8Array(sig))}`; }
 async function verifyToken(token, secret) { if (!token || !secret) return null; const p = token.split("."); if (p.length !== 2) return null; try { const ok = await crypto.subtle.verify("HMAC", await key(secret), unb64(p[1]), new TextEncoder().encode(p[0])); if (!ok) return null; const payload = JSON.parse(new TextDecoder().decode(unb64(p[0]))); return payload.sub && payload.exp > Math.floor(Date.now() / 1000) ? payload : null; } catch (_) { return null; } }
 function n(v) { const x = Number(v); return Number.isFinite(x) ? x : null; }
+function todayAtMidnight() { const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, "0"); const day = String(d.getDate()).padStart(2, "0"); return `${y}-${m}-${day} 00:00:00`; }
+function todayAtEnd() { const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, "0"); const day = String(d.getDate()).padStart(2, "0"); return `${y}-${m}-${day} 23:59:59`; }
+function extractDate(value) { if (!value) return null; if (typeof value === "string") return new Date(value.replace(" ", "T")).getTime(); if (typeof value === "number") return value; return null; }
 function mapQuema(item) {
   const solicitud = item?.solicitud || {};
   const datos = item?.datosQuema || {};
@@ -38,6 +41,20 @@ function mapQuema(item) {
   const estado = solicitud.estado?.codigo ?? item?.estado?.codigo ?? item?.estado ?? null;
   return { id: solicitud.codigo ?? item?.codigo ?? null, numeroAutorizacion, baimena: numeroAutorizacion, titular, nombre: nombre || null, apellidos: apellidos || null, telefono: telefonoQuema || telefonoPermiso || null, telefonoPermiso, telefonoQuema, telefonoMovil: datos.telefonoMovil || null, telefonoFijo: datos.telefonoFijo || null, latitud: lat, longitud: lon, latitudea: lat, longitudea: lon, direccion: solicitud.direccion ?? item?.direccion ?? null, municipio, udalerria: municipio, tipoQuema, descripcionMaterial: tipoQuema, codigoMaterial: material.codigo || null, motivo: motivo.descripcion || null, fechaInicio: solicitud.fechaInicio ?? item?.fechaInicio ?? null, fechaFin: solicitud.fechaFin ?? item?.fechaFin ?? null, estado, egoera: estado, superficie: datos.superficie ?? null, descripcionEmergencias: datos.descripcionEmergencias ?? null, parcela: { provincia: solicitud.provincia ?? null, municipio, poligono: solicitud.poligono ?? null, parcela: solicitud.parcela ?? null, recinto: solicitud.recinto ?? null } };
 }
+async function requestGfaList(authorizedUser, query) {
+  const gfaUrl = `${GFA_BASE_URL}/quema/lista/completo/es`;
+  const response = await fetch(gfaUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json", "security-token": authorizedUser.token, "security-user-id": String(authorizedUser.id) },
+    body: JSON.stringify(query)
+  });
+  const text = await response.text();
+  console.log("GFA LIST HTTP:", response.status, "recordsText:", text.slice(0, 500));
+  if (!response.ok) throw new Error(`Consulta de quemas GFA HTTP ${response.status}: ${text.slice(0, 500)}`);
+  let raw;
+  try { raw = JSON.parse(text); } catch (_) { throw new Error(`GFA no devuelve JSON válido: ${text.slice(0, 500)}`); }
+  return Array.isArray(raw) ? raw : [];
+}
 async function getActiveBurns(env) {
   const user = String(env.GFA_USER || "").trim();
   const password = String(env.GFA_PASSWORD || "");
@@ -47,22 +64,43 @@ async function getActiveBurns(env) {
   const authorizedUser = await loginResponse.json();
   if (!authorizedUser?.token || authorizedUser?.id == null) throw new Error("Respuesta de login GFA sin token o id");
   const municipalityIds = Array.isArray(authorizedUser.municipios) ? authorizedUser.municipios.map(m => typeof m === "object" ? m.id : m).filter(v => v != null) : [];
-  const query = { idsEstado: ["a", "d", "e", "i", "p", "q", "t", "s"], idsMunicipio: municipalityIds, idGuardaForestal: authorizedUser.id };
-  console.log("GFA active query", JSON.stringify({ idsEstado: query.idsEstado, municipalityCount: municipalityIds.length, idGuardaForestal: authorizedUser.id }));
-  const gfaUrl = `${GFA_BASE_URL}/quema/lista/completo/es`;
-  let listResponse;
-  try {
-    listResponse = await fetch(gfaUrl, { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json", "security-token": authorizedUser.token, "security-user-id": String(authorizedUser.id) }, body: JSON.stringify(query) });
-  } catch (error) { console.error("ERROR FETCH GFA:", error?.stack || error); throw new Error(`Error conectando con GFA: ${String(error?.message || error)}`); }
-  const responseText = await listResponse.text();
-  console.log("GFA HTTP STATUS:", listResponse.status);
-  console.log("GFA RESPONSE:", responseText.slice(0, 2000));
-  if (!listResponse.ok) throw new Error(`Consulta de quemas GFA HTTP ${listResponse.status}: ${responseText.slice(0, 1000)}`);
-  let raw;
-  try { raw = JSON.parse(responseText); } catch (_) { throw new Error(`GFA no devuelve JSON válido: ${responseText.slice(0, 1000)}`); }
-  const list = Array.isArray(raw) ? raw : [];
-  const fires = list.map(mapQuema).filter(q => q.latitud != null && q.longitud != null);
-  console.log(`GFA active response: ${list.length} registros, ${fires.length} con coordenadas`);
+  const fullQuery = {
+    dni: null,
+    idsEstado: ["a", "q"],
+    poligono: null,
+    parcela: null,
+    recinto: null,
+    anyo: null,
+    codigo: null,
+    fechaIncio: todayAtMidnight(),
+    fechaFin: todayAtEnd(),
+    tipoSolicitud: "Q",
+    nombreCiudadano: null,
+    transferidaPastos: null,
+    transferidaMontesUtilidadPublica: null,
+    transferidaEspaciosNaturales: null,
+    nombreParcela: null,
+    idsMunicipio: municipalityIds,
+    numAut: null,
+    idGuardaForestal: authorizedUser.id
+  };
+  console.log("GFA active query", JSON.stringify({ idsEstado: fullQuery.idsEstado, fechaIncio: fullQuery.fechaIncio, fechaFin: fullQuery.fechaFin, tipoSolicitud: fullQuery.tipoSolicitud, municipalityCount: municipalityIds.length, idGuardaForestal: authorizedUser.id }));
+  let list = await requestGfaList(authorizedUser, fullQuery);
+
+  // Si GFA devuelve vacío con el filtro completo, repetir con el filtro de compatibilidad usado por versiones anteriores.
+  if (list.length === 0) {
+    const compatibilityQuery = { idsEstado: ["a", "d", "e", "i", "p", "q", "t", "s"], idsMunicipio: municipalityIds, idGuardaForestal: authorizedUser.id };
+    console.log("GFA active fallback query");
+    list = await requestGfaList(authorizedUser, compatibilityQuery);
+  }
+
+  const now = Date.now();
+  const fires = list.map(mapQuema).filter(q => q.latitud != null && q.longitud != null).filter(q => {
+    const inicio = extractDate(q.fechaInicio);
+    const fin = extractDate(q.fechaFin);
+    return (inicio == null || inicio <= now) && (fin == null || fin >= now);
+  });
+  console.log(`GFA active response: ${list.length} registros, ${fires.length} activos con coordenadas`);
   return fires;
 }
 export default { async fetch(request, env) {
