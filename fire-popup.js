@@ -2,15 +2,14 @@
 (function(){
   "use strict";
 
-  const API = "https://irratigis-erreketak.kulixka-mendiak.workers.dev";
+  const API="https://irratigis-erreketak.kulixka-mendiak.workers.dev";
   const esc=v=>String(v??"-").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
   const val=(o,keys)=>{for(const k of keys){const v=o?.[k];if(v!=null&&String(v).trim()!=="")return v}return "-"};
   function num(v){
     if(v==null)return NaN;
     if(typeof v==="number")return v;
     const s=String(v).trim().replace(",",".").replace(/\s+/g,"");
-    const n=Number(s);
-    return Number.isFinite(n)?n:NaN;
+    const n=Number(s); return Number.isFinite(n)?n:NaN;
   }
   function coords(f){
     const s=f?.solicitud||{};
@@ -22,7 +21,6 @@
     if(!Number.isFinite(a[0])||!Number.isFinite(a[1])||a[0]<-90||a[0]>90||a[1]<-180||a[1]>180)return null;
     return a;
   }
-
   function popup(f,lat,lon){
     const titular=([val(f,["nombre","nombreTitular"]),val(f,["apellidos","titularApellidos"])].filter(x=>x!=="-").join(" ")||val(f,["titular"]));
     const row=(a,b)=>`<div><b>${a}:</b> ${esc(b)}</div>`;
@@ -35,15 +33,12 @@
       row("Inicio",val(f,["fechaInicio","fechaInicioQuema"]))+row("Código SIGPAC",val(f,["codigoSigpac","sigpac","codigoSIGPAC","referenciaSigpac"]))+
       row("Accesos",val(f,["accesos","acceso","descripcionAcceso"]))+row("Coordenadas",`${lat.toFixed(6)}, ${lon.toFixed(6)}`)+`</div></div>`;
   }
-
   function fireMarker(f){
-    const c=coords(f);
-    if(!c)return null;
+    const c=coords(f); if(!c)return null;
     const [lat,lon]=c;
     const icon=L.divIcon({className:"irrati-fire-icon",html:"<span style=\"display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#fff;border:2px solid #d24b16;box-shadow:0 1px 5px rgba(0,0,0,.35);font-size:18px\">🔥</span>",iconSize:[30,30],iconAnchor:[15,15],popupAnchor:[0,-15]});
     return L.marker([lat,lon],{icon}).bindPopup(popup(f,lat,lon));
   }
-
   async function loadBurnsIntoLayer(layer){
     if(!layer||layer.__irratiLoading)return;
     const token=window.IrratiGISAuth?.getToken?.();
@@ -53,78 +48,53 @@
     if(msg)msg.textContent="Kontrolatutako errekak kontsultatzen...";
     try{
       const response=await fetch(`${API}/api/active?ts=${Date.now()}`,{cache:"no-store",headers:{Authorization:`Bearer ${token}`}});
+      const data=await response.json().catch(()=>({}));
+      console.log("IrratiGIS /api/active",response.status,data);
       if(!response.ok)throw new Error(`HTTP ${response.status}`);
-      const data=await response.json();
       const fires=Array.isArray(data.fires)?data.fires:[];
       layer.clearLayers();
       let shown=0;
       const bounds=[];
-      fires.forEach(f=>{
-        const marker=fireMarker(f);
-        if(marker){marker.addTo(layer);bounds.push(marker.getLatLng());shown++;}
-      });
-      console.log(`IrratiGIS quemas: API=${fires.length}, coordenadas=${shown}`,fires);
-      if(shown&&layer._map){
-        layer._map.fitBounds(L.latLngBounds(bounds),{padding:[35,35],maxZoom:13});
-      }
+      fires.forEach(f=>{const marker=fireMarker(f);if(marker){marker.addTo(layer);bounds.push(marker.getLatLng());shown++;}});
+      console.log(`IrratiGIS quemas: API=${fires.length}, coordenadas=${shown}`);
+      if(shown&&layer._map)layer._map.fitBounds(L.latLngBounds(bounds),{padding:[35,35],maxZoom:13});
       if(msg)msg.textContent=`${shown} baimendutako erreketak kargatu dira.`;
     }catch(e){
       console.error("IrratiGIS: error cargando quemas",e);
       if(msg)msg.textContent="Ezin izan dira baimendutako errekak kargatu.";
     }finally{layer.__irratiLoading=false}
   }
+  function isBurnEntry(entry){return !!entry&&entry.overlay&&entry.layer&&/Baimendutako erreketak|erreketak|quema/i.test(String(entry.name||""));}
 
-  function isBurnEntry(entry){
-    return !!entry&&entry.overlay&&entry.layer&&/Baimendutako erreketak|erreketak|quema/i.test(String(entry.name||""));
-  }
-
-  function install(layerEntry,control){
-    if(!layerEntry||!layerEntry.input||layerEntry.input.__irratiBurnBound)return;
-    const input=layerEntry.input;
+  function bindInput(input,layer){
+    if(!input||input.__irratiBurnBound)return;
     input.__irratiBurnBound=true;
     input.addEventListener("change",()=>{
-      if(input.checked)loadBurnsIntoLayer(layerEntry.layer);
+      if(input.checked)loadBurnsIntoLayer(layer);
+      else if(layer?.clearLayers)layer.clearLayers();
     });
-    if(input.checked)loadBurnsIntoLayer(layerEntry.layer);
   }
 
   function hookLayerControl(){
     if(!window.L||!L.Control||!L.Control.Layers)return false;
     const proto=L.Control.Layers.prototype;
     if(proto.__irratiBurnHook)return true;
-    const original=proto._onInputClick;
-    if(typeof original!=="function")return false;
-    proto._onInputClick=function(){
-      original.apply(this,arguments);
-      const control=this;
-      setTimeout(()=>{
-        try{(control._layers||[]).forEach(entry=>{if(isBurnEntry(entry))install(entry,control)});}catch(e){console.warn(e)}
-      },0);
+    const originalAddItem=proto._addItem;
+    if(typeof originalAddItem!=="function")return false;
+    proto._addItem=function(obj){
+      const result=originalAddItem.call(this,obj);
+      if(isBurnEntry(obj)){
+        const input=result?.querySelector?.("input")||result?.firstChild;
+        if(input&&input.tagName==="INPUT")bindInput(input,obj.layer);
+        else setTimeout(()=>{const i=result?.querySelector?.("input");if(i)bindInput(i,obj.layer)},0);
+      }
+      return result;
     };
     proto.__irratiBurnHook=true;
     return true;
   }
 
   let tries=0;
-  const timer=setInterval(()=>{
-    if(hookLayerControl()||++tries>240)clearInterval(timer);
-    try{
-      document.querySelectorAll(".leaflet-control-layers input[type=checkbox]").forEach(input=>{
-        const label=input.closest("label");
-        const text=label?.textContent||"";
-        if(!/Baimendutako erreketak|erreketak/i.test(text)||input.__irratiBurnBound)return;
-        input.__irratiBurnBound=true;
-        input.addEventListener("change",()=>{
-          if(!input.checked)return;
-          const control=Array.from(document.querySelectorAll(".leaflet-control-layers"))[0]?._leaflet_layers_control;
-          if(control){
-            const entry=(control._layers||[]).find(isBurnEntry);
-            if(entry)loadBurnsIntoLayer(entry.layer);
-          }
-        });
-      });
-    }catch(_){ }
-  },250);
-
+  const timer=setInterval(()=>{if(hookLayerControl()||++tries>240)clearInterval(timer)},250);
   window.IrratiGISFirePopup={loadBurnsIntoLayer};
 })();
