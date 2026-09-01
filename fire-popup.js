@@ -43,6 +43,19 @@
     console.log("IrratiGIS: hook de marcadores 🔥 instalado");
   }
 
+  function showNativeBurnLayer(){
+    const labels=[...document.querySelectorAll(".leaflet-control-layers-overlays label")];
+    const label=labels.find(el=>/Baimendutako\s+erreketak/i.test(el.textContent||""));
+    const input=label?.querySelector('input[type="checkbox"]');
+    if(input && !input.checked){
+      input.click();
+      console.log("IrratiGIS: capa 🔥 activada automáticamente");
+      return true;
+    }
+    if(input?.checked)return true;
+    return false;
+  }
+
   async function loadBurnsIntoNativeLayer(){
     installNativeBurnMarkerHook();
     if(typeof window.loadControlledBurns!=="function")return false;
@@ -74,6 +87,12 @@
     installNativeBurnMarkerHook();
     await loadBurnsIntoNativeLayer();
     await diagnostic();
+    // El layer nativo existe en el mapa pero estaba oculto por defecto.
+    // Activarlo aquí evita depender de acceder al const lexical del index.html.
+    for(let i=0;i<12;i++){
+      if(showNativeBurnLayer())break;
+      await new Promise(r=>setTimeout(r,250));
+    }
   }
 
   window.addEventListener("irratiGISAuthenticated",()=>setTimeout(boot,100));
