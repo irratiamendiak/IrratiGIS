@@ -10,44 +10,15 @@ function corsHeaders(origin = "") {
     "Vary": "Origin"
   };
 }
-
 function json(data, status = 200, origin = "") {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...corsHeaders(origin) }
-  });
+  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...corsHeaders(origin) } });
 }
-
-function b64(bytes) {
-  let s = "";
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-function unb64(s) {
-  const p = s.replace(/-/g, "+").replace(/_/g, "/");
-  return Uint8Array.from(atob(p + "==="), c => c.charCodeAt(0));
-}
-async function key(secret) {
-  return crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
-}
-async function createToken(user, secret) {
-  const part = b64(new TextEncoder().encode(JSON.stringify({ sub: user, exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS })));
-  const sig = await crypto.subtle.sign("HMAC", await key(secret), new TextEncoder().encode(part));
-  return `${part}.${b64(new Uint8Array(sig))}`;
-}
-async function verifyToken(token, secret) {
-  if (!token || !secret) return null;
-  const p = token.split(".");
-  if (p.length !== 2) return null;
-  try {
-    const ok = await crypto.subtle.verify("HMAC", await key(secret), unb64(p[1]), new TextEncoder().encode(p[0]));
-    if (!ok) return null;
-    const payload = JSON.parse(new TextDecoder().decode(unb64(p[0])));
-    return payload.sub && payload.exp > Math.floor(Date.now() / 1000) ? payload : null;
-  } catch (_) { return null; }
-}
+function b64(bytes) { let s = ""; for (const b of bytes) s += String.fromCharCode(b); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, ""); }
+function unb64(s) { const p = s.replace(/-/g, "+").replace(/_/g, "/"); return Uint8Array.from(atob(p + "==="), c => c.charCodeAt(0)); }
+async function key(secret) { return crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]); }
+async function createToken(user, secret) { const part = b64(new TextEncoder().encode(JSON.stringify({ sub: user, exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS }))); const sig = await crypto.subtle.sign("HMAC", await key(secret), new TextEncoder().encode(part)); return `${part}.${b64(new Uint8Array(sig))}`; }
+async function verifyToken(token, secret) { if (!token || !secret) return null; const p = token.split("."); if (p.length !== 2) return null; try { const ok = await crypto.subtle.verify("HMAC", await key(secret), unb64(p[1]), new TextEncoder().encode(p[0])); if (!ok) return null; const payload = JSON.parse(new TextDecoder().decode(unb64(p[0]))); return payload.sub && payload.exp > Math.floor(Date.now() / 1000) ? payload : null; } catch (_) { return null; } }
 function n(v) { const x = Number(v); return Number.isFinite(x) ? x : null; }
-
 function mapQuema(item) {
   const solicitud = item?.solicitud || {};
   const datos = item?.datosQuema || {};
@@ -65,141 +36,42 @@ function mapQuema(item) {
   const numeroAutorizacion = datos.numeroAutorizacion ?? item?.numeroAutorizacion ?? solicitud.codigo ?? null;
   const tipoQuema = material.descripcion || datos.tipoQuema || null;
   const estado = solicitud.estado?.codigo ?? item?.estado?.codigo ?? item?.estado ?? null;
-
-  return {
-    id: solicitud.codigo ?? item?.codigo ?? null,
-    numeroAutorizacion,
-    baimena: numeroAutorizacion,
-    titular,
-    nombre: nombre || null,
-    apellidos: apellidos || null,
-    telefono: telefonoQuema || telefonoPermiso || null,
-    telefonoPermiso,
-    telefonoQuema,
-    telefonoMovil: datos.telefonoMovil || null,
-    telefonoFijo: datos.telefonoFijo || null,
-    latitud: lat,
-    longitud: lon,
-    latitudea: lat,
-    longitudea: lon,
-    direccion: solicitud.direccion ?? item?.direccion ?? null,
-    municipio,
-    udalerria: municipio,
-    tipoQuema,
-    descripcionMaterial: tipoQuema,
-    codigoMaterial: material.codigo || null,
-    motivo: motivo.descripcion || null,
-    fechaInicio: solicitud.fechaInicio ?? item?.fechaInicio ?? null,
-    fechaFin: solicitud.fechaFin ?? item?.fechaFin ?? null,
-    estado,
-    egoera: estado,
-    superficie: datos.superficie ?? null,
-    descripcionEmergencias: datos.descripcionEmergencias ?? null,
-    parcela: {
-      provincia: solicitud.provincia ?? null,
-      municipio,
-      poligono: solicitud.poligono ?? null,
-      parcela: solicitud.parcela ?? null,
-      recinto: solicitud.recinto ?? null
-    }
-  };
+  return { id: solicitud.codigo ?? item?.codigo ?? null, numeroAutorizacion, baimena: numeroAutorizacion, titular, nombre: nombre || null, apellidos: apellidos || null, telefono: telefonoQuema || telefonoPermiso || null, telefonoPermiso, telefonoQuema, telefonoMovil: datos.telefonoMovil || null, telefonoFijo: datos.telefonoFijo || null, latitud: lat, longitud: lon, latitudea: lat, longitudea: lon, direccion: solicitud.direccion ?? item?.direccion ?? null, municipio, udalerria: municipio, tipoQuema, descripcionMaterial: tipoQuema, codigoMaterial: material.codigo || null, motivo: motivo.descripcion || null, fechaInicio: solicitud.fechaInicio ?? item?.fechaInicio ?? null, fechaFin: solicitud.fechaFin ?? item?.fechaFin ?? null, estado, egoera: estado, superficie: datos.superficie ?? null, descripcionEmergencias: datos.descripcionEmergencias ?? null, parcela: { provincia: solicitud.provincia ?? null, municipio, poligono: solicitud.poligono ?? null, parcela: solicitud.parcela ?? null, recinto: solicitud.recinto ?? null } };
 }
-
 async function getActiveBurns(env) {
   const user = String(env.GFA_USER || "").trim();
   const password = String(env.GFA_PASSWORD || "");
   if (!user || !password) throw new Error("Credenciales GFA no configuradas");
-
-  const loginResponse = await fetch(`${GFA_BASE_URL}/login/es`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Accept": "application/json" },
-    body: JSON.stringify({ user, password })
-  });
-  if (!loginResponse.ok) throw new Error(`Login GFA HTTP ${loginResponse.status}`);
-
+  const loginResponse = await fetch(`${GFA_BASE_URL}/login/es`, { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" }, body: JSON.stringify({ user, password }) });
+  if (!loginResponse.ok) { const text = await loginResponse.text(); throw new Error(`Login GFA HTTP ${loginResponse.status}: ${text.slice(0, 300)}`); }
   const authorizedUser = await loginResponse.json();
   if (!authorizedUser?.token || authorizedUser?.id == null) throw new Error("Respuesta de login GFA sin token o id");
-
-  const municipalityIds = Array.isArray(authorizedUser.municipios)
-    ? authorizedUser.municipios.map(m => typeof m === "object" ? m.id : m).filter(v => v != null)
-    : [];
-
-  const query = { idsEstado: ["q"], idsMunicipio: municipalityIds, idGuardaForestal: authorizedUser.id };
+  const municipalityIds = Array.isArray(authorizedUser.municipios) ? authorizedUser.municipios.map(m => typeof m === "object" ? m.id : m).filter(v => v != null) : [];
+  const query = { idsEstado: ["a", "d", "e", "i", "p", "q", "t", "s"], idsMunicipio: municipalityIds, idGuardaForestal: authorizedUser.id };
   console.log("GFA active query", JSON.stringify({ idsEstado: query.idsEstado, municipalityCount: municipalityIds.length, idGuardaForestal: authorizedUser.id }));
-
-  const listResponse = await fetch(`${GFA_BASE_URL}/quema/lista/completo/es`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-      "security-token": authorizedUser.token,
-      "security-user-id": String(authorizedUser.id)
-    },
-    body: JSON.stringify(query)
-  });
-  if (!listResponse.ok) {
-    const text = await listResponse.text();
-    throw new Error(`Consulta de quemas GFA HTTP ${listResponse.status}: ${text.slice(0, 300)}`);
-  }
-
-  const raw = await listResponse.json();
+  const gfaUrl = `${GFA_BASE_URL}/quema/lista/completo/es`;
+  let listResponse;
+  try {
+    listResponse = await fetch(gfaUrl, { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json", "security-token": authorizedUser.token, "security-user-id": String(authorizedUser.id) }, body: JSON.stringify(query) });
+  } catch (error) { console.error("ERROR FETCH GFA:", error?.stack || error); throw new Error(`Error conectando con GFA: ${String(error?.message || error)}`); }
+  const responseText = await listResponse.text();
+  console.log("GFA HTTP STATUS:", listResponse.status);
+  console.log("GFA RESPONSE:", responseText.slice(0, 2000));
+  if (!listResponse.ok) throw new Error(`Consulta de quemas GFA HTTP ${listResponse.status}: ${responseText.slice(0, 1000)}`);
+  let raw;
+  try { raw = JSON.parse(responseText); } catch (_) { throw new Error(`GFA no devuelve JSON válido: ${responseText.slice(0, 1000)}`); }
   const list = Array.isArray(raw) ? raw : [];
   const fires = list.map(mapQuema).filter(q => q.latitud != null && q.longitud != null);
   console.log(`GFA active response: ${list.length} registros, ${fires.length} con coordenadas`);
-
-  // No filtramos por fecha aquí: el endpoint de GFA ya se consulta con idsEstado=["q"].
-  // Esto evita perder las quemas por formatos de fecha locales (dd/MM/yyyy, etc.).
   return fires;
 }
-
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    const origin = request.headers.get("Origin") || "";
-
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
-    if (url.pathname === "/" && request.method === "GET") return json({ ok: true, worker: "irratigis-erreketak", status: "online" }, 200, origin);
-
-    if (url.pathname === "/api/health" && request.method === "GET") {
-      const loginUser = String(env.IRRATIGIS_LOGIN_USER || "").trim();
-      const loginPassword = String(env.IRRATIGIS_LOGIN_PASSWORD || "");
-      const gfaUser = String(env.GFA_USER || "").trim();
-      const gfaPassword = String(env.GFA_PASSWORD || "");
-      return json({ ok: true, worker: "irratigis-erreketak", loginConfigured: !!loginUser && !!loginPassword, configuredUser: loginUser || null, gfaConfigured: !!gfaUser && !!gfaPassword }, 200, origin);
-    }
-
-    if (url.pathname === "/api/login" && request.method === "POST") {
-      try {
-        const body = await request.json();
-        const user = String(body.user || "").trim();
-        const password = String(body.password || "");
-        const validUser = String(env.IRRATIGIS_LOGIN_USER || "").trim();
-        const validPassword = String(env.IRRATIGIS_LOGIN_PASSWORD || "");
-        if (!validUser || !validPassword) return json({ ok: false, error: "Login no configurado" }, 500, origin);
-        if (user !== validUser || password !== validPassword) return json({ ok: false, error: "Unauthorized" }, 401, origin);
-        return json({ ok: true, token: await createToken(user, validPassword) }, 200, origin);
-      } catch (_) { return json({ ok: false, error: "Invalid request" }, 400, origin); }
-    }
-
-    if (url.pathname === "/api/me" && request.method === "GET") {
-      const auth = request.headers.get("Authorization") || "";
-      const payload = await verifyToken(auth.startsWith("Bearer ") ? auth.slice(7).trim() : "", env.IRRATIGIS_LOGIN_PASSWORD);
-      return payload ? json({ ok: true, user: payload.sub }, 200, origin) : json({ ok: false, error: "Unauthorized" }, 401, origin);
-    }
-
-    if (url.pathname === "/api/active" && request.method === "GET") {
-      const auth = request.headers.get("Authorization") || "";
-      const payload = await verifyToken(auth.startsWith("Bearer ") ? auth.slice(7).trim() : "", env.IRRATIGIS_LOGIN_PASSWORD);
-      if (!payload) return json({ ok: false, error: "Unauthorized" }, 401, origin);
-      try {
-        const fires = await getActiveBurns(env);
-        return json({ ok: true, fires, count: fires.length }, 200, origin);
-      } catch (error) {
-        console.error("Error consultando quemas GFA", error?.stack || error);
-        return json({ ok: false, error: "No se pudieron consultar las quemas GFA", detail: String(error?.message || error) }, 502, origin);
-      }
-    }
-
-    return json({ ok: false, error: "Not found" }, 404, origin);
-  }
-};
+export default { async fetch(request, env) {
+  const url = new URL(request.url); const origin = request.headers.get("Origin") || "";
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
+  if (url.pathname === "/" && request.method === "GET") return json({ ok: true, worker: "irratigis-erreketak", status: "online" }, 200, origin);
+  if (url.pathname === "/api/health" && request.method === "GET") { const loginUser = String(env.IRRATIGIS_LOGIN_USER || "").trim(); const loginPassword = String(env.IRRATIGIS_LOGIN_PASSWORD || ""); const gfaUser = String(env.GFA_USER || "").trim(); const gfaPassword = String(env.GFA_PASSWORD || ""); return json({ ok: true, worker: "irratigis-erreketak", loginConfigured: !!loginUser && !!loginPassword, configuredUser: loginUser || null, gfaConfigured: !!gfaUser && !!gfaPassword }, 200, origin); }
+  if (url.pathname === "/api/login" && request.method === "POST") { try { const body = await request.json(); const user = String(body.user || "").trim(); const password = String(body.password || ""); const validUser = String(env.IRRATIGIS_LOGIN_USER || "").trim(); const validPassword = String(env.IRRATIGIS_LOGIN_PASSWORD || ""); if (!validUser || !validPassword) return json({ ok: false, error: "Login no configurado" }, 500, origin); if (user !== validUser || password !== validPassword) return json({ ok: false, error: "Unauthorized" }, 401, origin); return json({ ok: true, token: await createToken(user, validPassword) }, 200, origin); } catch (_) { return json({ ok: false, error: "Invalid request" }, 400, origin); } }
+  if (url.pathname === "/api/me" && request.method === "GET") { const auth = request.headers.get("Authorization") || ""; const payload = await verifyToken(auth.startsWith("Bearer ") ? auth.slice(7).trim() : "", env.IRRATIGIS_LOGIN_PASSWORD); return payload ? json({ ok: true, user: payload.sub }, 200, origin) : json({ ok: false, error: "Unauthorized" }, 401, origin); }
+  if (url.pathname === "/api/active" && request.method === "GET") { const auth = request.headers.get("Authorization") || ""; const payload = await verifyToken(auth.startsWith("Bearer ") ? auth.slice(7).trim() : "", env.IRRATIGIS_LOGIN_PASSWORD); if (!payload) return json({ ok: false, error: "Unauthorized" }, 401, origin); try { const fires = await getActiveBurns(env); return json({ ok: true, fires, count: fires.length }, 200, origin); } catch (error) { console.error("Error consultando quemas GFA", error?.stack || error); return json({ ok: false, error: "No se pudieron consultar las quemas GFA", detail: String(error?.message || error) }, 502, origin); } }
+  return json({ ok: false, error: "Not found" }, 404, origin);
+} };
