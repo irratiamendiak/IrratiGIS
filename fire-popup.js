@@ -1,11 +1,27 @@
-// IrratiGIS — quemas autorizadas: carga bajo demanda al activar la capa Leaflet
+// IrratiGIS — quemas autorizadas: solo al activar la capa
 (function(){
   "use strict";
 
   const API = "https://irratigis-erreketak.kulixka-mendiak.workers.dev";
   const esc=v=>String(v??"-").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
   const val=(o,keys)=>{for(const k of keys){const v=o?.[k];if(v!=null&&String(v).trim()!=="")return v}return "-"};
-  function num(v){if(v==null)return NaN;if(typeof v==="number")return v;const n=Number(String(v).trim().replace(",","."));return Number.isFinite(n)?n:NaN}
+  function num(v){
+    if(v==null)return NaN;
+    if(typeof v==="number")return v;
+    const s=String(v).trim().replace(",",".").replace(/\s+/g,"");
+    const n=Number(s);
+    return Number.isFinite(n)?n:NaN;
+  }
+  function coords(f){
+    const s=f?.solicitud||{};
+    const lat=num(val(f,["latitudea","latitud","latitude","lat"]));
+    const lon=num(val(f,["longitudea","longitud","longitude","lon","lng"]));
+    const slat=num(val(s,["latitudea","latitud","latitude","lat"]));
+    const slon=num(val(s,["longitudea","longitud","longitude","lon","lng"]));
+    const a=Number.isFinite(lat)&&Number.isFinite(lon)?[lat,lon]:[slat,slon];
+    if(!Number.isFinite(a[0])||!Number.isFinite(a[1])||a[0]<-90||a[0]>90||a[1]<-180||a[1]>180)return null;
+    return a;
+  }
 
   function popup(f,lat,lon){
     const titular=([val(f,["nombre","nombreTitular"]),val(f,["apellidos","titularApellidos"])].filter(x=>x!=="-").join(" ")||val(f,["titular"]));
@@ -21,9 +37,9 @@
   }
 
   function fireMarker(f){
-    const lat=num(val(f,["latitudea","latitud","latitude","lat"]));
-    const lon=num(val(f,["longitudea","longitud","longitude","lon","lng"]));
-    if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<-90||lat>90||lon<-180||lon>180)return null;
+    const c=coords(f);
+    if(!c)return null;
+    const [lat,lon]=c;
     const icon=L.divIcon({className:"irrati-fire-icon",html:"<span style=\"display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#fff;border:2px solid #d24b16;box-shadow:0 1px 5px rgba(0,0,0,.35);font-size:18px\">🔥</span>",iconSize:[30,30],iconAnchor:[15,15],popupAnchor:[0,-15]});
     return L.marker([lat,lon],{icon}).bindPopup(popup(f,lat,lon));
   }
@@ -31,47 +47,84 @@
   async function loadBurnsIntoLayer(layer){
     if(!layer||layer.__irratiLoading)return;
     const token=window.IrratiGISAuth?.getToken?.();
-    if(!token){console.warn("IrratiGIS: no hay sesión para cargar quemas");return}
+    if(!token){console.warn("IrratiGIS: no hay sesión para cargar quemas");return;}
     layer.__irratiLoading=true;
+    const msg=document.getElementById("message");
+    if(msg)msg.textContent="Kontrolatutako errekak kontsultatzen...";
     try{
-      const response=await fetch(`${API}/api/active`,{headers:{Authorization:`Bearer ${token}`}});
+      const response=await fetch(`${API}/api/active?ts=${Date.now()}`,{cache:"no-store",headers:{Authorization:`Bearer ${token}`}});
       if(!response.ok)throw new Error(`HTTP ${response.status}`);
       const data=await response.json();
       const fires=Array.isArray(data.fires)?data.fires:[];
       layer.clearLayers();
       let shown=0;
-      fires.forEach(f=>{const marker=fireMarker(f);if(marker){marker.addTo(layer);shown++}});
-      console.log(`IrratiGIS: ${shown}/${fires.length} quemas mostradas`);
-      const msg=document.getElementById("message");if(msg)msg.textContent=`${shown} baimendutako erreketak kargatu dira.`;
+      const bounds=[];
+      fires.forEach(f=>{
+        const marker=fireMarker(f);
+        if(marker){marker.addTo(layer);bounds.push(marker.getLatLng());shown++;}
+      });
+      console.log(`IrratiGIS quemas: API=${fires.length}, coordenadas=${shown}`,fires);
+      if(shown&&layer._map){
+        layer._map.fitBounds(L.latLngBounds(bounds),{padding:[35,35],maxZoom:13});
+      }
+      if(msg)msg.textContent=`${shown} baimendutako erreketak kargatu dira.`;
     }catch(e){
       console.error("IrratiGIS: error cargando quemas",e);
-      const msg=document.getElementById("message");if(msg)msg.textContent="Ezin izan dira baimendutako erreketak kargatu.";
+      if(msg)msg.textContent="Ezin izan dira baimendutako errekak kargatu.";
     }finally{layer.__irratiLoading=false}
+  }
+
+  function isBurnEntry(entry){
+    return !!entry&&entry.overlay&&entry.layer&&/Baimendutako erreketak|erreketak|quema/i.test(String(entry.name||""));
+  }
+
+  function install(layerEntry,control){
+    if(!layerEntry||!layerEntry.input||layerEntry.input.__irratiBurnBound)return;
+    const input=layerEntry.input;
+    input.__irratiBurnBound=true;
+    input.addEventListener("change",()=>{
+      if(input.checked)loadBurnsIntoLayer(layerEntry.layer);
+    });
+    if(input.checked)loadBurnsIntoLayer(layerEntry.layer);
   }
 
   function hookLayerControl(){
     if(!window.L||!L.Control||!L.Control.Layers)return false;
     const proto=L.Control.Layers.prototype;
-    if(proto.__irratiBurnOnToggle)return true;
+    if(proto.__irratiBurnHook)return true;
     const original=proto._onInputClick;
     if(typeof original!=="function")return false;
     proto._onInputClick=function(){
       original.apply(this,arguments);
+      const control=this;
       setTimeout(()=>{
-        try{
-          (this._layers||[]).forEach(entry=>{
-            if(!entry||!entry.overlay||!entry.layer||!String(entry.name||"").includes("Baimendutako erreketak"))return;
-            const checked=entry.input?entry.input.checked:this._map.hasLayer(entry.layer);
-            if(checked)loadBurnsIntoLayer(entry.layer);
-          });
-        }catch(e){console.warn("IrratiGIS: error tras cambiar capa de quemas",e)}
+        try{(control._layers||[]).forEach(entry=>{if(isBurnEntry(entry))install(entry,control)});}catch(e){console.warn(e)}
       },0);
     };
-    proto.__irratiBurnOnToggle=true;
+    proto.__irratiBurnHook=true;
     return true;
   }
 
   let tries=0;
-  const timer=setInterval(()=>{if(hookLayerControl()||++tries>120)clearInterval(timer)},250);
+  const timer=setInterval(()=>{
+    if(hookLayerControl()||++tries>240)clearInterval(timer);
+    try{
+      document.querySelectorAll(".leaflet-control-layers input[type=checkbox]").forEach(input=>{
+        const label=input.closest("label");
+        const text=label?.textContent||"";
+        if(!/Baimendutako erreketak|erreketak/i.test(text)||input.__irratiBurnBound)return;
+        input.__irratiBurnBound=true;
+        input.addEventListener("change",()=>{
+          if(!input.checked)return;
+          const control=Array.from(document.querySelectorAll(".leaflet-control-layers"))[0]?._leaflet_layers_control;
+          if(control){
+            const entry=(control._layers||[]).find(isBurnEntry);
+            if(entry)loadBurnsIntoLayer(entry.layer);
+          }
+        });
+      });
+    }catch(_){ }
+  },250);
+
   window.IrratiGISFirePopup={loadBurnsIntoLayer};
 })();
