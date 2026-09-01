@@ -2,114 +2,18 @@ const ALLOWED_ORIGIN = "https://irratiamendiak.github.io";
 const TOKEN_TTL_SECONDS = 60 * 60 * 12;
 const GFA_BASE_URL = "https://w390w.gipuzkoa.net/WAS/CORP/DMQQuemasWEB";
 
-function corsHeaders(origin = "") {
-  return {
-    "Access-Control-Allow-Origin": origin === ALLOWED_ORIGIN ? origin : ALLOWED_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Vary": "Origin"
-  };
-}
-function json(data, status = 200, origin = "") {
-  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...corsHeaders(origin) } });
-}
+function corsHeaders(origin = "") { return { "Access-Control-Allow-Origin": origin === ALLOWED_ORIGIN ? origin : ALLOWED_ORIGIN, "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization", "Vary": "Origin" }; }
+function json(data, status = 200, origin = "") { return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...corsHeaders(origin) } }); }
 function b64(bytes) { let s = ""; for (const b of bytes) s += String.fromCharCode(b); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, ""); }
 function unb64(s) { const p = s.replace(/-/g, "+").replace(/_/g, "/"); return Uint8Array.from(atob(p + "==="), c => c.charCodeAt(0)); }
 async function key(secret) { return crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]); }
 async function createToken(user, secret) { const part = b64(new TextEncoder().encode(JSON.stringify({ sub: user, exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS }))); const sig = await crypto.subtle.sign("HMAC", await key(secret), new TextEncoder().encode(part)); return `${part}.${b64(new Uint8Array(sig))}`; }
 async function verifyToken(token, secret) { if (!token || !secret) return null; const p = token.split("."); if (p.length !== 2) return null; try { const ok = await crypto.subtle.verify("HMAC", await key(secret), unb64(p[1]), new TextEncoder().encode(p[0])); if (!ok) return null; const payload = JSON.parse(new TextDecoder().decode(unb64(p[0]))); return payload.sub && payload.exp > Math.floor(Date.now() / 1000) ? payload : null; } catch (_) { return null; } }
 function n(v) { const x = Number(v); return Number.isFinite(x) ? x : null; }
-function todayAtMidnight() { const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, "0"); const day = String(d.getDate()).padStart(2, "0"); return `${y}-${m}-${day} 00:00:00`; }
-function todayAtEnd() { const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, "0"); const day = String(d.getDate()).padStart(2, "0"); return `${y}-${m}-${day} 23:59:59`; }
+function todayAtMidnight() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} 00:00:00`; }
+function todayAtEnd() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} 23:59:59`; }
 function extractDate(value) { if (!value) return null; if (typeof value === "string") return new Date(value.replace(" ", "T")).getTime(); if (typeof value === "number") return value; return null; }
-function mapQuema(item) {
-  const solicitud = item?.solicitud || {};
-  const datos = item?.datosQuema || {};
-  const ciudadano = solicitud.ciudadano || item?.ciudadano || {};
-  const material = datos.materialQuema || {};
-  const motivo = datos.motivo || {};
-  const municipio = solicitud.municipio || item?.municipio || null;
-  const lat = n(solicitud.latitud ?? item?.latitud ?? item?.latitude ?? item?.latitudea);
-  const lon = n(solicitud.longitud ?? item?.longitud ?? item?.longitude ?? item?.longitudea);
-  const nombre = ciudadano.nombre || solicitud.nombreCiudadano || datos.nombreCiudadano || "";
-  const apellidos = ciudadano.apellidos || ciudadano.apellido1 || ciudadano.apellido || solicitud.apellidosCiudadano || datos.apellidosCiudadano || "";
-  const titular = [nombre, apellidos].filter(Boolean).join(" ").trim();
-  const telefonoPermiso = solicitud.telefono ?? ciudadano.telefono ?? ciudadano.telefonoMovil ?? ciudadano.telefonoFijo ?? datos.telefonoPermiso ?? null;
-  const telefonoQuema = datos.telefonoQuema ?? datos.telefonoMovil ?? datos.telefonoFijo ?? null;
-  const numeroAutorizacion = datos.numeroAutorizacion ?? item?.numeroAutorizacion ?? solicitud.codigo ?? null;
-  const tipoQuema = material.descripcion || datos.tipoQuema || null;
-  const estado = solicitud.estado?.codigo ?? item?.estado?.codigo ?? item?.estado ?? null;
-  return { id: solicitud.codigo ?? item?.codigo ?? null, numeroAutorizacion, baimena: numeroAutorizacion, titular, nombre: nombre || null, apellidos: apellidos || null, telefono: telefonoQuema || telefonoPermiso || null, telefonoPermiso, telefonoQuema, telefonoMovil: datos.telefonoMovil || null, telefonoFijo: datos.telefonoFijo || null, latitud: lat, longitud: lon, latitudea: lat, longitudea: lon, direccion: solicitud.direccion ?? item?.direccion ?? null, municipio, udalerria: municipio, tipoQuema, descripcionMaterial: tipoQuema, codigoMaterial: material.codigo || null, motivo: motivo.descripcion || null, fechaInicio: solicitud.fechaInicio ?? item?.fechaInicio ?? null, fechaFin: solicitud.fechaFin ?? item?.fechaFin ?? null, estado, egoera: estado, superficie: datos.superficie ?? null, descripcionEmergencias: datos.descripcionEmergencias ?? null, parcela: { provincia: solicitud.provincia ?? null, municipio, poligono: solicitud.poligono ?? null, parcela: solicitud.parcela ?? null, recinto: solicitud.recinto ?? null } };
-}
-async function requestGfaList(authorizedUser, query) {
-  const gfaUrl = `${GFA_BASE_URL}/quema/lista/completo/es`;
-  const response = await fetch(gfaUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Accept": "application/json", "security-token": authorizedUser.token, "security-user-id": String(authorizedUser.id) },
-    body: JSON.stringify(query)
-  });
-  const text = await response.text();
-  console.log("GFA LIST HTTP:", response.status, "recordsText:", text.slice(0, 500));
-  if (!response.ok) throw new Error(`Consulta de quemas GFA HTTP ${response.status}: ${text.slice(0, 500)}`);
-  let raw;
-  try { raw = JSON.parse(text); } catch (_) { throw new Error(`GFA no devuelve JSON válido: ${text.slice(0, 500)}`); }
-  return Array.isArray(raw) ? raw : [];
-}
-async function getActiveBurns(env) {
-  const user = String(env.GFA_USER || "").trim();
-  const password = String(env.GFA_PASSWORD || "");
-  if (!user || !password) throw new Error("Credenciales GFA no configuradas");
-  const loginResponse = await fetch(`${GFA_BASE_URL}/login/es`, { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" }, body: JSON.stringify({ user, password }) });
-  if (!loginResponse.ok) { const text = await loginResponse.text(); throw new Error(`Login GFA HTTP ${loginResponse.status}: ${text.slice(0, 300)}`); }
-  const authorizedUser = await loginResponse.json();
-  if (!authorizedUser?.token || authorizedUser?.id == null) throw new Error("Respuesta de login GFA sin token o id");
-  const municipalityIds = Array.isArray(authorizedUser.municipios) ? authorizedUser.municipios.map(m => typeof m === "object" ? m.id : m).filter(v => v != null) : [];
-  const fullQuery = {
-    dni: null,
-    idsEstado: ["a", "q"],
-    poligono: null,
-    parcela: null,
-    recinto: null,
-    anyo: null,
-    codigo: null,
-    fechaIncio: todayAtMidnight(),
-    fechaFin: todayAtEnd(),
-    tipoSolicitud: "Q",
-    nombreCiudadano: null,
-    transferidaPastos: null,
-    transferidaMontesUtilidadPublica: null,
-    transferidaEspaciosNaturales: null,
-    nombreParcela: null,
-    idsMunicipio: municipalityIds,
-    numAut: null,
-    idGuardaForestal: authorizedUser.id
-  };
-  console.log("GFA active query", JSON.stringify({ idsEstado: fullQuery.idsEstado, fechaIncio: fullQuery.fechaIncio, fechaFin: fullQuery.fechaFin, tipoSolicitud: fullQuery.tipoSolicitud, municipalityCount: municipalityIds.length, idGuardaForestal: authorizedUser.id }));
-  let list = await requestGfaList(authorizedUser, fullQuery);
-
-  // Si GFA devuelve vacío con el filtro completo, repetir con el filtro de compatibilidad usado por versiones anteriores.
-  if (list.length === 0) {
-    const compatibilityQuery = { idsEstado: ["a", "d", "e", "i", "p", "q", "t", "s"], idsMunicipio: municipalityIds, idGuardaForestal: authorizedUser.id };
-    console.log("GFA active fallback query");
-    list = await requestGfaList(authorizedUser, compatibilityQuery);
-  }
-
-  const now = Date.now();
-  const fires = list.map(mapQuema).filter(q => q.latitud != null && q.longitud != null).filter(q => {
-    const inicio = extractDate(q.fechaInicio);
-    const fin = extractDate(q.fechaFin);
-    return (inicio == null || inicio <= now) && (fin == null || fin >= now);
-  });
-  console.log(`GFA active response: ${list.length} registros, ${fires.length} activos con coordenadas`);
-  return fires;
-}
-export default { async fetch(request, env) {
-  const url = new URL(request.url); const origin = request.headers.get("Origin") || "";
-  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
-  if (url.pathname === "/" && request.method === "GET") return json({ ok: true, worker: "irratigis-erreketak", status: "online" }, 200, origin);
-  if (url.pathname === "/api/health" && request.method === "GET") { const loginUser = String(env.IRRATIGIS_LOGIN_USER || "").trim(); const loginPassword = String(env.IRRATIGIS_LOGIN_PASSWORD || ""); const gfaUser = String(env.GFA_USER || "").trim(); const gfaPassword = String(env.GFA_PASSWORD || ""); return json({ ok: true, worker: "irratigis-erreketak", loginConfigured: !!loginUser && !!loginPassword, configuredUser: loginUser || null, gfaConfigured: !!gfaUser && !!gfaPassword }, 200, origin); }
-  if (url.pathname === "/api/login" && request.method === "POST") { try { const body = await request.json(); const user = String(body.user || "").trim(); const password = String(body.password || ""); const validUser = String(env.IRRATIGIS_LOGIN_USER || "").trim(); const validPassword = String(env.IRRATIGIS_LOGIN_PASSWORD || ""); if (!validUser || !validPassword) return json({ ok: false, error: "Login no configurado" }, 500, origin); if (user !== validUser || password !== validPassword) return json({ ok: false, error: "Unauthorized" }, 401, origin); return json({ ok: true, token: await createToken(user, validPassword) }, 200, origin); } catch (_) { return json({ ok: false, error: "Invalid request" }, 400, origin); } }
-  if (url.pathname === "/api/me" && request.method === "GET") { const auth = request.headers.get("Authorization") || ""; const payload = await verifyToken(auth.startsWith("Bearer ") ? auth.slice(7).trim() : "", env.IRRATIGIS_LOGIN_PASSWORD); return payload ? json({ ok: true, user: payload.sub }, 200, origin) : json({ ok: false, error: "Unauthorized" }, 401, origin); }
-  if (url.pathname === "/api/active" && request.method === "GET") { const auth = request.headers.get("Authorization") || ""; const payload = await verifyToken(auth.startsWith("Bearer ") ? auth.slice(7).trim() : "", env.IRRATIGIS_LOGIN_PASSWORD); if (!payload) return json({ ok: false, error: "Unauthorized" }, 401, origin); try { const fires = await getActiveBurns(env); return json({ ok: true, fires, count: fires.length }, 200, origin); } catch (error) { console.error("Error consultando quemas GFA", error?.stack || error); return json({ ok: false, error: "No se pudieron consultar las quemas GFA", detail: String(error?.message || error) }, 502, origin); } }
-  return json({ ok: false, error: "Not found" }, 404, origin);
-} };
+function mapQuema(item) { const solicitud=item?.solicitud||{}; const datos=item?.datosQuema||{}; const ciudadano=solicitud.ciudadano||item?.ciudadano||{}; const material=datos.materialQuema||{}; const motivo=datos.motivo||{}; const municipio=solicitud.municipio||item?.municipio||null; const lat=n(solicitud.latitud??item?.latitud??item?.latitude??item?.latitudea); const lon=n(solicitud.longitud??item?.longitud??item?.longitude??item?.longitudea); const nombre=ciudadano.nombre||solicitud.nombreCiudadano||datos.nombreCiudadano||""; const apellidos=ciudadano.apellidos||ciudadano.apellido1||ciudadano.apellido||solicitud.apellidosCiudadano||datos.apellidosCiudadano||""; const titular=[nombre,apellidos].filter(Boolean).join(" ").trim(); const telefonoPermiso=solicitud.telefono??ciudadano.telefono??ciudadano.telefonoMovil??ciudadano.telefonoFijo??datos.telefonoPermiso??null; const telefonoQuema=datos.telefonoQuema??datos.telefonoMovil??datos.telefonoFijo??null; const numeroAutorizacion=datos.numeroAutorizacion??item?.numeroAutorizacion??solicitud.codigo??null; const tipoQuema=material.descripcion||datos.tipoQuema||null; const estado=solicitud.estado?.codigo??item?.estado?.codigo??item?.estado??null; return {id:solicitud.codigo??item?.codigo??null,numeroAutorizacion,baimena:numeroAutorizacion,titular,nombre:nombre||null,apellidos:apellidos||null,telefono:telefonoQuema||telefonoPermiso||null,telefonoPermiso,telefonoQuema,telefonoMovil:datos.telefonoMovil||null,telefonoFijo:datos.telefonoFijo||null,latitud:lat,longitud:lon,latitudea:lat,longitudea:lon,direccion:solicitud.direccion??item?.direccion??null,municipio,udalerria:municipio,tipoQuema,descripcionMaterial:tipoQuema,codigoMaterial:material.codigo||null,motivo:motivo.descripcion||null,fechaInicio:solicitud.fechaInicio??item?.fechaInicio??null,fechaFin:solicitud.fechaFin??item?.fechaFin??null,estado,egoera:estado,superficie:datos.superficie??null,descripcionEmergencias:datos.descripcionEmergencias??null,parcela:{provincia:solicitud.provincia??null,municipio,poligono:solicitud.poligono??null,parcela:solicitud.parcela??null,recinto:solicitud.recinto??null}}; }
+async function requestGfaList(authorizedUser,query){const response=await fetch(`${GFA_BASE_URL}/quema/lista/completo/es`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json","security-token":authorizedUser.token,"security-user-id":String(authorizedUser.id)},body:JSON.stringify(query)});const text=await response.text();console.log("GFA LIST HTTP:",response.status,"recordsText:",text.slice(0,500));if(!response.ok)throw new Error(`Consulta de quemas GFA HTTP ${response.status}: ${text.slice(0,500)}`);let raw;try{raw=JSON.parse(text);}catch(_){throw new Error(`GFA no devuelve JSON válido: ${text.slice(0,500)}`);}return Array.isArray(raw)?raw:[];}
+async function getActiveBurns(env){const user=String(env.GFA_USER||"").trim(),password=String(env.GFA_PASSWORD||"");if(!user||!password)throw new Error("Credenciales GFA no configuradas");const loginResponse=await fetch(`${GFA_BASE_URL}/login/es`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({user,password})});if(!loginResponse.ok){const text=await loginResponse.text();throw new Error(`Login GFA HTTP ${loginResponse.status}: ${text.slice(0,300)}`);}const authorizedUser=await loginResponse.json();if(!authorizedUser?.token||authorizedUser?.id==null)throw new Error("Respuesta de login GFA sin token o id");const municipalityIds=Array.isArray(authorizedUser.municipios)?authorizedUser.municipios.map(m=>typeof m==="object"?m.id:m).filter(v=>v!=null):[];const fullQuery={dni:null,idsEstado:["a","q"],poligono:null,parcela:null,recinto:null,anyo:null,codigo:null,fechaIncio:todayAtMidnight(),fechaFin:todayAtEnd(),tipoSolicitud:"Q",nombreCiudadano:null,transferidaPastos:null,transferidaMontesUtilidadPublica:null,transferidaEspaciosNaturales:null,nombreParcela:null,idsMunicipio:municipalityIds,numAut:null,idGuardaForestal:authorizedUser.id};let list=await requestGfaList(authorizedUser,fullQuery);if(list.length===0)list=await requestGfaList(authorizedUser,{idsEstado:["a","d","e","i","p","q","t","s"],idsMunicipio:municipalityIds,idGuardaForestal:authorizedUser.id});const now=Date.now();return list.map(mapQuema).filter(q=>q.latitud!=null&&q.longitud!=null).filter(q=>{const i=extractDate(q.fechaInicio),f=extractDate(q.fechaFin);return(i==null||i<=now)&&(f==null||f>=now);});}
+export default {async fetch(request,env){const url=new URL(request.url),origin=request.headers.get("Origin")||"";if(request.method==="OPTIONS")return new Response(null,{status:204,headers:corsHeaders(origin)});if(url.pathname==="/"&&request.method==="GET")return json({ok:true,worker:"irratigis-erreketak",status:"online"},200,origin);if(url.pathname==="/api/health"&&request.method==="GET")return json({ok:true,worker:"irratigis-erreketak",loginConfigured:!!env.IRRATIGIS_LOGIN_USER&&!!env.IRRATIGIS_LOGIN_PASSWORD,configuredUser:String(env.IRRATIGIS_LOGIN_USER||"").trim()||null,gfaConfigured:!!env.GFA_USER&&!!env.GFA_PASSWORD},200,origin);if(url.pathname==="/api/login"&&request.method==="POST"){try{const body=await request.json(),user=String(body.user||"").trim(),password=String(body.password||""),validUser=String(env.IRRATIGIS_LOGIN_USER||"").trim(),validPassword=String(env.IRRATIGIS_LOGIN_PASSWORD||"");if(!validUser||!validPassword)return json({ok:false,error:"Login no configurado"},500,origin);if(user!==validUser||password!==validPassword)return json({ok:false,error:"Unauthorized"},401,origin);return json({ok:true,token:await createToken(user,validPassword)},200,origin);}catch(_){return json({ok:false,error:"Invalid request"},400,origin);}}if(url.pathname==="/api/me"&&request.method==="GET"){const auth=request.headers.get("Authorization")||"",token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";const payload=await verifyToken(token,String(env.IRRATIGIS_LOGIN_PASSWORD||""));console.log("AUTH ME",JSON.stringify({hasAuth:!!auth,tokenLength:token.length,valid:!!payload}));return payload?json({ok:true,user:payload.sub},200,origin):json({ok:false,error:"Unauthorized"},401,origin);}if(url.pathname==="/api/active"&&request.method==="GET"){const auth=request.headers.get("Authorization")||"",token=auth.startsWith("Bearer ")?auth.slice(7).trim():"",payload=await verifyToken(token,String(env.IRRATIGIS_LOGIN_PASSWORD||""));if(!payload)return json({ok:false,error:"Unauthorized"},401,origin);try{return json({ok:true,fires:await getActiveBurns(env)},200,origin);}catch(error){console.error("Error consultando quemas GFA",error?.stack||error);return json({ok:false,error:"No se pudieron consultar las quemas GFA",detail:String(error?.message||error)},502,origin);}}return json({ok:false,error:"Not found"},404,origin);}};
