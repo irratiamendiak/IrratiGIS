@@ -13,8 +13,24 @@
     }
   };
 
-  // Enganche quirúrgico: sustituye únicamente el popup antiguo de las quemas.
-  // El resto de popups y capas de la aplicación permanecen intactos.
+  function activateFireLayer(){
+    if(!window.L) return false;
+    const controls=document.querySelectorAll('.leaflet-control-layers');
+    for(const control of controls){
+      const labels=control.querySelectorAll('label');
+      for(const label of labels){
+        if((label.textContent||'').indexOf('🔥 Baimendutako erreketak')===-1) continue;
+        const input=label.querySelector('input[type="checkbox"]');
+        if(input && !input.checked){
+          input.click();
+          return true;
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
   function hookLeaflet(){
     if(!window.L || !L.Marker || !L.Marker.prototype || L.Marker.prototype.__irratiFirePopupHooked) return !!(window.L&&L.Marker);
     const original=L.Marker.prototype.bindPopup;
@@ -44,4 +60,11 @@
     let n=0;
     const timer=setInterval(()=>{if(hookLeaflet()||++n>40)clearInterval(timer)},250);
   }
+
+  // La capa puede crearse antes de que este módulo se cargue. Reintentamos
+  // durante unos segundos hasta encontrarla y activar su checkbox.
+  let tries=0;
+  const layerTimer=setInterval(()=>{
+    if(activateFireLayer() || ++tries>60) clearInterval(layerTimer);
+  },250);
 })();
