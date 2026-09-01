@@ -29,37 +29,15 @@
     return coords;
   }
 
-  /*
-   * El cargador real de index.html crea las quemas con L.circleMarker().
-   * Lo convertimos SOLO para esa firma concreta (radius 8 / weight 2 /
-   * fillOpacity .85), así no tocamos los circleMarker normales de GPX,
-   * track o waypoints. El hook queda instalado antes de que el cargador
-   * de autenticación pueda pedir las quemas.
-   */
   function installNativeBurnMarkerHook(){
     if(!window.L||typeof L.circleMarker!=="function"||L.__irratiGfaBurnHook)return;
     const original=L.circleMarker;
-    const hooked=function(coords,options){
-      const o=options||{};
-      const isGfaBurn=
-        Number(o.radius)===8 &&
-        Number(o.weight)===2 &&
-        Number(o.fillOpacity)===0.85;
-
-      if(!isGfaBurn) return original.call(this,coords,options);
-
+    L.circleMarker=function(coords,options){
+      if(!L.__irratiGfaBurnLoading)return original.call(this,coords,options);
       const point=normalizePoint(coords);
-      const icon=L.divIcon({
-        className:"irrati-gfa-fire-icon",
-        html:"<span style=\"font-size:28px;line-height:32px;text-shadow:0 1px 3px rgba(0,0,0,.45);\">🔥</span>",
-        iconSize:[32,32],
-        iconAnchor:[16,28],
-        popupAnchor:[0,-24]
-      });
-
+      const icon=L.divIcon({className:"irrati-gfa-fire-icon",html:"<span style=\"font-size:30px;line-height:32px;text-shadow:0 1px 3px rgba(0,0,0,.55);\">🔥</span>",iconSize:[34,34],iconAnchor:[17,31],popupAnchor:[0,-27]});
       return L.marker(point,{icon,zIndexOffset:1000});
     };
-    L.circleMarker=hooked;
     L.__irratiGfaBurnHook=true;
     L.__irratiGfaOriginalCircleMarker=original;
     console.log("IrratiGIS: hook de marcadores 🔥 instalado");
@@ -67,38 +45,39 @@
 
   async function loadBurnsIntoNativeLayer(){
     installNativeBurnMarkerHook();
-    if(typeof window.loadControlledBurns!=="function") return false;
+    if(typeof window.loadControlledBurns!=="function")return false;
+    L.__irratiGfaBurnLoading=true;
     try{
       await window.loadControlledBurns();
       return true;
     }catch(e){
       console.error("IrratiGIS native burn loader",e);
       return false;
+    }finally{
+      L.__irratiGfaBurnLoading=false;
     }
   }
 
   async function diagnostic(){
-    const t=token(); if(!t)return;
+    const t=token();if(!t)return;
     try{
       const r=await fetch(`${API}/api/active?ts=${Date.now()}`,{cache:"no-store",headers:{Authorization:`Bearer ${t}`}});
       const d=await r.json();
       console.log("IrratiGIS quemas diagnóstico",r.status,d);
       const msg=document.getElementById("message");
-      if(msg&&r.ok) msg.textContent=`GFA: ${Array.isArray(d.fires)?d.fires.length:0} quemas recibidas.`;
+      if(msg&&r.ok)msg.textContent=`GFA: ${Array.isArray(d.fires)?d.fires.length:0} quemas recibidas.`;
     }catch(e){console.error("IrratiGIS diagnóstico quemas",e)}
   }
 
-  installNativeBurnMarkerHook();
-
   async function boot(){
-    installNativeBurnMarkerHook();
     if(!token())return;
+    installNativeBurnMarkerHook();
     await loadBurnsIntoNativeLayer();
     await diagnostic();
   }
 
   window.addEventListener("irratiGISAuthenticated",()=>setTimeout(boot,100));
-  window.addEventListener("load",()=>setTimeout(boot,250));
-  let n=0;const t=setInterval(()=>{if(token()){boot();clearInterval(t)}if(++n>120)clearInterval(t)},250);
+  window.addEventListener("load",()=>setTimeout(boot,500));
+  let n=0;const timer=setInterval(()=>{if(token()){boot();clearInterval(timer)}if(++n>120)clearInterval(timer)},250);
   window.IrratiGISFirePopup={loadBurnsIntoLayer:boot,hookLayerControl:boot};
 })();
