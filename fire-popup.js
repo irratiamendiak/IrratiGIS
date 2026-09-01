@@ -1,9 +1,6 @@
 // IrratiGIS — integración de quemas autorizadas con el mapa existente
 (function(){
   "use strict";
-  const API="https://irratigis-erreketak.kulixka-mendiak.workers.dev";
-
-  function token(){return window.IrratiGISAuth?.getToken?.()||localStorage.getItem("irratigis_session_token")||sessionStorage.getItem("irratigis_session_token_temp")||"";}
 
   function utm30ToLatLon(easting,northing){
     const a=6378137,eccSquared=0.00669438002290,k0=0.9996;
@@ -32,71 +29,43 @@
   function installNativeBurnMarkerHook(){
     if(!window.L||typeof L.circleMarker!=="function"||L.__irratiGfaBurnHook)return;
     const original=L.circleMarker;
+
+    // El index.html crea las quemas con exactamente estas opciones.
+    // El hook es permanente para evitar la carrera con waitForIrratiGISAuth():
+    // el cargador nativo puede empezar antes que fire-popup.boot().
     L.circleMarker=function(coords,options){
-      if(!L.__irratiGfaBurnLoading)return original.call(this,coords,options);
+      const o=options||{};
+      const isGfaBurn = Number(o.radius)===8 && Number(o.weight)===2 && Number(o.fillOpacity)===0.85;
+      if(!isGfaBurn) return original.call(this,coords,options);
+
       const point=normalizePoint(coords);
-      const icon=L.divIcon({className:"irrati-gfa-fire-icon",html:"<span style=\"font-size:30px;line-height:32px;text-shadow:0 1px 3px rgba(0,0,0,.55);\">🔥</span>",iconSize:[34,34],iconAnchor:[17,31],popupAnchor:[0,-27]});
+      const icon=L.divIcon({
+        className:"irrati-gfa-fire-icon",
+        html:"<span style=\"font-size:30px;line-height:32px;text-shadow:0 1px 3px rgba(0,0,0,.55);\">🔥</span>",
+        iconSize:[34,34],
+        iconAnchor:[17,31],
+        popupAnchor:[0,-27]
+      });
       return L.marker(point,{icon,zIndexOffset:1000});
     };
+
     L.__irratiGfaBurnHook=true;
     L.__irratiGfaOriginalCircleMarker=original;
-    console.log("IrratiGIS: hook de marcadores 🔥 instalado");
+    console.log("IrratiGIS: hook permanente de marcadores 🔥 instalado");
   }
 
-  function showNativeBurnLayer(){
-    const labels=[...document.querySelectorAll(".leaflet-control-layers-overlays label")];
-    const label=labels.find(el=>/Baimendutako\s+erreketak/i.test(el.textContent||""));
-    const input=label?.querySelector('input[type="checkbox"]');
-    if(input && !input.checked){
-      input.click();
-      console.log("IrratiGIS: capa 🔥 activada automáticamente");
-      return true;
-    }
-    if(input?.checked)return true;
-    return false;
-  }
-
-  async function loadBurnsIntoNativeLayer(){
+  function boot(){
     installNativeBurnMarkerHook();
-    if(typeof window.loadControlledBurns!=="function")return false;
-    L.__irratiGfaBurnLoading=true;
-    try{
-      await window.loadControlledBurns();
-      return true;
-    }catch(e){
-      console.error("IrratiGIS native burn loader",e);
-      return false;
-    }finally{
-      L.__irratiGfaBurnLoading=false;
-    }
   }
 
-  async function diagnostic(){
-    const t=token();if(!t)return;
-    try{
-      const r=await fetch(`${API}/api/active?ts=${Date.now()}`,{cache:"no-store",headers:{Authorization:`Bearer ${t}`}});
-      const d=await r.json();
-      console.log("IrratiGIS quemas diagnóstico",r.status,d);
-      const msg=document.getElementById("message");
-      if(msg&&r.ok)msg.textContent=`GFA: ${Array.isArray(d.fires)?d.fires.length:0} quemas recibidas.`;
-    }catch(e){console.error("IrratiGIS diagnóstico quemas",e)}
+  if(document.readyState==="loading"){
+    document.addEventListener("DOMContentLoaded",boot,{once:true});
+  }else{
+    boot();
   }
 
-  async function boot(){
-    if(!token())return;
-    installNativeBurnMarkerHook();
-    await loadBurnsIntoNativeLayer();
-    await diagnostic();
-    // El layer nativo existe en el mapa pero estaba oculto por defecto.
-    // Activarlo aquí evita depender de acceder al const lexical del index.html.
-    for(let i=0;i<12;i++){
-      if(showNativeBurnLayer())break;
-      await new Promise(r=>setTimeout(r,250));
-    }
-  }
-
-  window.addEventListener("irratiGISAuthenticated",()=>setTimeout(boot,100));
-  window.addEventListener("load",()=>setTimeout(boot,500));
-  let n=0;const timer=setInterval(()=>{if(token()){boot();clearInterval(timer)}if(++n>120)clearInterval(timer)},250);
-  window.IrratiGISFirePopup={loadBurnsIntoLayer:boot,hookLayerControl:boot};
+  window.IrratiGISFirePopup={
+    loadBurnsIntoLayer:boot,
+    hookLayerControl:boot
+  };
 })();
