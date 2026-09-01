@@ -129,9 +129,23 @@ function mapQuema(item) {
   const lat = toNumber(solicitud.latitud ?? item?.latitud ?? item?.latitudea);
   const lon = toNumber(solicitud.longitud ?? item?.longitud ?? item?.longitudea);
 
-  const nombre = ciudadano.nombre || "";
-  const apellidos = ciudadano.apellidos || ciudadano.apellido1 || ciudadano.apellido || "";
+  const nombre = ciudadano.nombre || solicitud.nombreCiudadano || datos.nombreCiudadano || "";
+  const apellidos = ciudadano.apellidos || ciudadano.apellido1 || ciudadano.apellido || solicitud.apellidosCiudadano || datos.apellidosCiudadano || "";
   const titular = [nombre, apellidos].filter(Boolean).join(" ").trim();
+
+  const telefonoPermiso =
+    solicitud.telefono ??
+    ciudadano.telefono ??
+    ciudadano.telefonoMovil ??
+    ciudadano.telefonoFijo ??
+    datos.telefonoPermiso ??
+    null;
+
+  const telefonoQuema =
+    datos.telefonoQuema ??
+    datos.telefonoMovil ??
+    datos.telefonoFijo ??
+    null;
 
   return {
     id: solicitud.codigo ?? item?.codigo ?? null,
@@ -139,7 +153,9 @@ function mapQuema(item) {
     titular,
     nombre: nombre || null,
     apellidos: apellidos || null,
-    telefono: datos.telefonoMovil || datos.telefonoFijo || null,
+    telefono: telefonoQuema || telefonoPermiso || null,
+    telefonoPermiso,
+    telefonoQuema,
     telefonoMovil: datos.telefonoMovil || null,
     telefonoFijo: datos.telefonoFijo || null,
     latitud: lat,
@@ -148,7 +164,7 @@ function mapQuema(item) {
     longitudea: lon,
     direccion: solicitud.direccion ?? item?.direccion ?? null,
     municipio,
-    tipoQuema: material.descripcion || null,
+    tipoQuema: material.descripcion || datos.tipoQuema || null,
     codigoMaterial: material.codigo || null,
     motivo: motivo.descripcion || null,
     fechaInicio: solicitud.fechaInicio ?? item?.fechaInicio ?? null,
@@ -191,23 +207,8 @@ async function getActiveBurns(env) {
     : [];
 
   const query = {
-    dni: null,
-    idsEstado: ["a", "q"],
-    poligono: null,
-    parcela: null,
-    recinto: null,
-    anyo: null,
-    codigo: null,
-    fechaIncio: todayAtMidnight(),
-    fechaFin: todayAtEnd(),
-    tipoSolicitud: "Q",
-    nombreCiudadano: null,
-    transferidaPastos: null,
-    transferidaMontesUtilidadPublica: null,
-    transferidaEspaciosNaturales: null,
-    nombreParcela: null,
+    idsEstado: ["q"],
     idsMunicipio: municipalityIds,
-    numAut: null,
     idGuardaForestal: authorizedUser.id
   };
 
