@@ -3,7 +3,7 @@
   "use strict";
 
   const fire = window.IrratiGISFirePopup = {
-    esc:function(v){return String(v??"-").replace(/[&<>"']/g,function(c){return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]})},
+    esc:function(v){return String(v??"-").replace(/[&<>"']/g,function(c){return ({"&":"&amp;","<":"&lt;","/>":">","\"":"&quot;","'":"&#39;"})[c]})},
     field:function(o,keys){for(const k of keys){const v=o?.[k];if(v!=null&&String(v).trim()!=="")return v}return "-"},
     popup:function(f,lat,lon){
       const e=this.esc,v=this.field;
@@ -14,16 +14,16 @@
   };
 
   function activateFireLayer(){
-    if(!window.L) return false;
     const controls=document.querySelectorAll('.leaflet-control-layers');
     for(const control of controls){
       const labels=control.querySelectorAll('label');
       for(const label of labels){
-        if((label.textContent||'').indexOf('🔥 Baimendutako erreketak')===-1) continue;
+        const text=(label.textContent||'').replace(/\s+/g,' ').trim();
+        if(text.indexOf('Baimendutako erreketak')===-1) continue;
         const input=label.querySelector('input[type="checkbox"]');
         if(input && !input.checked){
           input.click();
-          return true;
+          console.log('IrratiGIS: capa de quemas activada automáticamente');
         }
         return true;
       }
@@ -61,10 +61,14 @@
     const timer=setInterval(()=>{if(hookLeaflet()||++n>40)clearInterval(timer)},250);
   }
 
-  // La capa puede crearse antes de que este módulo se cargue. Reintentamos
-  // durante unos segundos hasta encontrarla y activar su checkbox.
+  // El visor crea la capa durante el arranque. Buscamos el control repetidamente
+  // y la activamos; no depende del número de quemas (4, 67 o las que haya).
   let tries=0;
   const layerTimer=setInterval(()=>{
-    if(activateFireLayer() || ++tries>60) clearInterval(layerTimer);
+    if(activateFireLayer() || ++tries>120) clearInterval(layerTimer);
   },250);
+
+  const observer=new MutationObserver(()=>activateFireLayer());
+  if(document.body) observer.observe(document.body,{childList:true,subtree:true});
+  setTimeout(()=>observer.disconnect(),31000);
 })();
