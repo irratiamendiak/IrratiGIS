@@ -29,7 +29,7 @@
     if (existing) return window.IrratiGISFirePopupReady || Promise.resolve(window.IrratiGISFirePopup);
     const script = document.createElement("script");
     script.id = "irratiFirePopupScript";
-    script.src = "fire-popup.js";
+    script.src = "fire-popup.js?v=20260901-2";
     script.defer = true;
     window.IrratiGISFirePopupReady = new Promise(resolve => {
       script.onload = () => resolve(window.IrratiGISFirePopup);
