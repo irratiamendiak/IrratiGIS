@@ -21,11 +21,13 @@
     if(!t)return;
     loading=true;
     try{
-      const r=await fetch(`${API}/api/firms?days=1`,{headers:{Authorization:`Bearer ${t}`}});
+      const r=await fetch(`${API}/api/firms?days=1`,{headers:{Authorization:`Bearer ${t}`} });
       const raw=await r.text();
-      let d={};
-      try{d=JSON.parse(raw)}catch(_){d={error:raw.slice(0,180)}}
-      if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);
+      let d={};try{d=JSON.parse(raw)}catch(_){d={error:raw.slice(0,180)}}
+      if(!r.ok){
+        const msg=r.status===401?"NASA FIRMS: MAP_KEY baliogabea edo iraungita":(d.error||`HTTP ${r.status}`);
+        throw new Error(msg);
+      }
       firmsLayer.clearLayers();
       for(const f of(d.fires||[])){
         const lat=Number(f.latitude),lon=Number(f.longitude);
@@ -34,12 +36,24 @@
         m.bindPopup(`<strong>🛰️ NASA FIRMS</strong><br>Data: ${f.acqDate||"—"}<br>Ordua: ${f.acqTime||"—"}<br>Satelitea: ${f.satellite||"—"}<br>Konfiantza: ${f.confidence??"—"}<br>FRP: ${f.frp??"—"} MW<br>Koordenatuak: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
         firmsLayer.addLayer(m);
       }
-    }catch(e){console.error("FIRMS:",e)}finally{loading=false;}
+    }catch(e){
+      console.error("FIRMS:",e);
+      firmsLayer.clearLayers();
+      if(leafletMap.hasLayer(firmsLayer))leafletMap.removeLayer(firmsLayer);
+    }finally{loading=false;}
   }
 
   function boot(){
     try{if(typeof window.loadControlledBurns==="function")window.loadControlledBurns()}catch(e){console.error("Erreketa baimenduak:",e)}
-    getLayer();
+    const leafletMap=getMap(),firmsLayer=getLayer();
+    if(!leafletMap||!firmsLayer)return;
+    leafletMap.off("overlayadd",onOverlayAdd);
+    leafletMap.on("overlayadd",onOverlayAdd);
+    if(leafletMap.hasLayer(firmsLayer))load();
+  }
+
+  function onOverlayAdd(e){
+    if(e?.layer===getLayer())load();
   }
 
   window.IrratiGISFirms={
@@ -49,7 +63,7 @@
   };
   window.IrratiGISFirePopup={
     loadBurnsIntoLayer:boot,
-    hookLayerControl:()=>{},
+    hookLayerControl:boot,
     openFirms:()=>window.IrratiGISFirms.open()
   };
   boot();
