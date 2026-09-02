@@ -16,7 +16,7 @@
     if(!statusEl){
       statusEl=document.createElement("div");
       statusEl.id="irratiFirmsStatus";
-      statusEl.style.cssText="position:absolute;left:10px;bottom:10px;z-index:1000;padding:7px 10px;border-radius:9px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.2);font:800 12px system-ui;color:#345243;max-width:360px;pointer-events:none";
+      statusEl.style.cssText="position:absolute;left:10px;bottom:10px;z-index:1000;padding:7px 10px;border-radius:9px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.2);font:800 12px system-ui;color:#345243;max-width:500px;pointer-events:none";
       map.getContainer().appendChild(statusEl);
     }
     statusEl.textContent=text;
@@ -70,11 +70,11 @@
       const r=await fetch(`${API}/api/firms?days=5`,{headers:{Authorization:`Bearer ${t}`}});
       const raw=await r.text();let d={};
       try{d=JSON.parse(raw)}catch(_){throw new Error(`FIRMS erantzuna ez da JSON: ${raw.slice(0,160)}`)}
-      if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);
+      if(!r.ok)throw new Error(`${d.error||`HTTP ${r.status}`}${d.detail?` — ${d.detail}`:""}`);
       const arr=items(d);
       firms.clearLayers();let count=0,bad=0;
       for(const f of arr){
-        const c=coords(f);if(!c){bad++;continue;}
+        const c=coords(f);if(!c){bad++;continue}
         const m=L.circleMarker(c,{radius:8,weight:2,color:"#8b0000",fillColor:"#ff3b00",fillOpacity:.95});
         m.bindPopup(`<strong>🛰️ NASA FIRMS</strong><br>Data: ${f.acqDate||f.acq_date||"—"}<br>Ordua: ${f.acqTime||f.acq_time||"—"}<br>Satelitea: ${f.satellite||f.satellite_name||"—"}<br>Konfiantza: ${f.confidence??f.confidence_pct??"—"}<br>FRP: ${f.frp??"—"} MW<br>Koordenatuak: ${c[0].toFixed(5)}, ${c[1].toFixed(5)}`);
         firms.addLayer(m);count++;
