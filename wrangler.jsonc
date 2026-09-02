@@ -4,6 +4,13 @@
   "main": "worker.js",
   "compatibility_date": "2026-08-28",
   "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "irratigis-erreketak-db",
+      "database_id": "2161041c-0c6e-4f11-ab2e-809e8fc3ba8c"
+    }
+  ],
   "triggers": {
     "crons": ["0 6 * * *"]
   },
