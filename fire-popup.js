@@ -65,21 +65,24 @@
 
   function addTestBurnMarker(){
     const map=getMap();
-    if(!window.L||!map)return false;
+    if(!window.L||!map){
+      console.warn("IrratiGIS: no se pudo obtener el mapa para la prueba 🔥");
+      return false;
+    }
     if(window.__irratiGfaTestBurnMarker){
       try{map.removeLayer(window.__irratiGfaTestBurnMarker);}catch(_){ }
     }
     const lat=43.05,lon=-2.20;
     const icon=L.divIcon({
       className:"irrati-gfa-fire-test-icon",
-      html:"<span style=\"font-size:30px;line-height:32px;text-shadow:0 1px 3px rgba(0,0,0,.55);\">🔥</span>",
-      iconSize:[34,34],iconAnchor:[17,31],popupAnchor:[0,-27]
+      html:"<span style=\"font-size:42px;line-height:44px;text-shadow:0 1px 4px rgba(0,0,0,.65);\">🔥</span>",
+      iconSize:[48,48],iconAnchor:[24,43],popupAnchor:[0,-38]
     });
-    const marker=L.marker([lat,lon],{icon,zIndexOffset:2000});
-    marker.bindPopup("<strong>🧪 PRUEBA — capa de quemas</strong><br><br>No es una quema real.<br>Hoy no hay quemas activas disponibles para mostrar.<br><br>Si ves este marcador, el mapa y la capa 🔥 funcionan correctamente.");
+    const marker=L.marker([lat,lon],{icon,zIndexOffset:999999});
+    marker.bindPopup("<strong>🧪 PRUEBA — capa de quemas</strong><br><br>No es una quema real.<br>Marcador generado localmente, sin depender del backend.<br><br>Si ves este 🔥, la integración con Leaflet funciona.");
     marker.addTo(map);
     window.__irratiGfaTestBurnMarker=marker;
-    console.log("IrratiGIS: marcador 🔥 de prueba añadido");
+    console.log("IrratiGIS: marcador 🔥 de prueba añadido en",lat,lon);
     return true;
   }
 
@@ -87,20 +90,14 @@
     showDiagnostic();
     installNativeBurnMarkerHook();
     const map=getMap();
-    if(map) console.log("IrratiGIS: mapa Leaflet detectado");
-    if(map&&window.IrratiGISAuth&&typeof window.IrratiGISAuth.getToken==="function"){
-      const token=window.IrratiGISAuth.getToken(),api=window.IrratiGISAuth.API;
-      if(token&&api&&!window.__irratiGfaTestBurnChecked){
-        window.__irratiGfaTestBurnChecked=true;
-        fetch(`${api}/api/active`,{headers:{Authorization:`Bearer ${token}`}})
-          .then(r=>r.ok?r.json():Promise.reject(new Error("HTTP "+r.status)))
-          .then(data=>{
-            const fires=Array.isArray(data.fires)?data.fires:[];
-            console.log("IrratiGIS: /api/active devuelve",fires.length,"quemas");
-            if(fires.length===0) addTestBurnMarker();
-          })
-          .catch(err=>console.error("IrratiGIS: prueba de quemas:",err));
-      }
+    if(map){
+      console.log("IrratiGIS: mapa Leaflet detectado; creando marcador 🔥 de prueba");
+      addTestBurnMarker();
+    }else{
+      console.warn("IrratiGIS: mapa aún no disponible; reintentando");
+      setTimeout(()=>addTestBurnMarker(),500);
+      setTimeout(()=>addTestBurnMarker(),1500);
+      setTimeout(()=>addTestBurnMarker(),3000);
     }
   }
 
