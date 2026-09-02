@@ -24,7 +24,20 @@ jobs:
         with:
           node-version: 22
 
+      - name: Patch Worker auth compatibility
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("worker.js")
+          s = p.read_text()
+          old = 'async function authPayload(request,env){const auth=request.headers.get("Authorization")||"",token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";return verifyToken(token,String(env.IRRATIGIS_LOGIN_PASSWORD||""))}'
+          new = 'async function authPayload(request,env){const auth=request.headers.get("Authorization")||"",token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";if(!token)return null;const primary=String(env.IRRATIGIS_LOGIN_PASSWORD||"");const legacy=String(env.GFA_PASSWORD||"");return await verifyToken(token,primary)||((legacy&&legacy!==primary)?await verifyToken(token,legacy):null)}'
+          if old not in s:
+              raise SystemExit("Expected authPayload source was not found; refusing to deploy an unpatched Worker")
+          p.write_text(s.replace(old, new, 1))
+          PY
+
       - name: Deploy Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: npx --yes wrangler@latest deploy --config wrangler.jsonc
+        run: npx --yes wrangler@latest deploy --config wrangler.jsonc --keep-vars
