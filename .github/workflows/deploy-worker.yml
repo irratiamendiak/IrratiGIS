@@ -37,7 +37,7 @@ jobs:
           p.write_text(s.replace(old, new, 1))
           PY
 
-      - name: Patch FIRMS endpoint to be public
+      - name: Make FIRMS endpoint public
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -46,7 +46,7 @@ jobs:
           old = 'if(url.pathname==="/api/firms"&&request.method==="GET"){const payload=await authPayload(request,env);if(!payload)return json({ok:false,error:"Unauthorized"},401,origin);try{'
           new = 'if(url.pathname==="/api/firms"&&request.method==="GET"){try{'
           if old not in s:
-              raise SystemExit("Expected FIRMS endpoint source was not found; refusing to deploy an unpatched Worker")
+              raise SystemExit("Expected FIRMS route was not found; refusing to deploy an unpatched Worker")
           p.write_text(s.replace(old, new, 1))
           PY
 
