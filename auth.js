@@ -10,10 +10,9 @@
       if (document.getElementById("irratiAuthDiagnostic")) return;
       const badge = document.createElement("div");
       badge.id = "irratiAuthDiagnostic";
-      badge.textContent = "🟢 PRUEBA: auth.js cargado v15";
+      badge.textContent = "🟢 PRUEBA: auth.js cargado v16";
       badge.style.cssText = "position:fixed;left:12px;bottom:54px;z-index:2147483646;background:#d1e7dd;color:#0f5132;border:2px solid #198754;border-radius:10px;padding:10px 14px;font:800 14px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 3px 14px rgba(0,0,0,.28);pointer-events:none";
       (document.body || document.documentElement).appendChild(badge);
-      console.log("IrratiGIS: DIAGNÓSTICO auth.js v15 cargado correctamente");
     };
     if (document.body) add(); else document.addEventListener("DOMContentLoaded", add, {once:true});
   }
@@ -60,7 +59,7 @@
     if (existing) return window.IrratiGISFirePopupReady || Promise.resolve(window.IrratiGISFirePopup);
     const script = document.createElement("script");
     script.id = "irratiFirePopupScript";
-    script.src = "fire-popup.js?v=20260902-15";
+    script.src = "fire-popup.js?v=20260902-16";
     script.defer = true;
     window.IrratiGISFirePopupReady = new Promise(resolve => { script.onload = () => resolve(window.IrratiGISFirePopup); script.onerror = () => { console.error("IrratiGIS: no se pudo cargar fire-popup.js"); resolve(null); }; });
     document.head.appendChild(script);
@@ -70,10 +69,7 @@
   function runFirePopupNow() {
     exposeBurnLayerGlobals();
     const module = window.IrratiGISFirePopup;
-    if (module && typeof module.loadBurnsIntoLayer === "function") {
-      module.loadBurnsIntoLayer();
-      return true;
-    }
+    if (module && typeof module.loadBurnsIntoLayer === "function") { module.loadBurnsIntoLayer(); return true; }
     return false;
   }
 
@@ -108,7 +104,7 @@
       login.disabled = true;
       msg.textContent = "Entrando…";
       try {
-        const response = await apiFetch("/api/login", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:user.value.trim(),password:pass.value,remember:remember.checked})});
+        const response = await apiFetch("/api/login", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user:user.value.trim(),password:pass.value,remember:remember.checked})});
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.token) throw new Error(data.error || `HTTP ${response.status}`);
         saveToken(data.token, remember.checked);
