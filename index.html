@@ -641,6 +641,7 @@ const shpWriteAvailable=(typeof shpwrite!=="undefined");
 
 
 const map=L.map("map",{center:[43.05,-2.2],zoom:9});
+window.IrratiGISMap=map;
 
 const osm=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
   maxZoom:20, attribution:"© OpenStreetMap contributors"
