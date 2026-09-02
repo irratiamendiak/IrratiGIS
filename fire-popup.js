@@ -29,43 +29,54 @@
   function installNativeBurnMarkerHook(){
     if(!window.L||typeof L.circleMarker!=="function"||L.__irratiGfaBurnHook)return;
     const original=L.circleMarker;
-
-    // El index.html crea las quemas con exactamente estas opciones.
-    // El hook es permanente para evitar la carrera con waitForIrratiGISAuth():
-    // el cargador nativo puede empezar antes que fire-popup.boot().
     L.circleMarker=function(coords,options){
       const o=options||{};
-      const isGfaBurn = Number(o.radius)===8 && Number(o.weight)===2 && Number(o.fillOpacity)===0.85;
-      if(!isGfaBurn) return original.call(this,coords,options);
-
+      const isGfaBurn=Number(o.radius)===8&&Number(o.weight)===2&&Number(o.fillOpacity)===0.85;
+      if(!isGfaBurn)return original.call(this,coords,options);
       const point=normalizePoint(coords);
       const icon=L.divIcon({
         className:"irrati-gfa-fire-icon",
         html:"<span style=\"font-size:30px;line-height:32px;text-shadow:0 1px 3px rgba(0,0,0,.55);\">🔥</span>",
-        iconSize:[34,34],
-        iconAnchor:[17,31],
-        popupAnchor:[0,-27]
+        iconSize:[34,34],iconAnchor:[17,31],popupAnchor:[0,-27]
       });
       return L.marker(point,{icon,zIndexOffset:1000});
     };
-
     L.__irratiGfaBurnHook=true;
     L.__irratiGfaOriginalCircleMarker=original;
     console.log("IrratiGIS: hook permanente de marcadores 🔥 instalado");
   }
 
+  async function loadAndShowNativeBurns(){
+    installNativeBurnMarkerHook();
+    if(typeof window.loadControlledBurns!=="function"){
+      console.warn("IrratiGIS: loadControlledBurns todavía no está disponible");
+      return;
+    }
+    try{
+      await window.loadControlledBurns();
+      const labels=[...document.querySelectorAll(".leaflet-control-layers-overlays label")];
+      const label=labels.find(el=>/Baimendutako\s+erreketak/i.test(el.textContent||""));
+      const input=label?.querySelector('input[type="checkbox"]');
+      if(input&&!input.checked)input.click();
+      const layer=label?.textContent?.trim()||"🔥 Baimendutako erreketak";
+      console.log("IrratiGIS: quemas cargadas; capa:",layer);
+    }catch(err){
+      console.error("IrratiGIS: error cargando quemas",err);
+    }
+  }
+
   function boot(){
     installNativeBurnMarkerHook();
+    const ready=window.IrratiGISAuthReady;
+    if(ready&&typeof ready.then==="function"){
+      ready.then(()=>setTimeout(loadAndShowNativeBurns,0)).catch(()=>{});
+    }else{
+      window.addEventListener("irratiGISAuthenticated",()=>setTimeout(loadAndShowNativeBurns,0),{once:true});
+    }
   }
 
-  if(document.readyState==="loading"){
-    document.addEventListener("DOMContentLoaded",boot,{once:true});
-  }else{
-    boot();
-  }
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot,{once:true});
+  else boot();
 
-  window.IrratiGISFirePopup={
-    loadBurnsIntoLayer:boot,
-    hookLayerControl:boot
-  };
+  window.IrratiGISFirePopup={loadBurnsIntoLayer:loadAndShowNativeBurns,hookLayerControl:installNativeBurnMarkerHook};
 })();
