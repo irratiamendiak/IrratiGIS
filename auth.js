@@ -10,14 +10,42 @@
       if (document.getElementById("irratiAuthDiagnostic")) return;
       const badge = document.createElement("div");
       badge.id = "irratiAuthDiagnostic";
-      badge.textContent = "🟢 PRUEBA: auth.js cargado";
+      badge.textContent = "🟢 PRUEBA: auth.js cargado v14";
       badge.style.cssText = "position:fixed;left:12px;bottom:54px;z-index:2147483646;background:#d1e7dd;color:#0f5132;border:2px solid #198754;border-radius:10px;padding:10px 14px;font:800 14px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 3px 14px rgba(0,0,0,.28);pointer-events:none";
       (document.body || document.documentElement).appendChild(badge);
-      console.log("IrratiGIS: DIAGNÓSTICO auth.js cargado correctamente");
+      console.log("IrratiGIS: DIAGNÓSTICO auth.js cargado correctamente v14");
     };
     if (document.body) add(); else document.addEventListener("DOMContentLoaded", add, {once:true});
   }
   showAuthDiagnostic();
+
+  function showDirectMapTest() {
+    const add = () => {
+      const mapEl = document.getElementById("map");
+      if (!mapEl) return;
+      let fire = document.getElementById("irratiDirectMapFireTest");
+      if (!fire) {
+        fire = document.createElement("div");
+        fire.id = "irratiDirectMapFireTest";
+        fire.textContent = "🔥";
+        fire.style.cssText = "position:fixed;z-index:2147483647;font-size:72px;line-height:72px;pointer-events:auto;filter:drop-shadow(0 2px 4px rgba(0,0,0,.7));cursor:pointer";
+        fire.title = "PRUEBA QUEMA — clic para confirmar";
+        fire.onclick = () => alert("🧪 PRUEBA QUEMA\n\nEl navegador está dibujando correctamente el marcador de prueba.");
+        document.body.appendChild(fire);
+      }
+      const r = mapEl.getBoundingClientRect();
+      fire.style.left = `${Math.round(r.left + r.width / 2 - 36)}px`;
+      fire.style.top = `${Math.round(r.top + r.height / 2 - 36)}px`;
+      fire.style.display = "block";
+    };
+    if (document.body) add(); else document.addEventListener("DOMContentLoaded", add, {once:true});
+    window.addEventListener("resize", add);
+    window.addEventListener("scroll", add, {passive:true});
+    setTimeout(add,500);
+    setTimeout(add,1500);
+    setTimeout(add,3000);
+  }
+  showDirectMapTest();
 
   function getToken() { return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(SESSION_TOKEN_KEY) || ""; }
   function saveToken(token, remember) { localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(SESSION_TOKEN_KEY); (remember ? localStorage : sessionStorage).setItem(remember ? TOKEN_KEY : SESSION_TOKEN_KEY, token); }
@@ -31,7 +59,7 @@
     if (existing) return window.IrratiGISFirePopupReady || Promise.resolve(window.IrratiGISFirePopup);
     const script = document.createElement("script");
     script.id = "irratiFirePopupScript";
-    script.src = "fire-popup.js?v=20260902-13";
+    script.src = "fire-popup.js?v=20260902-14";
     script.defer = true;
     window.IrratiGISFirePopupReady = new Promise(resolve => { script.onload = () => resolve(window.IrratiGISFirePopup); script.onerror = () => { console.error("IrratiGIS: no se pudo cargar fire-popup.js"); resolve(null); }; });
     document.head.appendChild(script);
@@ -54,5 +82,5 @@
   async function startAuth(){exposeBurnLayerGlobals();await loadFirePopupModule();exposeBurnLayerGlobals();runFirePopupNow();const token=getToken();if(token){try{if(await validateToken(token)){addLogoutButton();return}}catch(_){}clearToken();}showLogin();await new Promise(resolve=>window.addEventListener("irratiGISAuthenticated",resolve,{once:true}));}
   window.IrratiGISAuth={API,TOKEN_KEY,getToken,logout:()=>{clearToken();location.reload();}};
   window.IrratiGISAuthReady=startAuth();
-  window.addEventListener("load",()=>{exposeBurnLayerGlobals();loadFirePopupModule().then(()=>{exposeBurnLayerGlobals();runFirePopupNow();});});
+  window.addEventListener("load",()=>{exposeBurnLayerGlobals();loadFirePopupModule().then(()=>{exposeBurnLayerGlobals();runFirePopupNow();});showDirectMapTest();});
 })();
