@@ -13,7 +13,6 @@
     const main=document.querySelector("main");
     if(!main)return;
 
-    const children=[...main.children];
     const map=document.getElementById("map");
     const mapPanel=map?.closest(".panel");
     const coordPanel=document.querySelector(".coordgrid")?.closest(".panel");
@@ -51,17 +50,13 @@
     trackIntro.className="irrati-section-intro";
     trackIntro.innerHTML=`<div><div class="irrati-section-kicker">HERRAMIENTAS GIS</div><h2>📐 Tracks y herramientas</h2><p>Carga, edición, medición, conversión de coordenadas y exportación.</p></div><span class="irrati-status-badge blue">Espacio de trabajo</span>`;
 
-    const fireMapPanel=mapPanel;
-    fireMapPanel.classList.add("irrati-map-panel");
+    mapPanel.classList.add("irrati-map-panel");
     if(originalMapHead){
       const h2=originalMapHead.querySelector("h2");
       if(h2)h2.textContent="Visor de incendios y quemas";
       const badges=originalMapHead.querySelector("div div");
       if(badges)badges.innerHTML=`<span class="badge">🔥 Quemas controladas</span> <span class="badge blue">🛰️ FIRMS preparado</span>`;
     }
-    if(trackTools)trackTools.dataset.originalSection="tracks";
-    if(trackStats)trackStats.dataset.originalSection="tracks";
-    if(layersNote)layersNote.dataset.originalSection="tracks";
 
     main.innerHTML="";
     main.appendChild(nav);
@@ -71,20 +66,16 @@
     if(footer)main.appendChild(footer);
 
     fireView.appendChild(fireIntro);
-    fireView.appendChild(fireMapPanel);
-
     tracksView.appendChild(trackIntro);
     if(uploadPanel)tracksView.appendChild(uploadPanel);
     if(cards)tracksView.appendChild(cards);
     if(details)tracksView.appendChild(details);
-    tracksView.appendChild(fireMapPanel);
     if(coordPanel)tracksView.appendChild(coordPanel);
 
-    if(trackTools)fireMapPanel.appendChild(trackTools);
-    if(trackStats)fireMapPanel.appendChild(trackStats);
-    if(layersNote)fireMapPanel.appendChild(layersNote);
+    if(trackTools)mapPanel.appendChild(trackTools);
+    if(trackStats)mapPanel.appendChild(trackStats);
+    if(layersNote)mapPanel.appendChild(layersNote);
 
-    // In the fire view, the map is intentionally clean: only the map and layer controls remain.
     const setMapMode=mode=>{
       const fires=mode==="fires";
       fireView.classList.toggle("active",fires);
@@ -97,12 +88,12 @@
       if(trackTools)trackTools.hidden=fires;
       if(trackStats)trackStats.hidden=fires;
       if(layersNote)layersNote.hidden=fires;
+      // The Leaflet map is shared between both sections; moving its panel keeps one map instance.
+      if(fires)fireView.appendChild(mapPanel);
+      else tracksView.appendChild(mapPanel);
       requestAnimationFrame(()=>{
-        if(window.map&&typeof window.map.invalidateSize==="function")window.map.invalidateSize();
-        if(map&&map._leaflet_id){
-          const instance=map;
-          setTimeout(()=>instance._leaflet_id&&instance.invalidateSize(),80);
-        }
+        if(typeof map.invalidateSize==="function")map.invalidateSize();
+        setTimeout(()=>map.invalidateSize(),80);
       });
     };
 
@@ -123,7 +114,6 @@
       .irrati-status-badge{flex:none;padding:6px 9px;border-radius:999px;background:#e8f5ed;color:#176b43;font-size:11px;font-weight:900}
       .irrati-status-badge.blue{background:#e8f2f8;color:#175f8f}
       .irrati-map-panel{margin-bottom:14px}
-      .irrati-map-panel .tracktools,.irrati-map-panel .trackstats,.irrati-map-panel .layers-note{transition:opacity .15s}
       @media(max-width:560px){
         .irrati-app-tabs{top:4px;margin-bottom:9px;padding:4px}
         .irrati-tab{min-height:44px;font-size:13px;padding:8px 7px}
