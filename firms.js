@@ -16,8 +16,25 @@
       div.querySelector(".firms-close").onclick=()=>div.classList.remove("open");
       div.querySelector(".firms-clear").onclick=()=>{layer.clearLayers();status("Garbituta.")};
       div.querySelector(".firms-load").onclick=async()=>{
-        const days=Number(div.querySelector(".firms-days").value||1);status("Detekzioak kargatzen…");
-        try{const r=await fetch(`${API}/api/firms?days=${days}`,{headers:{Authorization:`Bearer ${token()}`}});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);layer.clearLayers();for(const f of (d.fires||[])){if(Number.isFinite(Number(f.latitude))&&Number.isFinite(Number(f.longitude))){const m=L.circleMarker([Number(f.latitude),Number(f.longitude)],{radius:6,weight:2,fillOpacity:.85});m.bindPopup(`<strong>🛰️ NASA FIRMS</strong><br>Data: ${f.acqDate||"—"}<br>Ordua: ${f.acqTime||"—"}<br>Satelitea: ${f.satellite||"—"}<br>Konfiantza: ${f.confidence??"—"}<br>FRP: ${f.frp??"—"} MW<br>Koordenatuak: ${Number(f.latitude).toFixed(5)}, ${Number(f.longitude).toFixed(5)}`);layer.addLayer(m)}}if(!leafletMap.hasLayer(layer))layer.addTo(leafletMap);status(`${(d.fires||[]).length} detekzio.`)}catch(e){status(e.message||"Ezin izan dira FIRMS datuak kargatu.",true)}};
+        const days=Number(div.querySelector(".firms-days").value||1);const t=token();
+        if(!t){status("Saioa ez dago aktibo.",true);return}
+        status("Detekzioak kargatzen…");
+        try{
+          const r=await fetch(`${API}/api/firms?days=${days}`,{headers:{Authorization:`Bearer ${t}`}});
+          const raw=await r.text();let d={};try{d=JSON.parse(raw)}catch(_){d={error:raw.slice(0,180)}}
+          if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);
+          layer.clearLayers();
+          for(const f of (d.fires||[])){
+            if(Number.isFinite(Number(f.latitude))&&Number.isFinite(Number(f.longitude))){
+              const m=L.circleMarker([Number(f.latitude),Number(f.longitude)],{radius:6,weight:2,fillOpacity:.85});
+              m.bindPopup(`<strong>🛰️ NASA FIRMS</strong><br>Data: ${f.acqDate||"—"}<br>Ordua: ${f.acqTime||"—"}<br>Satelitea: ${f.satellite||"—"}<br>Konfiantza: ${f.confidence??"—"}<br>FRP: ${f.frp??"—"} MW<br>Koordenatuak: ${Number(f.latitude).toFixed(5)}, ${Number(f.longitude).toFixed(5)}`);
+              layer.addLayer(m)
+            }
+          }
+          if(!leafletMap.hasLayer(layer))layer.addTo(leafletMap);
+          status(`${(d.fires||[]).length} detekzio.`)
+        }catch(e){console.error("FIRMS:",e);status(e.message||"Ezin izan dira FIRMS datuak kargatu.",true)}
+      };
       function status(t,error=false){const s=div.querySelector(".firms-status");s.textContent=t;s.classList.toggle("error",error)}
       return div;
     };
