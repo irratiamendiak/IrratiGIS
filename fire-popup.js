@@ -2,6 +2,16 @@
 (function(){
   "use strict";
 
+  function showDiagnostic(){
+    if(document.getElementById("irratiFireDiagnostic")) return;
+    const badge=document.createElement("div");
+    badge.id="irratiFireDiagnostic";
+    badge.textContent="🔥 PRUEBA: fire-popup.js cargado";
+    badge.style.cssText="position:fixed;left:12px;bottom:12px;z-index:2147483647;background:#fff3cd;color:#664d03;border:2px solid #ffca2c;border-radius:10px;padding:10px 14px;font:800 14px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 3px 14px rgba(0,0,0,.28);pointer-events:none";
+    document.body.appendChild(badge);
+    console.log("IrratiGIS: DIAGNÓSTICO fire-popup.js cargado correctamente");
+  }
+
   function utm30ToLatLon(easting,northing){
     const a=6378137,eccSquared=0.00669438002290,k0=0.9996;
     const eccPrimeSquared=eccSquared/(1-eccSquared);
@@ -29,23 +39,18 @@
   function installNativeBurnMarkerHook(){
     if(!window.L||typeof L.circleMarker!=="function"||L.__irratiGfaBurnHook)return;
     const original=L.circleMarker;
-
     L.circleMarker=function(coords,options){
       const o=options||{};
-      const isGfaBurn = Number(o.radius)===8 && Number(o.weight)===2 && Number(o.fillOpacity)===0.85;
+      const isGfaBurn=Number(o.radius)===8&&Number(o.weight)===2&&Number(o.fillOpacity)===0.85;
       if(!isGfaBurn) return original.call(this,coords,options);
-
       const point=normalizePoint(coords);
       const icon=L.divIcon({
         className:"irrati-gfa-fire-icon",
         html:"<span style=\"font-size:30px;line-height:32px;text-shadow:0 1px 3px rgba(0,0,0,.55);\">🔥</span>",
-        iconSize:[34,34],
-        iconAnchor:[17,31],
-        popupAnchor:[0,-27]
+        iconSize:[34,34],iconAnchor:[17,31],popupAnchor:[0,-27]
       });
       return L.marker(point,{icon,zIndexOffset:1000});
     };
-
     L.__irratiGfaBurnHook=true;
     L.__irratiGfaOriginalCircleMarker=original;
     console.log("IrratiGIS: hook permanente de marcadores 🔥 instalado");
@@ -57,28 +62,21 @@
     const icon=L.divIcon({
       className:"irrati-gfa-fire-test-icon",
       html:"<span style=\"font-size:30px;line-height:32px;text-shadow:0 1px 3px rgba(0,0,0,.55);\">🔥</span>",
-      iconSize:[34,34],
-      iconAnchor:[17,31],
-      popupAnchor:[0,-27]
+      iconSize:[34,34],iconAnchor:[17,31],popupAnchor:[0,-27]
     });
     const marker=L.marker([lat,lon],{icon,zIndexOffset:2000});
-    marker.bindPopup(
-      "<strong>🧪 PRUEBA — capa de quemas</strong><br><br>"+
-      "No es una quema real.<br>"+
-      "El backend no ha devuelto quemas activas hoy.<br><br>"+
-      "Si ves este marcador, la capa 🔥 funciona correctamente."
-    );
+    marker.bindPopup("<strong>🧪 PRUEBA — capa de quemas</strong><br><br>No es una quema real.<br>El backend no ha devuelto quemas activas hoy.<br><br>Si ves este marcador, la capa 🔥 funciona correctamente.");
     marker.addTo(window.map);
     window.__irratiGfaTestBurnMarker=marker;
     return true;
   }
 
   function boot(){
+    showDiagnostic();
     installNativeBurnMarkerHook();
-    if(window.map && window.IrratiGISAuth && typeof window.IrratiGISAuth.getToken==="function"){
-      const token=window.IrratiGISAuth.getToken();
-      const api=window.IrratiGISAuth.API;
-      if(token && api && !window.__irratiGfaTestBurnChecked){
+    if(window.map&&window.IrratiGISAuth&&typeof window.IrratiGISAuth.getToken==="function"){
+      const token=window.IrratiGISAuth.getToken(),api=window.IrratiGISAuth.API;
+      if(token&&api&&!window.__irratiGfaTestBurnChecked){
         window.__irratiGfaTestBurnChecked=true;
         fetch(`${api}/api/active`,{headers:{Authorization:`Bearer ${token}`}})
           .then(r=>r.ok?r.json():Promise.reject(new Error("HTTP "+r.status)))
@@ -92,14 +90,8 @@
     }
   }
 
-  if(document.readyState==="loading"){
-    document.addEventListener("DOMContentLoaded",boot,{once:true});
-  }else{
-    boot();
-  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot,{once:true});
+  else boot();
 
-  window.IrratiGISFirePopup={
-    loadBurnsIntoLayer:boot,
-    hookLayerControl:boot
-  };
+  window.IrratiGISFirePopup={loadBurnsIntoLayer:boot,hookLayerControl:boot};
 })();
