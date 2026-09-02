@@ -37,6 +37,19 @@ jobs:
           p.write_text(s.replace(old, new, 1))
           PY
 
+      - name: Patch FIRMS endpoint to be public
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("worker.js")
+          s = p.read_text()
+          old = 'if(url.pathname==="/api/firms"&&request.method==="GET"){const payload=await authPayload(request,env);if(!payload)return json({ok:false,error:"Unauthorized"},401,origin);try{'
+          new = 'if(url.pathname==="/api/firms"&&request.method==="GET"){try{'
+          if old not in s:
+              raise SystemExit("Expected FIRMS endpoint source was not found; refusing to deploy an unpatched Worker")
+          p.write_text(s.replace(old, new, 1))
+          PY
+
       - name: Deploy Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
