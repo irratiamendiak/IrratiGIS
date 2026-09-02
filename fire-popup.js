@@ -13,6 +13,21 @@
     return layer;
   }
 
+  function registerLayerControl(){
+    const leafletMap=getMap(),firmsLayer=getLayer();
+    if(!leafletMap||!firmsLayer||typeof L==="undefined")return false;
+    const controls=Array.isArray(leafletMap._controls)?leafletMap._controls:[];
+    let registered=false;
+    for(const control of controls){
+      if(control instanceof L.Control.Layers&&typeof control.addOverlay==="function"){
+        const already=control._layers?.some(x=>x.layer===firmsLayer);
+        if(!already)control.addOverlay(firmsLayer,"🚨 NASA FIRMS");
+        registered=true;
+      }
+    }
+    return registered;
+  }
+
   async function load(){
     if(loading)return;
     const leafletMap=getMap(),firmsLayer=getLayer();
@@ -47,6 +62,7 @@
     try{if(typeof window.loadControlledBurns==="function")window.loadControlledBurns()}catch(e){console.error("Erreketa baimenduak:",e)}
     const leafletMap=getMap(),firmsLayer=getLayer();
     if(!leafletMap||!firmsLayer)return;
+    registerLayerControl();
     leafletMap.off("overlayadd",onOverlayAdd);
     leafletMap.on("overlayadd",onOverlayAdd);
     if(leafletMap.hasLayer(firmsLayer))load();
@@ -59,7 +75,8 @@
   window.IrratiGISFirms={
     get layer(){return getLayer()},
     load,
-    open:()=>{const leafletMap=getMap(),firmsLayer=getLayer();if(leafletMap&&firmsLayer){firmsLayer.addTo(leafletMap);load();}}
+    registerLayerControl,
+    open:()=>{const leafletMap=getMap(),firmsLayer=getLayer();if(leafletMap&&firmsLayer){registerLayerControl();firmsLayer.addTo(leafletMap);load();}}
   };
   window.IrratiGISFirePopup={
     loadBurnsIntoLayer:boot,
