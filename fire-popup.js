@@ -1,188 +1,74 @@
 (()=>{
   "use strict";
   const API="https://irratigis-erreketak.kulixka-mendiak.workers.dev";
-  let layer=null;
-  let loading=false;
-  let timer=null;
-  let control=null;
-
+  let layer=null,loading=false,rowBound=false;
   const token=()=>window.IrratiGISAuth?.getToken?.()||"";
-
-  function getMap(){
-    if(window.IrratiGISMap) return window.IrratiGISMap;
-    if(typeof L==="undefined")return null;
-    const el=document.getElementById("map");
-    if(!el)return null;
-    try{
-      const events=el._leaflet_events||{};
-      for(const key of Object.keys(events)){
-        const entry=events[key],ctx=entry&&entry.ctx;
-        if(ctx&&typeof ctx.getContainer==="function"&&ctx.getContainer()===el){
-          window.IrratiGISMap=ctx;
-          return ctx;
-        }
-      }
-    }catch(e){console.warn("IrratiGIS: ezin izan da Leaflet mapa berreskuratu.",e)}
-    return null;
-  }
-
+  const getMap=()=>window.IrratiGISMap||null;
   function getLayer(){
     if(!layer)layer=window.IrratiGISFirmsLayer||null;
     if(!layer&&typeof L!=="undefined")layer=L.featureGroup();
     if(layer)window.IrratiGISFirmsLayer=layer;
     return layer;
   }
-
-  // Aurretik sortutako Leaflet Control.Layers objektua aurkitu.
-  // Leaflet-ek zoomend listener-aren ctx gisa kontrola gordetzen du.
-  function getLayerControl(){
-    if(control&&control._map)return control;
-    const m=getMap();
-    if(!m)return null;
-    try{
-      const events=m._events||{};
-      const zoom=events.zoomend;
-      const list=Array.isArray(zoom)?zoom:[zoom];
-      for(const entry of list){
-        const ctx=entry&&entry.ctx;
-        if(ctx&&typeof ctx.addOverlay==="function"&&ctx._overlaysList&&ctx._layers){
-          control=ctx;
-          return ctx;
-        }
-      }
-    }catch(e){console.warn("IrratiGIS: geruzen kontrola ezin izan da aurkitu.",e)}
-    return null;
-  }
-
-  function installNativeOverlay(){
-    const m=getMap(),l=getLayer(),c=getLayerControl();
-    if(!m||!l||!c)return false;
-
-    const exists=c._layers?.some(x=>x&&x.layer===l);
-    if(!exists)c.addOverlay(l,"🚨 NASA FIRMS");
-    return true;
-  }
-
-  function addFallbackRow(){
-    const m=getMap(),l=getLayer();
-    if(!m||!l||typeof L==="undefined")return false;
-    const lists=document.querySelectorAll(".leaflet-control-layers-overlays");
-    if(!lists.length)return false;
-    let added=false;
-    lists.forEach(list=>{
-      if(list.querySelector("[data-irrati-firms-row]"))return;
-      const row=document.createElement("label");
+  function ensureRow(){
+    const map=getMap(),firms=getLayer();
+    if(!map||!firms)return null;
+    const list=document.querySelector(".leaflet-control-layers-overlays");
+    if(!list)return null;
+    const rows=[...list.querySelectorAll("[data-irrati-firms-row]")];
+    rows.slice(1).forEach(r=>r.remove());
+    let row=list.querySelector(".irrati-firms-layer-row")||list.querySelector("[data-irrati-firms-row]");
+    if(!row){
+      row=document.createElement("label");
+      row.className="irrati-firms-layer-row";
       row.setAttribute("data-irrati-firms-row","1");
-      row.style.cssText="display:block;line-height:24px;white-space:nowrap;";
+      row.style.display="block";
       const input=document.createElement("input");
-      input.type="checkbox";
-      input.className="leaflet-control-layers-selector";
-      input.checked=m.hasLayer(l);
-      input.addEventListener("change",()=>{
-        if(input.checked){l.addTo(m);load()}else m.removeLayer(l);
-      });
-      const span=document.createElement("span");
-      span.textContent=" 🚨 NASA FIRMS";
-      row.append(input,span);
+      input.type="checkbox";input.className="leaflet-control-layers-selector";
+      row.appendChild(input);
+      const span=document.createElement("span");span.textContent=" 🚨 NASA FIRMS";row.appendChild(span);
       list.appendChild(row);
-      added=true;
-    });
-    return added;
+    }
+    const input=row.querySelector("input");
+    if(input&&!rowBound){
+      rowBound=true;
+      input.addEventListener("change",()=>{if(input.checked){firms.addTo(map);load()}else map.removeLayer(firms)});
+    }
+    if(input)input.checked=map.hasLayer(firms);
+    return input;
   }
-
-  function registerLayerControl(){
-    if(installNativeOverlay())return true;
-    addFallbackRow();
-    [100,300,700,1500,3000].forEach(ms=>setTimeout(()=>{
-      if(!installNativeOverlay())addFallbackRow();
-    },ms));
-    if(!timer)timer=setInterval(()=>{
-      if(installNativeOverlay()){
-        clearInterval(timer);
-        timer=null;
-      }else addFallbackRow();
-    },1000);
-    return true;
+  function coords(f){
+    let lat=f?.latitude??f?.lat??f?.y,lon=f?.longitude??f?.lon??f?.lng??f?.x;
+    if((lat==null||lon==null)&&Array.isArray(f?.geometry?.coordinates))[lon,lat]=f.geometry.coordinates;
+    lat=Number(lat);lon=Number(lon);
+    return Number.isFinite(lat)&&Number.isFinite(lon)?[lat,lon]:null;
   }
-
+  function items(d){return Array.isArray(d?.fires)?d.fires:Array.isArray(d?.detections)?d.detections:Array.isArray(d?.data)?d.data:Array.isArray(d?.features)?d.features:[]}
   async function load(){
     if(loading)return;
-    const m=getMap(),l=getLayer();
-    if(!m||typeof L==="undefined"||!l)return;
-    const t=token();
-    if(!t)return;
+    const map=getMap(),firms=getLayer(),t=token();
+    if(!map||!firms||typeof L==="undefined"||!t)return;
     loading=true;
     try{
-      const r=await fetch(`${API}/api/firms?days=1`,{headers:{Authorization:`Bearer ${t}`}});
-      const raw=await r.text();
-      let d={};
-      try{d=JSON.parse(raw)}catch(_){d={error:raw.slice(0,180)}}
+      const r=await fetch(`${API}/api/firms?days=5`,{headers:{Authorization:`Bearer ${t}`}});
+      const raw=await r.text();let d={};
+      try{d=JSON.parse(raw)}catch(_){throw new Error(`FIRMS erantzuna ez da JSON: ${raw.slice(0,160)}`)}
       if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);
-
-      l.clearLayers();
-      for(const f of(d.fires||[])){
-        const lat=Number(f.latitude),lon=Number(f.longitude);
-        if(!Number.isFinite(lat)||!Number.isFinite(lon))continue;
-        const marker=L.circleMarker([lat,lon],{radius:6,weight:2,fillOpacity:.85});
-        marker.bindPopup(
-          `<strong>🛰️ NASA FIRMS</strong><br>`+
-          `Data: ${f.acqDate||"—"}<br>`+
-          `Ordua: ${f.acqTime||"—"}<br>`+
-          `Satelitea: ${f.satellite||"—"}<br>`+
-          `Konfiantza: ${f.confidence??"—"}<br>`+
-          `FRP: ${f.frp??"—"} MW<br>`+
-          `Koordenatuak: ${lat.toFixed(5)}, ${lon.toFixed(5)}`
-        );
-        l.addLayer(marker);
+      firms.clearLayers();let count=0;
+      for(const f of items(d)){
+        const c=coords(f);if(!c)continue;
+        const m=L.circleMarker(c,{radius:7,weight:2,color:"#b30000",fillColor:"#ff3b00",fillOpacity:.9});
+        m.bindPopup(`<strong>🛰️ NASA FIRMS</strong><br>Data: ${f.acqDate||f.acq_date||"—"}<br>Ordua: ${f.acqTime||f.acq_time||"—"}<br>Satelitea: ${f.satellite||f.satellite_name||"—"}<br>Konfiantza: ${f.confidence??f.confidence_pct??"—"}<br>FRP: ${f.frp??"—"} MW<br>Koordenatuak: ${c[0].toFixed(5)}, ${c[1].toFixed(5)}`);
+        firms.addLayer(m);count++;
       }
-
-      if(!m.hasLayer(l))l.addTo(m);
-      registerLayerControl();
-    }catch(e){
-      console.error("FIRMS:",e);
-      l.clearLayers();
-    }finally{loading=false}
+      if(count>0)firms.addTo(map);
+      const input=ensureRow();if(input)input.checked=count>0;
+      console.info(`IrratiGIS FIRMS: ${count} detekzio`,d);
+    }catch(e){console.error("IrratiGIS FIRMS:",e);firms.clearLayers()}
+    finally{loading=false}
   }
-
-  function onOverlayAdd(e){
-    if(e?.layer===getLayer())load();
-  }
-  function onOverlayRemove(e){
-    if(e?.layer===getLayer()){
-      document.querySelectorAll("[data-irrati-firms-row] input").forEach(i=>i.checked=false);
-    }
-  }
-
-  function boot(){
-    const m=getMap();
-    if(!m)return;
-    getLayer();
-    registerLayerControl();
-    m.off("overlayadd",onOverlayAdd);
-    m.on("overlayadd",onOverlayAdd);
-    m.off("overlayremove",onOverlayRemove);
-    m.on("overlayremove",onOverlayRemove);
-  }
-
-  window.IrratiGISFirms={
-    get layer(){return getLayer()},
-    load,
-    registerLayerControl,
-    open:()=>{
-      const m=getMap(),l=getLayer();
-      if(m&&l){
-        registerLayerControl();
-        l.addTo(m);
-        load();
-      }
-    }
-  };
-
-  window.IrratiGISFirePopup={
-    loadBurnsIntoLayer:boot,
-    hookLayerControl:boot,
-    openFirms:()=>window.IrratiGISFirms.open()
-  };
-
+  function boot(){const map=getMap(),firms=getLayer();if(!map||!firms)return;ensureRow();setTimeout(ensureRow,500);setTimeout(load,1200)}
+  window.IrratiGISFirms={get layer(){return getLayer()},load,registerLayerControl:ensureRow,open:()=>{const m=getMap(),l=getLayer();if(m&&l){ensureRow();l.addTo(m);load()}}};
+  window.IrratiGISFirePopup={loadBurnsIntoLayer:boot,hookLayerControl:boot,openFirms:()=>window.IrratiGISFirms.open()};
   boot();
 })();
