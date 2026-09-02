@@ -8,6 +8,141 @@
   function clearToken(){localStorage.removeItem(TOKEN_KEY);sessionStorage.removeItem(SESSION_TOKEN_KEY);}
   async function apiFetch(path,options={}){return fetch(`${API}${path}`,options);}
 
+  function setupAppArchitecture(){
+    if(document.getElementById("irratiAppTabs"))return;
+    const main=document.querySelector("main");
+    if(!main)return;
+
+    const children=[...main.children];
+    const map=document.getElementById("map");
+    const mapPanel=map?.closest(".panel");
+    const coordPanel=document.querySelector(".coordgrid")?.closest(".panel");
+    const uploadPanel=main.querySelector(".upload")?.closest(".panel");
+    const cards=main.querySelector(".cards");
+    const details=main.querySelector(".file-details-panel");
+    const printReport=document.getElementById("printReport");
+    const footer=main.querySelector(".footer");
+    if(!mapPanel)return;
+
+    const originalMapHead=mapPanel.querySelector(".maphead");
+    const trackTools=mapPanel.querySelector(".tracktools");
+    const trackStats=mapPanel.querySelector(".trackstats");
+    const layersNote=mapPanel.querySelector(".layers-note");
+
+    const nav=document.createElement("nav");
+    nav.id="irratiAppTabs";
+    nav.className="irrati-app-tabs";
+    nav.setAttribute("aria-label","Secciones de IrratiGIS");
+    nav.innerHTML=`<button type="button" class="irrati-tab active" data-view="fires" aria-selected="true">🔥 Incendios y quemas</button><button type="button" class="irrati-tab" data-view="tracks" aria-selected="false">📐 Tracks y herramientas</button>`;
+
+    const fireView=document.createElement("section");
+    fireView.id="irratiFireView";
+    fireView.className="irrati-view active";
+
+    const tracksView=document.createElement("section");
+    tracksView.id="irratiTracksView";
+    tracksView.className="irrati-view";
+
+    const fireIntro=document.createElement("div");
+    fireIntro.className="irrati-section-intro";
+    fireIntro.innerHTML=`<div><div class="irrati-section-kicker">VIGILANCIA</div><h2>🔥 Incendios y quemas</h2><p>Quemas controladas autorizadas y, próximamente, detecciones de fuego de NASA FIRMS.</p></div><span class="irrati-status-badge">Visor operativo</span>`;
+
+    const trackIntro=document.createElement("div");
+    trackIntro.className="irrati-section-intro";
+    trackIntro.innerHTML=`<div><div class="irrati-section-kicker">HERRAMIENTAS GIS</div><h2>📐 Tracks y herramientas</h2><p>Carga, edición, medición, conversión de coordenadas y exportación.</p></div><span class="irrati-status-badge blue">Espacio de trabajo</span>`;
+
+    const fireMapPanel=mapPanel;
+    fireMapPanel.classList.add("irrati-map-panel");
+    if(originalMapHead){
+      const h2=originalMapHead.querySelector("h2");
+      if(h2)h2.textContent="Visor de incendios y quemas";
+      const badges=originalMapHead.querySelector("div div");
+      if(badges)badges.innerHTML=`<span class="badge">🔥 Quemas controladas</span> <span class="badge blue">🛰️ FIRMS preparado</span>`;
+    }
+    if(trackTools)trackTools.dataset.originalSection="tracks";
+    if(trackStats)trackStats.dataset.originalSection="tracks";
+    if(layersNote)layersNote.dataset.originalSection="tracks";
+
+    main.innerHTML="";
+    main.appendChild(nav);
+    main.appendChild(fireView);
+    main.appendChild(tracksView);
+    if(printReport)main.appendChild(printReport);
+    if(footer)main.appendChild(footer);
+
+    fireView.appendChild(fireIntro);
+    fireView.appendChild(fireMapPanel);
+
+    tracksView.appendChild(trackIntro);
+    if(uploadPanel)tracksView.appendChild(uploadPanel);
+    if(cards)tracksView.appendChild(cards);
+    if(details)tracksView.appendChild(details);
+    tracksView.appendChild(fireMapPanel);
+    if(coordPanel)tracksView.appendChild(coordPanel);
+
+    if(trackTools)fireMapPanel.appendChild(trackTools);
+    if(trackStats)fireMapPanel.appendChild(trackStats);
+    if(layersNote)fireMapPanel.appendChild(layersNote);
+
+    // In the fire view, the map is intentionally clean: only the map and layer controls remain.
+    const setMapMode=mode=>{
+      const fires=mode==="fires";
+      fireView.classList.toggle("active",fires);
+      tracksView.classList.toggle("active",!fires);
+      nav.querySelectorAll(".irrati-tab").forEach(b=>{
+        const active=b.dataset.view===mode;
+        b.classList.toggle("active",active);
+        b.setAttribute("aria-selected",active?"true":"false");
+      });
+      if(trackTools)trackTools.hidden=fires;
+      if(trackStats)trackStats.hidden=fires;
+      if(layersNote)layersNote.hidden=fires;
+      requestAnimationFrame(()=>{
+        if(window.map&&typeof window.map.invalidateSize==="function")window.map.invalidateSize();
+        if(map&&map._leaflet_id){
+          const instance=map;
+          setTimeout(()=>instance._leaflet_id&&instance.invalidateSize(),80);
+        }
+      });
+    };
+
+    nav.querySelectorAll(".irrati-tab").forEach(b=>b.addEventListener("click",()=>setMapMode(b.dataset.view)));
+    setMapMode("fires");
+
+    const style=document.createElement("style");
+    style.textContent=`
+      .irrati-app-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 14px;padding:5px;background:#e8efeb;border:1px solid var(--line);border-radius:15px;position:sticky;top:8px;z-index:1000;box-shadow:0 4px 16px rgba(0,0,0,.08)}
+      .irrati-tab{min-height:48px;border:0;border-radius:11px;background:transparent;color:#345243;font:800 15px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;cursor:pointer;padding:10px 14px}
+      .irrati-tab.active{background:#fff;color:#176b43;box-shadow:0 2px 8px rgba(0,0,0,.10)}
+      .irrati-view{display:none}
+      .irrati-view.active{display:block}
+      .irrati-section-intro{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:12px;padding:14px 16px;background:#fff;border:1px solid var(--line);border-radius:15px;box-shadow:0 4px 16px rgba(0,0,0,.04)}
+      .irrati-section-intro h2{margin:1px 0 4px;font-size:22px}
+      .irrati-section-intro p{margin:0;color:var(--muted);font-size:13px}
+      .irrati-section-kicker{font-size:10px;font-weight:900;letter-spacing:.14em;color:var(--green)}
+      .irrati-status-badge{flex:none;padding:6px 9px;border-radius:999px;background:#e8f5ed;color:#176b43;font-size:11px;font-weight:900}
+      .irrati-status-badge.blue{background:#e8f2f8;color:#175f8f}
+      .irrati-map-panel{margin-bottom:14px}
+      .irrati-map-panel .tracktools,.irrati-map-panel .trackstats,.irrati-map-panel .layers-note{transition:opacity .15s}
+      @media(max-width:560px){
+        .irrati-app-tabs{top:4px;margin-bottom:9px;padding:4px}
+        .irrati-tab{min-height:44px;font-size:13px;padding:8px 7px}
+        .irrati-section-intro{padding:11px 12px;border-radius:12px;align-items:flex-start}
+        .irrati-section-intro h2{font-size:18px}
+        .irrati-section-intro p{font-size:12px}
+        .irrati-status-badge{display:none}
+      }
+    `;
+    document.head.appendChild(style);
+
+    const title=document.querySelector("header h1");
+    const subtitle=document.querySelector("header p");
+    const eyebrow=document.querySelector("header .eyebrow");
+    if(title)title.textContent="IrratiGIS";
+    if(eyebrow)eyebrow.textContent="SISTEMA GIS";
+    if(subtitle)subtitle.textContent="Incendios · Quemas controladas · Tracks · Herramientas GIS";
+  }
+
   function loadFirePopupModule(){
     const existing=document.getElementById("irratiFirePopupScript");
     if(existing)return window.IrratiGISFirePopupReady||Promise.resolve(window.IrratiGISFirePopup);
@@ -47,7 +182,7 @@
   }
 
   async function validateToken(token){const r=await apiFetch("/api/me",{headers:{Authorization:`Bearer ${token}`}});if(!r.ok)return false;const d=await r.json().catch(()=>({}));return !!d.user;}
-  async function startAuth(){const token=getToken();if(token){try{if(await validateToken(token)){addLogoutButton();runRealBurns();return;}}catch(_){}clearToken();}showLogin();}
+  async function startAuth(){setupAppArchitecture();const token=getToken();if(token){try{if(await validateToken(token)){addLogoutButton();runRealBurns();return;}}catch(_){}clearToken();}showLogin();}
   window.IrratiGISAuth={API,TOKEN_KEY,getToken,logout:()=>{clearToken();location.reload();}};
   window.IrratiGISAuthReady=startAuth();
 })();
