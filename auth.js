@@ -12,6 +12,11 @@
     if(!leafletMap||typeof L==="undefined"||!L.Control?.Layers)return false;
     if(!window.IrratiGISFirmsLayer)window.IrratiGISFirmsLayer=L.layerGroup();
     const firmsLayer=window.IrratiGISFirmsLayer;
+    const addToControl=control=>{
+      if(!control||!control._layers)return;
+      if(!control._layers.some(x=>x.layer===firmsLayer))control._layers.push({layer:firmsLayer,name:"🚨 NASA FIRMS",overlay:true});
+      if(typeof control._update==="function")control._update();
+    };
     if(!L.Control.Layers.prototype.__irratiFirmsPatched){
       const originalUpdate=L.Control.Layers.prototype._update;
       L.Control.Layers.prototype._update=function(){
@@ -20,6 +25,8 @@
       };
       L.Control.Layers.prototype.__irratiFirmsPatched=true;
     }
+    if(Array.isArray(leafletMap._controls))leafletMap._controls.forEach(addToControl);
+    else if(leafletMap._controlCorners)Object.values(leafletMap._controlCorners).forEach(corner=>corner?.parentElement&&corner.parentElement.querySelectorAll?.(".leaflet-control-layers").forEach(()=>{}));
     document.getElementById("irratiFirmsControl")?.remove();
     document.querySelectorAll(".irrati-firms-layer-row").forEach(el=>el.remove());
     return true;
