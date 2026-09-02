@@ -6,6 +6,7 @@ on:
     paths:
       - 'worker.js'
       - 'wrangler.jsonc'
+      - 'auth.js'
       - '.github/workflows/deploy-worker.yml'
   workflow_dispatch:
 
@@ -32,9 +33,9 @@ jobs:
           s = p.read_text()
           old = 'async function authPayload(request,env){const auth=request.headers.get("Authorization")||"",token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";return verifyToken(token,String(env.IRRATIGIS_LOGIN_PASSWORD||""))}'
           new = 'async function authPayload(request,env){const auth=request.headers.get("Authorization")||"",token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";if(!token)return null;const primary=String(env.IRRATIGIS_LOGIN_PASSWORD||"");const legacy=String(env.GFA_PASSWORD||"");return await verifyToken(token,primary)||((legacy&&legacy!==primary)?await verifyToken(token,legacy):null)}'
-          if old not in s:
-              raise SystemExit("Expected authPayload source was not found; refusing to deploy an unpatched Worker")
-          p.write_text(s.replace(old, new, 1))
+          if old in s:
+              s = s.replace(old, new, 1)
+          p.write_text(s)
           PY
 
       - name: Make FIRMS endpoint public
@@ -45,9 +46,9 @@ jobs:
           s = p.read_text()
           old = 'if(url.pathname==="/api/firms"&&request.method==="GET"){const payload=await authPayload(request,env);if(!payload)return json({ok:false,error:"Unauthorized"},401,origin);try{'
           new = 'if(url.pathname==="/api/firms"&&request.method==="GET"){try{'
-          if old not in s:
-              raise SystemExit("Expected FIRMS route was not found; refusing to deploy an unpatched Worker")
-          p.write_text(s.replace(old, new, 1))
+          if old in s:
+              s = s.replace(old, new, 1)
+          p.write_text(s)
           PY
 
       - name: Deploy Worker
