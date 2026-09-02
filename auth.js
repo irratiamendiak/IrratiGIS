@@ -5,6 +5,20 @@
   const TOKEN_KEY = "irratigis_session_token";
   const SESSION_TOKEN_KEY = "irratigis_session_token_temp";
 
+  function showAuthDiagnostic() {
+    const add = () => {
+      if (document.getElementById("irratiAuthDiagnostic")) return;
+      const badge = document.createElement("div");
+      badge.id = "irratiAuthDiagnostic";
+      badge.textContent = "🟢 PRUEBA: auth.js cargado";
+      badge.style.cssText = "position:fixed;left:12px;bottom:54px;z-index:2147483646;background:#d1e7dd;color:#0f5132;border:2px solid #198754;border-radius:10px;padding:10px 14px;font:800 14px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 3px 14px rgba(0,0,0,.28);pointer-events:none";
+      (document.body || document.documentElement).appendChild(badge);
+      console.log("IrratiGIS: DIAGNÓSTICO auth.js cargado correctamente");
+    };
+    if (document.body) add(); else document.addEventListener("DOMContentLoaded", add, {once:true});
+  }
+  showAuthDiagnostic();
+
   function getToken() { return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(SESSION_TOKEN_KEY) || ""; }
   function saveToken(token, remember) { localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(SESSION_TOKEN_KEY); (remember ? localStorage : sessionStorage).setItem(remember ? TOKEN_KEY : SESSION_TOKEN_KEY, token); }
   function clearToken() { localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(SESSION_TOKEN_KEY); }
@@ -17,7 +31,7 @@
     if (existing) return window.IrratiGISFirePopupReady || Promise.resolve(window.IrratiGISFirePopup);
     const script = document.createElement("script");
     script.id = "irratiFirePopupScript";
-    script.src = "fire-popup.js?v=20260902-8";
+    script.src = "fire-popup.js?v=20260902-9";
     script.defer = true;
     window.IrratiGISFirePopupReady = new Promise(resolve => { script.onload = () => resolve(window.IrratiGISFirePopup); script.onerror = () => { console.error("IrratiGIS: no se pudo cargar fire-popup.js"); resolve(null); }; });
     document.head.appendChild(script);
