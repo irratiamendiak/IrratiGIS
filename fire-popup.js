@@ -1,7 +1,7 @@
 (()=>{
   "use strict";
   const API="https://irratigis-erreketak.kulixka-mendiak.workers.dev";
-  let layer=null,loading=false,rowBound=false;
+  let layer=null,loading=false,rowBound=false,statusEl=null;
   const token=()=>window.IrratiGISAuth?.getToken?.()||"";
   const getMap=()=>window.IrratiGISMap||null;
   function getLayer(){
@@ -9,6 +9,19 @@
     if(!layer&&typeof L!=="undefined")layer=L.featureGroup();
     if(layer)window.IrratiGISFirmsLayer=layer;
     return layer;
+  }
+  function status(text,type="info"){
+    const map=getMap();
+    if(!map)return;
+    if(!statusEl){
+      statusEl=document.createElement("div");
+      statusEl.id="irratiFirmsStatus";
+      statusEl.style.cssText="position:absolute;left:10px;bottom:10px;z-index:1000;padding:7px 10px;border-radius:9px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.2);font:800 12px system-ui;color:#345243;max-width:360px;pointer-events:none";
+      map.getContainer().appendChild(statusEl);
+    }
+    statusEl.textContent=text;
+    statusEl.style.color=type==="error"?"#a12626":type==="ok"?"#176b43":"#345243";
+    statusEl.style.display="block";
   }
   function ensureRow(){
     const map=getMap(),firms=getLayer();
@@ -32,14 +45,16 @@
     const input=row.querySelector("input");
     if(input&&!rowBound){
       rowBound=true;
-      input.addEventListener("change",()=>{if(input.checked){firms.addTo(map);load()}else map.removeLayer(firms)});
+      input.addEventListener("change",()=>{if(input.checked){firms.addTo(map);load()}else{map.removeLayer(firms);status("NASA FIRMS: itzalita")}});
     }
     if(input)input.checked=map.hasLayer(firms);
     return input;
   }
   function coords(f){
     let lat=f?.latitude??f?.lat??f?.y,lon=f?.longitude??f?.lon??f?.lng??f?.x;
-    if((lat==null||lon==null)&&Array.isArray(f?.geometry?.coordinates))[lon,lat]=f.geometry.coordinates;
+    if((lat==null||lon==null)&&Array.isArray(f?.geometry?.coordinates)){
+      [lon,lat]=f.geometry.coordinates;
+    }
     lat=Number(lat);lon=Number(lon);
     return Number.isFinite(lat)&&Number.isFinite(lon)?[lat,lon]:null;
   }
@@ -47,27 +62,34 @@
   async function load(){
     if(loading)return;
     const map=getMap(),firms=getLayer(),t=token();
-    if(!map||!firms||typeof L==="undefined"||!t)return;
+    if(!map||!firms||typeof L==="undefined"){status("NASA FIRMS: mapa ez dago prest","error");return}
+    if(!t){status("NASA FIRMS: saio-tokenik ez","error");return}
     loading=true;
+    status("NASA FIRMS: datuak kargatzen…");
     try{
       const r=await fetch(`${API}/api/firms?days=5`,{headers:{Authorization:`Bearer ${t}`}});
       const raw=await r.text();let d={};
       try{d=JSON.parse(raw)}catch(_){throw new Error(`FIRMS erantzuna ez da JSON: ${raw.slice(0,160)}`)}
       if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);
-      firms.clearLayers();let count=0;
-      for(const f of items(d)){
-        const c=coords(f);if(!c)continue;
-        const m=L.circleMarker(c,{radius:7,weight:2,color:"#b30000",fillColor:"#ff3b00",fillOpacity:.9});
+      const arr=items(d);
+      firms.clearLayers();let count=0,bad=0;
+      for(const f of arr){
+        const c=coords(f);if(!c){bad++;continue;}
+        const m=L.circleMarker(c,{radius:8,weight:2,color:"#8b0000",fillColor:"#ff3b00",fillOpacity:.95});
         m.bindPopup(`<strong>🛰️ NASA FIRMS</strong><br>Data: ${f.acqDate||f.acq_date||"—"}<br>Ordua: ${f.acqTime||f.acq_time||"—"}<br>Satelitea: ${f.satellite||f.satellite_name||"—"}<br>Konfiantza: ${f.confidence??f.confidence_pct??"—"}<br>FRP: ${f.frp??"—"} MW<br>Koordenatuak: ${c[0].toFixed(5)}, ${c[1].toFixed(5)}`);
         firms.addLayer(m);count++;
       }
       if(count>0)firms.addTo(map);
       const input=ensureRow();if(input)input.checked=count>0;
-      console.info(`IrratiGIS FIRMS: ${count} detekzio`,d);
-    }catch(e){console.error("IrratiGIS FIRMS:",e);firms.clearLayers()}
-    finally{loading=false}
+      status(count>0?`NASA FIRMS: ${count} detekzio mapan (${bad} koordenatu baliogabe)`:`NASA FIRMS: 0 detekzio (APIak ${arr.length} erregistro bidali ditu)`,count>0?"ok":"info");
+      console.info("IrratiGIS FIRMS",{count,bad,response:d});
+    }catch(e){
+      console.error("IrratiGIS FIRMS:",e);
+      firms.clearLayers();
+      status(`NASA FIRMS: ERROREA — ${e.message||e}`,"error");
+    }finally{loading=false}
   }
-  function boot(){const map=getMap(),firms=getLayer();if(!map||!firms)return;ensureRow();setTimeout(ensureRow,500);setTimeout(load,1200)}
+  function boot(){const map=getMap(),firms=getLayer();if(!map||!firms)return;ensureRow();status("NASA FIRMS: prest");setTimeout(ensureRow,500);setTimeout(load,1200)}
   window.IrratiGISFirms={get layer(){return getLayer()},load,registerLayerControl:ensureRow,open:()=>{const m=getMap(),l=getLayer();if(m&&l){ensureRow();l.addTo(m);load()}}};
   window.IrratiGISFirePopup={loadBurnsIntoLayer:boot,hookLayerControl:boot,openFirms:()=>window.IrratiGISFirms.open()};
   boot();
