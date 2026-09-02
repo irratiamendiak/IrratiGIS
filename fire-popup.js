@@ -3,13 +3,16 @@
   "use strict";
 
   function showDiagnostic(){
-    if(document.getElementById("irratiFireDiagnostic")) return;
-    const badge=document.createElement("div");
-    badge.id="irratiFireDiagnostic";
-    badge.textContent="🔥 PRUEBA: fire-popup.js cargado";
-    badge.style.cssText="position:fixed;left:12px;bottom:12px;z-index:2147483647;background:#fff3cd;color:#664d03;border:2px solid #ffca2c;border-radius:10px;padding:10px 14px;font:800 14px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 3px 14px rgba(0,0,0,.28);pointer-events:none";
-    document.body.appendChild(badge);
-    console.log("IrratiGIS: DIAGNÓSTICO fire-popup.js cargado correctamente");
+    function add(){
+      if(document.getElementById("irratiFireDiagnostic")) return;
+      const badge=document.createElement("div");
+      badge.id="irratiFireDiagnostic";
+      badge.textContent="🔥 PRUEBA: fire-popup.js cargado";
+      badge.style.cssText="position:fixed;left:12px;bottom:12px;z-index:2147483647;background:#fff3cd;color:#664d03;border:2px solid #ffca2c;border-radius:10px;padding:10px 14px;font:800 14px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;box-shadow:0 3px 14px rgba(0,0,0,.28);pointer-events:none";
+      (document.body||document.documentElement).appendChild(badge);
+      console.log("IrratiGIS: DIAGNÓSTICO fire-popup.js cargado correctamente");
+    }
+    if(document.body) add(); else document.addEventListener("DOMContentLoaded",add,{once:true});
   }
 
   function utm30ToLatLon(easting,northing){
@@ -56,8 +59,16 @@
     console.log("IrratiGIS: hook permanente de marcadores 🔥 instalado");
   }
 
+  function getMap(){
+    return window.__irratiGISMap || window.map || null;
+  }
+
   function addTestBurnMarker(){
-    if(!window.L||!window.map)return false;
+    const map=getMap();
+    if(!window.L||!map)return false;
+    if(window.__irratiGfaTestBurnMarker){
+      try{map.removeLayer(window.__irratiGfaTestBurnMarker);}catch(_){ }
+    }
     const lat=43.05,lon=-2.20;
     const icon=L.divIcon({
       className:"irrati-gfa-fire-test-icon",
@@ -65,16 +76,19 @@
       iconSize:[34,34],iconAnchor:[17,31],popupAnchor:[0,-27]
     });
     const marker=L.marker([lat,lon],{icon,zIndexOffset:2000});
-    marker.bindPopup("<strong>🧪 PRUEBA — capa de quemas</strong><br><br>No es una quema real.<br>El backend no ha devuelto quemas activas hoy.<br><br>Si ves este marcador, la capa 🔥 funciona correctamente.");
-    marker.addTo(window.map);
+    marker.bindPopup("<strong>🧪 PRUEBA — capa de quemas</strong><br><br>No es una quema real.<br>Hoy no hay quemas activas disponibles para mostrar.<br><br>Si ves este marcador, el mapa y la capa 🔥 funcionan correctamente.");
+    marker.addTo(map);
     window.__irratiGfaTestBurnMarker=marker;
+    console.log("IrratiGIS: marcador 🔥 de prueba añadido");
     return true;
   }
 
   function boot(){
     showDiagnostic();
     installNativeBurnMarkerHook();
-    if(window.map&&window.IrratiGISAuth&&typeof window.IrratiGISAuth.getToken==="function"){
+    const map=getMap();
+    if(map) console.log("IrratiGIS: mapa Leaflet detectado");
+    if(map&&window.IrratiGISAuth&&typeof window.IrratiGISAuth.getToken==="function"){
       const token=window.IrratiGISAuth.getToken(),api=window.IrratiGISAuth.API;
       if(token&&api&&!window.__irratiGfaTestBurnChecked){
         window.__irratiGfaTestBurnChecked=true;
