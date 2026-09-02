@@ -29,54 +29,77 @@
   function installNativeBurnMarkerHook(){
     if(!window.L||typeof L.circleMarker!=="function"||L.__irratiGfaBurnHook)return;
     const original=L.circleMarker;
+
     L.circleMarker=function(coords,options){
       const o=options||{};
-      const isGfaBurn=Number(o.radius)===8&&Number(o.weight)===2&&Number(o.fillOpacity)===0.85;
-      if(!isGfaBurn)return original.call(this,coords,options);
+      const isGfaBurn = Number(o.radius)===8 && Number(o.weight)===2 && Number(o.fillOpacity)===0.85;
+      if(!isGfaBurn) return original.call(this,coords,options);
+
       const point=normalizePoint(coords);
       const icon=L.divIcon({
         className:"irrati-gfa-fire-icon",
         html:"<span style=\"font-size:30px;line-height:32px;text-shadow:0 1px 3px rgba(0,0,0,.55);\">🔥</span>",
-        iconSize:[34,34],iconAnchor:[17,31],popupAnchor:[0,-27]
+        iconSize:[34,34],
+        iconAnchor:[17,31],
+        popupAnchor:[0,-27]
       });
       return L.marker(point,{icon,zIndexOffset:1000});
     };
+
     L.__irratiGfaBurnHook=true;
     L.__irratiGfaOriginalCircleMarker=original;
     console.log("IrratiGIS: hook permanente de marcadores 🔥 instalado");
   }
 
-  async function loadAndShowNativeBurns(){
-    installNativeBurnMarkerHook();
-    if(typeof window.loadControlledBurns!=="function"){
-      console.warn("IrratiGIS: loadControlledBurns todavía no está disponible");
-      return;
-    }
-    try{
-      await window.loadControlledBurns();
-      const labels=[...document.querySelectorAll(".leaflet-control-layers-overlays label")];
-      const label=labels.find(el=>/Baimendutako\s+erreketak/i.test(el.textContent||""));
-      const input=label?.querySelector('input[type="checkbox"]');
-      if(input&&!input.checked)input.click();
-      const layer=label?.textContent?.trim()||"🔥 Baimendutako erreketak";
-      console.log("IrratiGIS: quemas cargadas; capa:",layer);
-    }catch(err){
-      console.error("IrratiGIS: error cargando quemas",err);
-    }
+  function addTestBurnMarker(){
+    if(!window.L||!window.map)return false;
+    const lat=43.05,lon=-2.20;
+    const icon=L.divIcon({
+      className:"irrati-gfa-fire-test-icon",
+      html:"<span style=\"font-size:30px;line-height:32px;text-shadow:0 1px 3px rgba(0,0,0,.55);\">🔥</span>",
+      iconSize:[34,34],
+      iconAnchor:[17,31],
+      popupAnchor:[0,-27]
+    });
+    const marker=L.marker([lat,lon],{icon,zIndexOffset:2000});
+    marker.bindPopup(
+      "<strong>🧪 PRUEBA — capa de quemas</strong><br><br>"+
+      "No es una quema real.<br>"+
+      "El backend no ha devuelto quemas activas hoy.<br><br>"+
+      "Si ves este marcador, la capa 🔥 funciona correctamente."
+    );
+    marker.addTo(window.map);
+    window.__irratiGfaTestBurnMarker=marker;
+    return true;
   }
 
   function boot(){
     installNativeBurnMarkerHook();
-    const ready=window.IrratiGISAuthReady;
-    if(ready&&typeof ready.then==="function"){
-      ready.then(()=>setTimeout(loadAndShowNativeBurns,0)).catch(()=>{});
-    }else{
-      window.addEventListener("irratiGISAuthenticated",()=>setTimeout(loadAndShowNativeBurns,0),{once:true});
+    if(window.map && window.IrratiGISAuth && typeof window.IrratiGISAuth.getToken==="function"){
+      const token=window.IrratiGISAuth.getToken();
+      const api=window.IrratiGISAuth.API;
+      if(token && api && !window.__irratiGfaTestBurnChecked){
+        window.__irratiGfaTestBurnChecked=true;
+        fetch(`${api}/api/active`,{headers:{Authorization:`Bearer ${token}`}})
+          .then(r=>r.ok?r.json():Promise.reject(new Error("HTTP "+r.status)))
+          .then(data=>{
+            const fires=Array.isArray(data.fires)?data.fires:[];
+            console.log("IrratiGIS: /api/active devuelve",fires.length,"quemas");
+            if(fires.length===0) addTestBurnMarker();
+          })
+          .catch(err=>console.error("IrratiGIS: prueba de quemas:",err));
+      }
     }
   }
 
-  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot,{once:true});
-  else boot();
+  if(document.readyState==="loading"){
+    document.addEventListener("DOMContentLoaded",boot,{once:true});
+  }else{
+    boot();
+  }
 
-  window.IrratiGISFirePopup={loadBurnsIntoLayer:loadAndShowNativeBurns,hookLayerControl:installNativeBurnMarkerHook};
+  window.IrratiGISFirePopup={
+    loadBurnsIntoLayer:boot,
+    hookLayerControl:boot
+  };
 })();
