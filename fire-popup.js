@@ -24,11 +24,8 @@
     wrap.id="irratiMapFireTest";
     wrap.style.cssText="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:999999;cursor:pointer;pointer-events:auto;text-align:center";
     wrap.innerHTML='<div style="font-size:58px;line-height:60px;text-shadow:0 2px 5px rgba(0,0,0,.65)">🔥</div><div style="background:#fff;padding:5px 9px;border-radius:8px;font:800 12px system-ui;color:#176b43;box-shadow:0 2px 8px rgba(0,0,0,.3);white-space:nowrap">PRUEBA QUEMA</div>';
-    wrap.addEventListener("click",function(){
-      alert("🧪 PRUEBA — la capa de quemas puede dibujar en el mapa.\n\nEste marcador no es una quema real.");
-    });
+    wrap.addEventListener("click",function(){alert("🧪 PRUEBA — la capa de quemas puede dibujar en el mapa.\n\nEste marcador no es una quema real.");});
     mapEl.appendChild(wrap);
-    console.log("IrratiGIS: prueba visual 🔥 añadida directamente al contenedor #map");
     return true;
   }
 
@@ -39,9 +36,6 @@
     setTimeout(addMapContainerTest,1500);
     setTimeout(addMapContainerTest,3000);
   }
-
-  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot,{once:true});
-  else boot();
 
   window.IrratiGISFirePopup={loadBurnsIntoLayer:boot,hookLayerControl:boot};
 })();
