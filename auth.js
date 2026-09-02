@@ -15,35 +15,17 @@
     const addRow=()=>{
       const lists=document.querySelectorAll(".leaflet-control-layers-overlays");
       if(!lists.length)return false;
-      let changed=false;
       lists.forEach(list=>{
         if(list.querySelector(".irrati-firms-layer-row"))return;
-        const row=document.createElement("label");
-        row.className="irrati-firms-layer-row";
-        row.style.display="block";
-        const input=document.createElement("input");
-        input.type="checkbox";
-        input.className="leaflet-control-layers-selector";
-        input.checked=leafletMap.hasLayer(firmsLayer);
-        input.addEventListener("change",()=>{
-          if(input.checked){firmsLayer.addTo(leafletMap);window.IrratiGISFirms?.load?.();}
-          else leafletMap.removeLayer(firmsLayer);
-        });
-        const span=document.createElement("span");
-        span.textContent=" 🚨 NASA FIRMS";
-        row.appendChild(input);
-        row.appendChild(span);
-        list.appendChild(row);
-        changed=true;
+        const row=document.createElement("label");row.className="irrati-firms-layer-row";row.style.display="block";
+        const input=document.createElement("input");input.type="checkbox";input.className="leaflet-control-layers-selector";input.checked=leafletMap.hasLayer(firmsLayer);
+        input.addEventListener("change",()=>{if(input.checked){firmsLayer.addTo(leafletMap);window.IrratiGISFirms?.load?.()}else leafletMap.removeLayer(firmsLayer)});
+        const span=document.createElement("span");span.textContent=" 🚨 NASA FIRMS";row.appendChild(input);row.appendChild(span);list.appendChild(row);
       });
-      return changed;
+      return true;
     };
-    addRow();
-    [100,300,700,1500,3000].forEach(ms=>setTimeout(addRow,ms));
-    if(!window.__irratiFirmsDomObserver){
-      window.__irratiFirmsDomObserver=new MutationObserver(()=>addRow());
-      window.__irratiFirmsDomObserver.observe(document.body,{childList:true,subtree:true});
-    }
+    addRow();[100,300,700,1500,3000].forEach(ms=>setTimeout(addRow,ms));
+    if(!window.__irratiFirmsDomObserver){window.__irratiFirmsDomObserver=new MutationObserver(()=>addRow());window.__irratiFirmsDomObserver.observe(document.body,{childList:true,subtree:true})}
     return true;
   }
   function setupAppArchitecture(){
@@ -61,13 +43,14 @@
     main.innerHTML="";main.appendChild(nav);main.appendChild(fireView);main.appendChild(tracksView);if(printReport)main.appendChild(printReport);if(footer)main.appendChild(footer);
     fireView.appendChild(fireIntro);tracksView.appendChild(trackIntro);if(uploadPanel)tracksView.appendChild(uploadPanel);if(cards)tracksView.appendChild(cards);if(details)tracksView.appendChild(details);if(coordPanel)tracksView.appendChild(coordPanel);
     if(trackTools)mapPanel.appendChild(trackTools);if(trackStats)mapPanel.appendChild(trackStats);if(layersNote)mapPanel.appendChild(layersNote);
-    const setMapMode=mode=>{const fires=mode==="fires";fireView.classList.toggle("active",fires);tracksView.classList.toggle("active",!fires);nav.querySelectorAll(".irrati-tab").forEach(b=>{const active=b.dataset.view===mode;b.classList.toggle("active",active);b.setAttribute("aria-selected",active?"true":"false")});if(trackTools)trackTools.hidden=fires;if(trackStats)trackStats.hidden=fires;if(layersNote)layersNote.hidden=fires;if(fires)fireView.appendChild(mapPanel);else tracksView.appendChild(mapPanel);requestAnimationFrame(()=>{if(typeof map.invalidateSize==="function")map.invalidateSize();setTimeout(()=>map.invalidateSize(),80)});};
+    const setMapMode=mode=>{const fires=mode==="fires";fireView.classList.toggle("active",fires);tracksView.classList.toggle("active",!fires);nav.querySelectorAll(".irrati-tab").forEach(b=>{const active=b.dataset.view===mode;b.classList.toggle("active",active);b.setAttribute("aria-selected",active?"true":"false")});if(trackTools)trackTools.hidden=fires;if(trackStats)trackStats.hidden=fires;if(layersNote)layersNote.hidden=fires;if(fires)fireView.appendChild(mapPanel);else tracksView.appendChild(mapPanel);requestAnimationFrame(()=>{if(typeof map.invalidateSize==="function")map.invalidateSize();setTimeout(()=>map.invalidateSize(),80)})};
     nav.querySelectorAll(".irrati-tab").forEach(b=>b.addEventListener("click",()=>setMapMode(b.dataset.view)));setMapMode("fires");
     const style=document.createElement("style");style.textContent=`.irrati-app-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 14px;padding:5px;background:#e8efeb;border:1px solid var(--line);border-radius:15px;position:sticky;top:8px;z-index:1000;box-shadow:0 4px 16px rgba(0,0,0,.08)}.irrati-tab{min-height:48px;border:0;border-radius:11px;background:transparent;color:#345243;font:800 15px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;cursor:pointer;padding:10px 14px}.irrati-tab.active{background:#fff;color:#176b43;box-shadow:0 2px 8px rgba(0,0,0,.10)}.irrati-view{display:none}.irrati-view.active{display:block}.irrati-section-intro{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:12px;padding:14px 16px;background:#fff;border:1px solid var(--line);border-radius:15px;box-shadow:0 4px 16px rgba(0,0,0,.04)}.irrati-section-intro h2{margin:1px 0 4px;font-size:22px}.irrati-section-intro p{margin:0;color:var(--muted);font-size:13px}.irrati-section-kicker{font-size:10px;font-weight:900;letter-spacing:.14em;color:var(--green)}.irrati-status-badge{flex:none;padding:6px 9px;border-radius:999px;background:#e8f5ed;color:#176b43;font-size:11px;font-weight:900}.irrati-status-badge.blue{background:#e8f2f8;color:#175f8f}.irrati-map-panel{margin-bottom:14px}@media(max-width:560px){.irrati-app-tabs{top:4px;margin-bottom:9px;padding:4px}.irrati-tab{min-height:44px;font-size:13px;padding:8px 7px}.irrati-section-intro{padding:11px 12px;border-radius:12px;align-items:flex-start}.irrati-section-intro h2{font-size:18px}.irrati-section-intro p{font-size:12px}.irrati-status-badge{display:none}}`;document.head.appendChild(style);
     const title=document.querySelector("header h1"),subtitle=document.querySelector("header p"),eyebrow=document.querySelector("header .eyebrow");if(title)title.textContent="IrratiGIS";if(eyebrow)eyebrow.textContent="GIS SISTEMA";if(subtitle)subtitle.textContent="Suteak · Erreketa baimenduak · Track-ak · GIS tresnak";
   }
-  function loadFirePopupModule(){const existing=document.getElementById("irratiFirePopupScript");if(existing)return window.IrratiGISFirePopupReady||Promise.resolve(window.IrratiGISFirePopup);const script=document.createElement("script");script.id="irratiFirePopupScript";script.src="fire-popup.js?v=20260902-30";script.defer=true;window.IrratiGISFirePopupReady=new Promise(resolve=>{script.onload=()=>resolve(window.IrratiGISFirePopup);script.onerror=()=>resolve(null)});document.head.appendChild(script);return window.IrratiGISFirePopupReady;}
-  function runRealBurns(){installFirmsLeafletOverlay();loadFirePopupModule().then(m=>{installFirmsLeafletOverlay();if(m&&typeof m.loadBurnsIntoLayer==="function")m.loadBurnsIntoLayer();setTimeout(installFirmsLeafletOverlay,1200)})}
+  function showFirmsDebug(text,type="info"){const map=window.IrratiGISMap;if(!map)return;let el=document.getElementById("irratiAuthFirmsDebug");if(!el){el=document.createElement("div");el.id="irratiAuthFirmsDebug";el.style.cssText="position:absolute;left:10px;bottom:42px;z-index:1001;padding:7px 10px;border-radius:9px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.2);font:800 12px system-ui;max-width:380px;pointer-events:none";map.getContainer().appendChild(el)}el.textContent=text;el.style.color=type==="error"?"#a12626":"#176b43";el.style.display="block";}
+  function loadFirePopupModule(){const existing=document.getElementById("irratiFirePopupScript");if(existing)return window.IrratiGISFirePopupReady||Promise.resolve(window.IrratiGISFirePopup);const script=document.createElement("script");script.id="irratiFirePopupScript";script.src="fire-popup.js?v=20260902-31";script.defer=true;window.IrratiGISFirePopupReady=new Promise(resolve=>{script.onload=()=>{showFirmsDebug("NASA FIRMS: modulua kargatuta");resolve(window.IrratiGISFirePopup)};script.onerror=()=>{showFirmsDebug("NASA FIRMS: fire-popup.js EZIN KARGATU","error");resolve(null)}});document.head.appendChild(script);return window.IrratiGISFirePopupReady;}
+  function runRealBurns(){installFirmsLeafletOverlay();showFirmsDebug("NASA FIRMS: karga abiarazten…");loadFirePopupModule().then(m=>{installFirmsLeafletOverlay();if(m&&typeof m.loadBurnsIntoLayer==="function")m.loadBurnsIntoLayer();else showFirmsDebug("NASA FIRMS: modulua ez da prest","error");setTimeout(installFirmsLeafletOverlay,1200)})}
   function addLogoutButton(){if(document.getElementById("irratiLogoutButton"))return;const b=document.createElement("button");b.id="irratiLogoutButton";b.type="button";b.textContent="Saioa itxi";b.style.cssText="position:fixed;right:12px;top:12px;z-index:2147483646;padding:9px 12px;border:0;border-radius:9px;background:#fff;color:#176b43;font:800 12px system-ui;box-shadow:0 2px 10px rgba(0,0,0,.25);cursor:pointer";b.onclick=()=>{clearToken();location.reload()};document.body.appendChild(b);}
   function showLogin(message="Sarbide babestua"){const old=document.getElementById("irratiLoginBackdrop");if(old)old.remove();const back=document.createElement("div");back.id="irratiLoginBackdrop";back.style.cssText="position:fixed;inset:0;z-index:2147483645;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px";const box=document.createElement("div");box.style.cssText="width:min(420px,94vw);background:#fff;border-radius:16px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.3);font:14px system-ui;color:#16231c";box.innerHTML=`<h2 style="margin:0 0 8px">IrratiGIS</h2><p style="margin:0 0 14px;color:#65736b">${message}</p><label style="display:block;font-weight:800;font-size:12px;margin:8px 0 4px">Erabiltzailea</label><input id="irratiUser" type="text" autocomplete="username" style="width:100%;padding:10px;border:1px solid #ccd8d0;border-radius:9px;font:inherit"><label style="display:block;font-weight:800;font-size:12px;margin:10px 0 4px">Pasahitza</label><input id="irratiPass" type="password" autocomplete="current-password" style="width:100%;padding:10px;border:1px solid #ccd8d0;border-radius:9px;font:inherit"><label style="display:flex;gap:7px;align-items:center;margin:10px 0"><input id="irratiRemember" type="checkbox" checked> Gogoratu</label><button id="irratiLogin" type="button" style="padding:10px 14px;border:0;border-radius:9px;background:#176b43;color:#fff;font:800 14px system-ui;cursor:pointer">Sartu</button><div id="irratiLoginMsg" style="margin-top:10px;color:#8b2f2f"></div>`;back.appendChild(box);document.body.appendChild(back);const user=box.querySelector("#irratiUser"),pass=box.querySelector("#irratiPass"),remember=box.querySelector("#irratiRemember"),login=box.querySelector("#irratiLogin"),msg=box.querySelector("#irratiLoginMsg");async function submit(){login.disabled=true;msg.textContent="Saioa hasten…";try{const r=await apiFetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user:user.value.trim(),password:pass.value,remember:remember.checked})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.token)throw new Error(d.error||`HTTP ${r.status}`);saveToken(d.token,remember.checked);back.remove();addLogoutButton();window.dispatchEvent(new CustomEvent("irratiGISAuthenticated"));runRealBurns()}catch(e){msg.textContent=e.message||"Ezin izan da saioa hasi."}finally{login.disabled=false}}login.onclick=submit;pass.addEventListener("keydown",e=>{if(e.key==="Enter")submit()});user.focus()}
   async function validateToken(token){const r=await apiFetch("/api/me",{headers:{Authorization:`Bearer ${token}`}});if(!r.ok)return false;const d=await r.json().catch(()=>({}));return !!d.user;}
