@@ -5,6 +5,7 @@
   let checkbox=null;
   let row=null;
   let loading=false;
+  let observer=null;
   const token=()=>window.IrratiGISAuth?.getToken?.()||"";
   const getMap=()=>typeof map!=="undefined"?map:null;
 
@@ -22,6 +23,7 @@
     if(!leafletMap||typeof L==="undefined")return;
     const t=token();
     if(!t){status("Saioa beharrezkoa",true);if(checkbox)checkbox.checked=false;return;}
+    if(!layer)layer=L.layerGroup();
     loading=true;
     status("…");
     try{
@@ -30,7 +32,6 @@
       let d={};
       try{d=JSON.parse(raw)}catch(_){d={error:raw.slice(0,180)}}
       if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);
-      if(!layer)layer=L.layerGroup();
       layer.clearLayers();
       for(const f of(d.fires||[])){
         const lat=Number(f.latitude),lon=Number(f.longitude);
@@ -43,7 +44,7 @@
       status(`${(d.fires||[]).length}`);
     }catch(e){
       console.error("FIRMS:",e);
-      status("Errorea",true);
+      status(e.message||"Errorea",true);
       if(checkbox)checkbox.checked=false;
       if(layer&&leafletMap.hasLayer(layer))leafletMap.removeLayer(layer);
     }finally{loading=false;}
@@ -53,41 +54,74 @@
     const leafletMap=getMap();
     if(!leafletMap||!layer)return;
     if(checkbox?.checked)load();
-    else {layer.clearLayers();if(leafletMap.hasLayer(layer))leafletMap.removeLayer(layer);status("");}
+    else{
+      layer.clearLayers();
+      if(leafletMap.hasLayer(layer))leafletMap.removeLayer(layer);
+      status("");
+    }
   }
 
   function installLayerRow(){
-    if(row&&document.body.contains(row))return true;
     const control=document.querySelector(".leaflet-control-layers");
     const overlays=control?.querySelector(".leaflet-control-layers-overlays");
     if(!overlays)return false;
-    if(overlays.querySelector(".irrati-firms-layer-row"))return true;
+    const existing=overlays.querySelector(".irrati-firms-layer-row");
+    if(existing){
+      row=existing;
+      checkbox=existing.querySelector("input");
+      return true;
+    }
+
     row=document.createElement("label");
-    row.className="leaflet-control-layers-selector irrati-firms-layer-row";
-    row.style.cssText="display:block;position:relative;padding-left:4px;";
-    row.innerHTML=`<input type="checkbox" class="irrati-firms-layer-check"><span>🚨 NASA FIRMS</span>`;
+    row.className="irrati-firms-layer-row";
+    const input=document.createElement("input");
+    input.type="checkbox";
+    input.className="leaflet-control-layers-selector";
+    input.setAttribute("aria-label","NASA FIRMS");
+    row.appendChild(input);
+    row.appendChild(document.createTextNode(" 🚨 NASA FIRMS"));
     overlays.appendChild(row);
-    checkbox=row.querySelector(".irrati-firms-layer-check");
+    checkbox=input;
     checkbox.addEventListener("change",toggle);
-    const style=document.createElement("style");
-    style.textContent=`.irrati-firms-layer-row{display:flex!important;align-items:center;gap:6px;line-height:1.5;cursor:pointer}.irrati-firms-layer-row input{margin:0 4px 0 0}.irrati-firms-layer-status{margin-left:4px;font-size:10px;color:#65736b}.irrati-firms-layer-status.error{color:#8b2f2f}`;
-    document.head.appendChild(style);
+
+    if(!document.getElementById("irratiFirmsLayerStyle")){
+      const style=document.createElement("style");
+      style.id="irratiFirmsLayerStyle";
+      style.textContent=`.irrati-firms-layer-row{display:block;line-height:1.5;cursor:pointer}.irrati-firms-layer-row input{margin-right:6px}.irrati-firms-layer-status{margin-left:6px;font-size:10px;color:#65736b}.irrati-firms-layer-status.error{color:#8b2f2f}`;
+      document.head.appendChild(style);
+    }
     return true;
   }
 
   function setup(){
-    if(!layer&&typeof L!=="undefined")layer=L.layerGroup();
+    const leafletMap=getMap();
+    if(!leafletMap||typeof L==="undefined"){setTimeout(setup,300);return;}
+    if(!layer)layer=L.layerGroup();
     document.querySelector(".irrati-firms-badge")?.remove();
     if(installLayerRow())return;
-    setTimeout(setup,500);
+    if(!observer){
+      observer=new MutationObserver(()=>installLayerRow());
+      observer.observe(document.body,{childList:true,subtree:true});
+    }
+    setTimeout(installLayerRow,300);
+    setTimeout(installLayerRow,1000);
+    setTimeout(installLayerRow,2000);
   }
 
   function boot(){
-    try{if(typeof window.loadControlledBurns==="function")window.loadControlledBurns();}catch(e){console.error("Erreketa baimenduak:",e)}
+    try{if(typeof window.loadControlledBurns==="function")window.loadControlledBurns()}catch(e){console.error("Erreketa baimenduak:",e)}
     setup();
   }
 
-  window.IrratiGISFirms={layer,load,open:()=>{if(!checkbox)installLayerRow();if(checkbox){checkbox.checked=true;toggle();}}};
-  window.IrratiGISFirePopup={loadBurnsIntoLayer:boot,hookLayerControl:boot,openFirms:()=>{window.IrratiGISFirms?.open?.()}};
+  window.IrratiGISFirms={
+    get layer(){return layer},
+    load,
+    open:()=>{if(installLayerRow()&&checkbox){checkbox.checked=true;toggle();}}
+  };
+  window.IrratiGISFirePopup={
+    loadBurnsIntoLayer:boot,
+    hookLayerControl:setup,
+    openFirms:()=>window.IrratiGISFirms.open()
+  };
   boot();
 })();
