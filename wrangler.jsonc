@@ -4,6 +4,9 @@
   "main": "worker.js",
   "compatibility_date": "2026-08-28",
   "workers_dev": true,
+  "triggers": {
+    "crons": ["0 6 * * *"]
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
