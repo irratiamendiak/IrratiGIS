@@ -3,6 +3,7 @@
   const API="https://irratigis-erreketak.kulixka-mendiak.workers.dev";
   let layer=null;
   let loading=false;
+  let observer=null;
   const token=()=>window.IrratiGISAuth?.getToken?.()||"";
   const getMap=()=>typeof map!=="undefined"?map:null;
 
@@ -13,19 +14,38 @@
     return layer;
   }
 
-  function registerLayerControl(){
+  function addLeafletRow(){
     const leafletMap=getMap(),firmsLayer=getLayer();
     if(!leafletMap||!firmsLayer||typeof L==="undefined")return false;
-    const controls=Array.isArray(leafletMap._controls)?leafletMap._controls:[];
-    let registered=false;
-    for(const control of controls){
-      if(control instanceof L.Control.Layers&&typeof control.addOverlay==="function"){
-        const already=control._layers?.some(x=>x.layer===firmsLayer);
-        if(!already)control.addOverlay(firmsLayer,"🚨 NASA FIRMS");
-        registered=true;
-      }
-    }
-    return registered;
+    const lists=document.querySelectorAll(".leaflet-control-layers-list");
+    if(!lists.length)return false;
+    lists.forEach(list=>{
+      if(list.querySelector(".irrati-firms-layer-row"))return;
+      const row=document.createElement("label");
+      row.className="leaflet-control-layers-overlays irrati-firms-layer-row";
+      row.style.display="block";
+      const input=document.createElement("input");
+      input.type="checkbox";
+      input.className="leaflet-control-layers-selector";
+      input.checked=leafletMap.hasLayer(firmsLayer);
+      input.addEventListener("change",()=>{
+        if(input.checked){firmsLayer.addTo(leafletMap);load();}
+        else leafletMap.removeLayer(firmsLayer);
+      });
+      const span=document.createElement("span");
+      span.textContent=" 🚨 NASA FIRMS";
+      row.appendChild(input);
+      row.appendChild(span);
+      list.appendChild(row);
+    });
+    return true;
+  }
+
+  function registerLayerControl(){
+    if(addLeafletRow())return true;
+    setTimeout(addLeafletRow,100);
+    setTimeout(addLeafletRow,500);
+    return false;
   }
 
   async function load(){
@@ -63,13 +83,26 @@
     const leafletMap=getMap(),firmsLayer=getLayer();
     if(!leafletMap||!firmsLayer)return;
     registerLayerControl();
+    if(!observer){
+      observer=new MutationObserver(()=>registerLayerControl());
+      observer.observe(document.body,{childList:true,subtree:true});
+    }
     leafletMap.off("overlayadd",onOverlayAdd);
     leafletMap.on("overlayadd",onOverlayAdd);
+    leafletMap.off("overlayremove",onOverlayRemove);
+    leafletMap.on("overlayremove",onOverlayRemove);
     if(leafletMap.hasLayer(firmsLayer))load();
   }
 
   function onOverlayAdd(e){
-    if(e?.layer===getLayer())load();
+    if(e?.layer===getLayer()){
+      document.querySelectorAll(".irrati-firms-layer-row input").forEach(i=>i.checked=true);
+      load();
+    }
+  }
+
+  function onOverlayRemove(e){
+    if(e?.layer===getLayer())document.querySelectorAll(".irrati-firms-layer-row input").forEach(i=>i.checked=false);
   }
 
   window.IrratiGISFirms={
