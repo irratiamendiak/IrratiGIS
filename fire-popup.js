@@ -13,13 +13,14 @@
   function boot(){const map=getMap(),firms=getLayer();if(!map||!firms)return;ensureRow();status("NASA FIRMS: prest");setTimeout(ensureRow,500);setTimeout(load,1200)}
 
   const METEOSAT_WMS="https://adaguc.lsasvcs.ipma.pt//adagucserver?dataset=MSG-FRP&";
-  function initMeteosat(){const map=getMap();if(!map||typeof L==="undefined")return setTimeout(initMeteosat,500);const list=document.querySelector(".leaflet-control-layers-overlays");if(!list)return setTimeout(initMeteosat,500);let ml=window.IrratiGISMeteosatLayer;if(!ml){ml=L.tileLayer.wms(METEOSAT_WMS,{layers:"MSG:FRP-PIXEL",format:"image/png",transparent:true,version:"1.3.0",opacity:.95,attribution:"© EUMETSAT / LSA SAF"});window.IrratiGISMeteosatLayer=ml}
+  function meteosatTime(){const d=new Date(Date.now()-30*60*1000);d.setUTCMinutes(Math.floor(d.getUTCMinutes()/15)*15,0,0);return d.toISOString()}
+  function initMeteosat(){const map=getMap();if(!map||typeof L==="undefined")return setTimeout(initMeteosat,500);const list=document.querySelector(".leaflet-control-layers-overlays");if(!list)return setTimeout(initMeteosat,500);let ml=window.IrratiGISMeteosatLayer;if(!ml){ml=L.tileLayer.wms(METEOSAT_WMS,{layers:"MSG:FRP-PIXEL",format:"image/png",transparent:true,version:"1.3.0",opacity:.98,zIndex:650,time:meteosatTime(),attribution:"© EUMETSAT / LSA SAF"});window.IrratiGISMeteosatLayer=ml}
     let row=list.querySelector(".irrati-meteosat-layer-row");if(!row){row=document.createElement("label");row.className="irrati-meteosat-layer-row";row.style.display="block";const input=document.createElement("input");input.type="checkbox";input.className="leaflet-control-layers-selector";row.appendChild(input);const span=document.createElement("span");span.textContent=" 🌍 Meteosat - incendios";row.appendChild(span)}
     if(!row.parentNode)list.appendChild(row);
     const input=row.querySelector("input");
-    const refresh=()=>{ml.setParams({_irrati:Date.now()});ml.redraw()};
-    if(!input.dataset.meteosatBound){input.dataset.meteosatBound="1";input.addEventListener("change",()=>{if(input.checked){refresh();ml.addTo(map);status("Meteosat: FRP-PIXEL actual activo","ok")}else{map.removeLayer(ml);status("Meteosat: itzalita")}})}input.checked=map.hasLayer(ml);
-    if(!window.IrratiGISMeteosat){window.IrratiGISMeteosat={layer:ml,open:()=>{input.checked=true;refresh();ml.addTo(map);status("Meteosat: FRP-PIXEL actual activo","ok")},refresh:()=>{if(map.hasLayer(ml))refresh()}}
+    const refresh=()=>{ml.setParams({time:meteosatTime(),_irrati:Date.now()});ml.redraw()};
+    if(!input.dataset.meteosatBound){input.dataset.meteosatBound="1";input.addEventListener("change",()=>{if(input.checked){refresh();ml.addTo(map);status(`Meteosat: FRP-PIXEL ${meteosatTime().slice(11,16)} UTC","ok")}else{map.removeLayer(ml);status("Meteosat: itzalita")}})}input.checked=map.hasLayer(ml);
+    if(!window.IrratiGISMeteosat){window.IrratiGISMeteosat={layer:ml,open:()=>{input.checked=true;refresh();ml.addTo(map);status(`Meteosat: FRP-PIXEL ${meteosatTime().slice(11,16)} UTC","ok")},refresh:()=>{if(map.hasLayer(ml))refresh()}}
     }
     if(!window.IrratiGISMeteosatTimer){window.IrratiGISMeteosatTimer=setInterval(()=>window.IrratiGISMeteosat?.refresh?.(),10*60*1000)}
   }
