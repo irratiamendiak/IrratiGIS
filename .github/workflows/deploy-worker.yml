@@ -51,28 +51,45 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Add timeout to GFA login fallback
+      - name: Harden login fallback and token signing
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path("worker.js")
           s = p.read_text()
-          old = 'const gfa=await fetch(`${GFA_BASE_URL}/login/es`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({user,password})});valid=gfa.ok'
-          new = 'const gfa=await fetch(`${GFA_BASE_URL}/login/es`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({user,password}),signal:AbortSignal.timeout(12000)});valid=gfa.ok'
+          old = 'if(!valid){const gfa=await fetch(`${GFA_BASE_URL}/login/es`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({user,password})});valid=gfa.ok}'
+          new = 'if(!valid&&user!==validUser){const gfa=await fetch(`${GFA_BASE_URL}/login/es`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({user,password}),signal:AbortSignal.timeout(12000)});valid=gfa.ok}'
           if old in s:
               s = s.replace(old, new, 1)
+          old2 = 'if(!valid){const gfa=await fetch(`${GFA_BASE_URL}/login/es`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({user,password}),signal:AbortSignal.timeout(12000)});valid=gfa.ok}'
+          new2 = 'if(!valid&&user!==validUser){const gfa=await fetch(`${GFA_BASE_URL}/login/es`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({user,password}),signal:AbortSignal.timeout(12000)});valid=gfa.ok}'
+          if old2 in s:
+              s = s.replace(old2, new2, 1)
+          s = s.replace('createToken(user,validPassword||password)', 'createToken(user,validPassword)', 1)
           p.write_text(s)
           PY
 
-      - name: Persist patched Worker source
+      - name: Harden browser login and cache bust
         run: |
-          if git diff --quiet -- worker.js; then
-            echo "Worker source already contains the FIRMS/login fixes"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("auth.js")
+          s = p.read_text()
+          s = s.replace('return fetch(`${API}${path}`,options);', 'return fetch(`${API}${path}`,{...options,mode:"cors",credentials:"omit",cache:"no-store"});', 1)
+          s = s.replace('fire-popup.js?v=20260902-32', 'fire-popup.js?v=20260904-33', 1)
+          s = s.replace('🔥 Suteak eta Baimendutako erreketak', '🔥 Suteak eta baimendutako erreketak', 2)
+          p.write_text(s)
+          PY
+
+      - name: Persist patched sources
+        run: |
+          if git diff --quiet -- worker.js auth.js; then
+            echo "Sources already contain the login/FIRMS/cache fixes"
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add worker.js
-            git commit -m "Fix FIRMS and login timeout"
+            git add worker.js auth.js
+            git commit -m "Harden login and cache bust auth"
             git push
           fi
 
