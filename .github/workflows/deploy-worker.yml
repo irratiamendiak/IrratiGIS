@@ -25,6 +25,19 @@ jobs:
         with:
           node-version: 22
 
+      - name: Add browser login form endpoint
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("worker.js")
+          s = p.read_text()
+          marker = 'if(url.pathname==="/api/login"&&request.method==="POST"){'
+          block = '''if(url.pathname==="/api/login-form"&&request.method==="POST"){\n  const htmlHeaders={"Content-Type":"text/html; charset=UTF-8","Cache-Control":"no-store","Content-Security-Policy":`default-src 'none'; script-src 'unsafe-inline'; frame-ancestors ${ALLOWED_ORIGIN}`};\n  const post=(payload,status=200)=>new Response(`<script>parent.postMessage(${JSON.stringify(payload)},${JSON.stringify(ALLOWED_ORIGIN)})</script>`,{status,headers:htmlHeaders});\n  try{\n    const form=await request.formData(),user=String(form.get("user")||"").trim(),password=String(form.get("password")||""),validUser=String(env.IRRATIGIS_LOGIN_USER||"").trim(),validPassword=String(env.IRRATIGIS_LOGIN_PASSWORD||"");\n    let valid=user===validUser&&password===validPassword;\n    if(!valid&&user!==validUser){const gfa=await fetch(`${GFA_BASE_URL}/login/es`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({user,password}),signal:AbortSignal.timeout(12000)});valid=gfa.ok}\n    if(!valid)return post({type:"irratiGISLogin",error:"Unauthorized"},401);\n    return post({type:"irratiGISLogin",token:await createToken(user,validPassword)},200);\n  }catch(_){return post({type:"irratiGISLogin",error:"Invalid request"},400)}\n}\n'''
+          if 'if(url.pathname==="/api/login-form"&&request.method==="POST")' not in s and marker in s:
+              s = s.replace(marker, block + marker, 1)
+          p.write_text(s)
+          PY
+
       - name: Patch Worker auth compatibility
         run: |
           python3 - <<'PY'
@@ -76,8 +89,22 @@ jobs:
           p = Path("auth.js")
           s = p.read_text()
           s = s.replace('return fetch(`${API}${path}`,options);', 'return fetch(`${API}${path}`,{...options,mode:"cors",credentials:"omit",cache:"no-store"});', 1)
-          s = s.replace('fire-popup.js?v=20260902-32', 'fire-popup.js?v=20260904-33', 1)
+          s = s.replace('fire-popup.js?v=20260902-32', 'fire-popup.js?v=20260904-34', 1)
           s = s.replace('🔥 Suteak eta Baimendutako erreketak', '🔥 Suteak eta baimendutako erreketak', 2)
+          p.write_text(s)
+          PY
+
+      - name: Replace browser login with iframe form POST
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("auth.js")
+          s = p.read_text()
+          old = 'async function submit(){login.disabled=true;msg.textContent="Saioa hasten…";try{const r=await apiFetch("/api/login",{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify({user:user.value.trim(),password:pass.value,remember:remember.checked})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.token)throw new Error(d.error||`HTTP ${r.status}`);saveToken(d.token,remember.checked);back.remove();addLogoutButton();window.dispatchEvent(new CustomEvent("irratiGISAuthenticated"));runRealBurns()}catch(e){msg.textContent=e.message||"Ezin izan da saioa hasi."}finally{login.disabled=false}}'
+          new = '''async function submit(){login.disabled=true;msg.textContent="Saioa hasten…";let iframe=null,form=null,timer=null,done=false;try{const iframeName="irratiLoginFrame";iframe=document.getElementById(iframeName);if(iframe)iframe.remove();iframe=document.createElement("iframe");iframe.id=iframeName;iframe.name=iframeName;iframe.style.display="none";document.body.appendChild(iframe);form=document.createElement("form");form.method="POST";form.action=`${API}/api/login-form`;form.target=iframeName;form.style.display="none";const add=(name,value)=>{const i=document.createElement("input");i.type="hidden";i.name=name;i.value=value;form.appendChild(i)};add("user",user.value.trim());add("password",pass.value);document.body.appendChild(form);const cleanup=()=>{if(timer)clearTimeout(timer);window.removeEventListener("message",onMessage);form?.remove();iframe?.remove()};const onMessage=e=>{if(e.origin!==API||e.data?.type!=="irratiGISLogin"||done)return;done=true;cleanup();if(!e.data.token){msg.textContent=e.data.error||"Ezin izan da saioa hasi.";login.disabled=false;return}saveToken(e.data.token,remember.checked);back.remove();addLogoutButton();window.dispatchEvent(new CustomEvent("irratiGISAuthenticated"));runRealBurns()};window.addEventListener("message",onMessage);timer=setTimeout(()=>{if(done)return;done=true;cleanup();msg.textContent="Denbora agortu da saioarekin. Saiatu berriro.";login.disabled=false},15000);form.submit()}catch(e){if(timer)clearTimeout(timer);window.removeEventListener("message",onMessage);form?.remove();iframe?.remove();msg.textContent=e.message||"Ezin izan da saioa hasi.";login.disabled=false}}'''
+          if old not in s:
+              raise SystemExit("Expected login submit function not found")
+          s = s.replace(old, new, 1)
           p.write_text(s)
           PY
 
@@ -89,7 +116,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add worker.js auth.js
-            git commit -m "Harden login and cache bust auth"
+            git commit -m "Fix browser login without CORS fetch"
             git push
           fi
 
@@ -108,10 +135,15 @@ jobs:
           grep -i '^access-control-allow-origin:' /tmp/health.headers
           cat /tmp/health.json
           echo
-          echo "== login =="
+          echo "== login JSON endpoint =="
           code=$(curl -sS -D /tmp/login.headers -o /tmp/login.json -w '%{http_code}' -X POST -H "Origin: ${ORIGIN}" -H 'Content-Type: text/plain;charset=UTF-8' --data '{"user":"__smoke__","password":"__smoke__"}' "${BASE}/api/login")
           echo "HTTP ${code}"
           grep -i '^access-control-allow-origin:' /tmp/login.headers
           cat /tmp/login.json
           echo
           test "${code}" = "400" || test "${code}" = "401"
+          echo "== login form endpoint =="
+          code2=$(curl -sS -o /tmp/login-form.html -w '%{http_code}' -X POST -H 'Content-Type: application/x-www-form-urlencoded' --data 'user=__smoke__&password=__smoke__' "${BASE}/api/login-form")
+          echo "HTTP ${code2}"
+          grep -q 'irratiGISLogin' /tmp/login-form.html
+          test "${code2}" = "400" || test "${code2}" = "401"
