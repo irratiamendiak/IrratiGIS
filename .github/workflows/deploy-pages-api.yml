@@ -1,0 +1,36 @@
+name: Deploy Pages API bridge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cf-api/_worker.js'
+      - '.github/workflows/deploy-pages-api.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Create Pages project if needed
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@latest pages project create irratigis-api --production-branch main || true
+      - name: Deploy Pages API bridge
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@latest pages deploy cf-api --project-name irratigis-api --branch main --commit-message "Deploy API bridge"
+      - name: Smoke test
+        run: |
+          set -e
+          curl -fsS https://irratigis-api.pages.dev/api/health
