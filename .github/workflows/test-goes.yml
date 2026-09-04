@@ -1,9 +1,6 @@
-name: Test GOES-19 FDCF Malabrigo
+name: Test GOES-19 FDCF Zalla Angostura
 
 on:
-  push:
-    paths:
-      - '.github/workflows/test-goes.yml'
   workflow_dispatch:
 
 permissions:
@@ -18,32 +15,44 @@ jobs:
           python -m pip install --upgrade pip
           pip install xarray netCDF4 pyproj numpy
 
-      - name: Locate GOES-19 FDCF files
+      - name: Discover GOES-19 FDCF product and files
         run: |
           set -euo pipefail
           YEAR=2026
           DOY=247
-          HOUR=12
-          PREFIX="ABI-L2-FDCF-M6"
-          aws s3 ls "s3://noaa-goes19/${PREFIX}/${YEAR}/${DOY}/${HOUR}/" --no-sign-request > files.txt
-          cat files.txt
-          grep "${PREFIX}" files.txt | awk '{print $4}' > fdcf_files.txt
+          HOUR=15
+          echo '--- Product prefixes ---'
+          aws s3api list-objects-v2 --bucket noaa-goes19 --prefix ABI-L2-FDC --delimiter / --no-sign-request --query 'CommonPrefixes[].Prefix' --output text | tr '\t' '\n' | tee prefixes.txt
+          PREFIX=$(grep -E 'ABI-L2-FDCF(-M[0-9]+)?/$' prefixes.txt | head -n 1 || true)
+          if [ -z "$PREFIX" ]; then
+            PREFIX='ABI-L2-FDCF-M6/'
+          fi
+          echo "Using product prefix: $PREFIX"
+          KEY_PREFIX="${PREFIX}${YEAR}/${DOY}/${HOUR}/"
+          echo "Listing: s3://noaa-goes19/${KEY_PREFIX}"
+          aws s3 ls "s3://noaa-goes19/${KEY_PREFIX}" --no-sign-request | tee files.txt
+          awk '{print $4}' files.txt | grep -E '^ABI-L2-FDCF' > fdcf_files.txt
           test -s fdcf_files.txt
+          printf 'PREFIX=%s\nKEY_PREFIX=%s\n' "$PREFIX" "$KEY_PREFIX" > goes.env
 
-      - name: Download and inspect Malabrigo pixel
+      - name: Download and inspect Zalla Angostura pixel
         run: |
+          set -euo pipefail
+          source goes.env
           python - <<'PY'
           import os, subprocess
           import numpy as np
           import xarray as xr
           from pyproj import Transformer
 
-          lat0, lon0 = 43.21, -3.18
+          lat0, lon0 = 43.1879, -3.154360
+          key_prefix = os.environ['KEY_PREFIX']
           files = [x.strip() for x in open('fdcf_files.txt') if x.strip()]
+          print('TARGET:', lat0, lon0)
           print('FILES:', len(files))
           for name in files:
               local = '/tmp/' + os.path.basename(name)
-              subprocess.run(['aws','s3','cp',f's3://noaa-goes19/ABI-L2-FDCF-M6/2026/247/12/{name}',local,'--no-sign-request'],check=True)
+              subprocess.run(['aws','s3','cp',f's3://noaa-goes19/{key_prefix}{name}',local,'--no-sign-request'],check=True)
               ds = xr.open_dataset(local)
               try:
                   proj = ds['goes_imager_projection']
@@ -57,7 +66,6 @@ jobs:
                   xi = int(np.abs(ds['x'].values - xx).argmin())
                   yi = int(np.abs(ds['y'].values - yy).argmin())
                   print('\nFILE', name)
-                  print('nearest indexes:', yi, xi)
                   print('target fixed-grid x/y:', xx, yy)
                   print('pixel fixed-grid x/y:', float(ds['x'].values[xi]), float(ds['y'].values[yi]))
                   print('x/y distance:', float(abs(ds['x'].values[xi]-xx)), float(abs(ds['y'].values[yi]-yy)))
