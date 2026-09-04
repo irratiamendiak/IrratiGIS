@@ -19,8 +19,8 @@
     if(!row.parentNode)list.appendChild(row);
     const input=row.querySelector("input");
     const refresh=()=>{ml.setParams({time:meteosatTime(),_irrati:Date.now()});ml.redraw()};
-    if(!input.dataset.meteosatBound){input.dataset.meteosatBound="1";input.addEventListener("change",()=>{if(input.checked){refresh();ml.addTo(map);status(`Meteosat: FRP-PIXEL ${meteosatTime().slice(11,16)} UTC","ok")}else{map.removeLayer(ml);status("Meteosat: itzalita")}})}input.checked=map.hasLayer(ml);
-    if(!window.IrratiGISMeteosat){window.IrratiGISMeteosat={layer:ml,open:()=>{input.checked=true;refresh();ml.addTo(map);status(`Meteosat: FRP-PIXEL ${meteosatTime().slice(11,16)} UTC","ok")},refresh:()=>{if(map.hasLayer(ml))refresh()}}
+    if(!input.dataset.meteosatBound){input.dataset.meteosatBound="1";input.addEventListener("change",()=>{if(input.checked){refresh();ml.addTo(map);status(`Meteosat: FRP-PIXEL ${meteosatTime().slice(11,16)} UTC`,"ok")}else{map.removeLayer(ml);status("Meteosat: itzalita")}})}input.checked=map.hasLayer(ml);
+    if(!window.IrratiGISMeteosat){window.IrratiGISMeteosat={layer:ml,open:()=>{input.checked=true;refresh();ml.addTo(map);status(`Meteosat: FRP-PIXEL ${meteosatTime().slice(11,16)} UTC`,"ok")},refresh:()=>{if(map.hasLayer(ml))refresh()}}
     }
     if(!window.IrratiGISMeteosatTimer){window.IrratiGISMeteosatTimer=setInterval(()=>window.IrratiGISMeteosat?.refresh?.(),10*60*1000)}
   }
