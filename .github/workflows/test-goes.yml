@@ -25,13 +25,13 @@ jobs:
           aws s3api list-objects-v2 --bucket noaa-goes19 --prefix ABI-L2-FDC --delimiter / --no-sign-request --query 'CommonPrefixes[].Prefix' --output text | tr '\t' '\n' | tee prefixes.txt
           PREFIX=$(grep -E 'ABI-L2-FDCF(-M[0-9]+)?/$' prefixes.txt | head -n 1 || true)
           if [ -z "$PREFIX" ]; then
-            PREFIX='ABI-L2-FDCF-M6/'
+            PREFIX='ABI-L2-FDCF/'
           fi
           echo "Using product prefix: $PREFIX"
           KEY_PREFIX="${PREFIX}${YEAR}/${DOY}/${HOUR}/"
           echo "Listing: s3://noaa-goes19/${KEY_PREFIX}"
           aws s3 ls "s3://noaa-goes19/${KEY_PREFIX}" --no-sign-request | tee files.txt
-          awk '{print $4}' files.txt | grep -E '^ABI-L2-FDCF' > fdcf_files.txt
+          awk '{print $4}' files.txt | grep -E '^OR_ABI-L2-FDCF' > fdcf_files.txt
           test -s fdcf_files.txt
           printf 'PREFIX=%s\nKEY_PREFIX=%s\n' "$PREFIX" "$KEY_PREFIX" > goes.env
 
@@ -62,7 +62,7 @@ jobs:
                   h = float(proj.perspective_point_height)
                   a = float(proj.semi_major_axis)
                   b = float(proj.semi_minor_axis)
-                  transformer = Transformer.from_crs('EPSG:4326', f'+proj=geos +h={h} +lon_0={lon_origin} +a={a} +b={b} +sweep=x', always_xy=True)
+                  transformer = Transformer.from_crs('EPSG:4326', f'+proj=geos +h={h},lon_0={lon_origin},a={a},b={b},sweep=x', always_xy=True)
                   xx_m, yy_m = transformer.transform(lon0, lat0)
                   xx, yy = xx_m / h, yy_m / h
                   xi = int(np.abs(ds['x'].values - xx).argmin())
