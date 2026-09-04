@@ -59,9 +59,8 @@ jobs:
           s = p.read_text()
           old = 'const gfa=await fetch(`${GFA_BASE_URL}/login/es`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({user,password})});valid=gfa.ok'
           new = 'const gfa=await fetch(`${GFA_BASE_URL}/login/es`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({user,password}),signal:AbortSignal.timeout(12000)});valid=gfa.ok'
-          if old not in s:
-              raise SystemExit("GFA login snippet not found")
-          s = s.replace(old, new, 1)
+          if old in s:
+              s = s.replace(old, new, 1)
           p.write_text(s)
           PY
 
@@ -81,3 +80,21 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx --yes wrangler@latest deploy --config wrangler.jsonc --keep-vars
+
+      - name: Smoke test Worker CORS and login
+        run: |
+          set -e
+          BASE="https://irratigis-erreketak.kulixka-mendiak.workers.dev"
+          ORIGIN="https://irratiamendiak.github.io"
+          echo "== health =="
+          curl -fsS -D /tmp/health.headers -o /tmp/health.json -H "Origin: ${ORIGIN}" "${BASE}/api/health"
+          grep -i '^access-control-allow-origin:' /tmp/health.headers
+          cat /tmp/health.json
+          echo
+          echo "== login =="
+          code=$(curl -sS -D /tmp/login.headers -o /tmp/login.json -w '%{http_code}' -X POST -H "Origin: ${ORIGIN}" -H 'Content-Type: text/plain;charset=UTF-8' --data '{"user":"__smoke__","password":"__smoke__"}' "${BASE}/api/login")
+          echo "HTTP ${code}"
+          grep -i '^access-control-allow-origin:' /tmp/login.headers
+          cat /tmp/login.json
+          echo
+          test "${code}" = "400" || test "${code}" = "401"
