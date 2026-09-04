@@ -1,6 +1,9 @@
 name: Test GOES-19 FDCF Malabrigo
 
 on:
+  push:
+    paths:
+      - '.github/workflows/test-goes.yml'
   workflow_dispatch:
 
 permissions:
@@ -29,23 +32,19 @@ jobs:
       - name: Download and inspect Malabrigo pixel
         run: |
           python - <<'PY'
-          import os, subprocess, glob, json
+          import os, subprocess
           import numpy as np
           import xarray as xr
-          from pyproj import Proj, Transformer
+          from pyproj import Transformer
 
           lat0, lon0 = 43.21, -3.18
           files = [x.strip() for x in open('fdcf_files.txt') if x.strip()]
           print('FILES:', len(files))
-          print('\n'.join(files))
-
           for name in files:
               local = '/tmp/' + os.path.basename(name)
               subprocess.run(['aws','s3','cp',f's3://noaa-goes19/ABI-L2-FDCF/2026/247/12/{name}',local,'--no-sign-request'],check=True)
               ds = xr.open_dataset(local)
               try:
-                  x = float(ds['x'].values) if ds['x'].ndim == 0 else None
-                  y = float(ds['y'].values) if ds['y'].ndim == 0 else None
                   proj = ds['goes_imager_projection']
                   lon_origin = float(proj.longitude_of_projection_origin)
                   h = float(proj.perspective_point_height)
@@ -56,11 +55,11 @@ jobs:
                   xi = int(np.abs(ds['x'].values - xx).argmin())
                   yi = int(np.abs(ds['y'].values - yy).argmin())
                   print('\nFILE', name)
-                  print('nearest indexes', yi, xi, 'distance projection', float(abs(ds['x'].values[xi]-xx)), float(abs(ds['y'].values[yi]-yy)))
+                  print('nearest indexes:', yi, xi)
+                  print('x/y distance:', float(abs(ds['x'].values[xi]-xx)), float(abs(ds['y'].values[yi]-yy)))
                   for var in ['Mask','Temp','Area','Power','Mask_DQF','Temp_DQF','Area_DQF','Power_DQF']:
                       if var in ds:
-                          val = ds[var].isel(y=yi,x=xi).values
-                          print(var, repr(val))
+                          print(var, repr(ds[var].isel(y=yi,x=xi).values))
               finally:
                   ds.close()
           PY
