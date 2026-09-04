@@ -1,0 +1,89 @@
+name: Test GOES-19 Malabrigo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/test-goes-malabrigo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y awscli python3-pip
+          python3 -m pip install --break-system-packages netCDF4 pyproj numpy
+
+      - name: Locate GOES-19 FDCF files
+        run: |
+          set -euo pipefail
+          PREFIX='ABI-L2-FDCF-M6/2026/247/12/'
+          aws s3 ls "s3://noaa-goes19/${PREFIX}" --no-sign-request > /tmp/fdc-list.txt
+          echo 'Files around the requested 12:40 UTC window:'
+          grep -E 's2026247(12(3[0-9]|4[0-9]|5[0-9]))' /tmp/fdc-list.txt || true
+          test -s /tmp/fdc-list.txt
+
+      - name: Download and inspect Malabrigo window
+        env:
+          LAT: '43.21'
+          LON: '-3.18'
+          TARGET: '2026-09-04T12:40:00Z'
+        run: |
+          set -euo pipefail
+          PREFIX='ABI-L2-FDCF-M6/2026/247/12/'
+          mkdir -p /tmp/fdc
+          awk '{print $4}' /tmp/fdc-list.txt | grep -E 's2026247(123[0-9]|124[0-9]|125[0-9])' | head -n 6 | while read -r key; do
+            aws s3 cp "s3://noaa-goes19/${PREFIX}${key}" "/tmp/fdc/${key}" --no-sign-request
+          done
+          python3 - <<'PY'
+          import glob, math, os
+          import numpy as np
+          from netCDF4 import Dataset
+          from pyproj import CRS, Transformer
+
+          lat = 43.21
+          lon = -3.18
+          files = sorted(glob.glob('/tmp/fdc/*.nc'))
+          if not files:
+              raise SystemExit('No FDCF files downloaded')
+
+          print(f'Analizando {len(files)} archivos FDCF')
+          found = False
+          for path in files:
+              with Dataset(path) as ds:
+                  proj = ds.variables.get('goes_imager_projection')
+                  x = ds.variables['x'][:]
+                  y = ds.variables['y'][:]
+                  mask = ds.variables.get('Mask') or ds.variables.get('mask') or ds.variables.get('fire_mask')
+                  if proj is None or mask is None:
+                      print('SKIP', os.path.basename(path), 'sin proyección/Mask')
+                      continue
+                  p = proj
+                  lon0 = float(getattr(p, 'longitude_of_projection_origin'))
+                  h = float(getattr(p, 'perspective_point_height'))
+                  a = float(getattr(p, 'semi_major_axis'))
+                  b = float(getattr(p, 'semi_minor_axis'))
+                  crs = CRS.from_proj4(f'+proj=geos +h={h} +lon_0={lon0} +a={a} +b={b} +sweep=x +units=m')
+                  tx = Transformer.from_crs('EPSG:4326', crs, always_xy=True)
+                  xx, yy = tx.transform(lon, lat)
+                  ix = int(np.abs(x-xx).argmin())
+                  iy = int(np.abs(y-yy).argmin())
+                  val = mask[iy, ix]
+                  val = int(val) if np.isfinite(val) else None
+                  name = os.path.basename(path)
+                  print(name, 'nearest=', float(x[ix]), float(y[iy]), 'mask=', val)
+                  if val in (10, 11, 30, 31):
+                      found = True
+                      print('RESULT: POSITIVE FIRE PIXEL', name, 'mask=', val)
+          if not found:
+              print('RESULT: no high-confidence/saturated fire pixel at the nearest Malabrigo pixel in the tested files')
+          print('RESULT_FOUND=', found)
+          with open(os.environ.get('GITHUB_STEP_SUMMARY','/tmp/summary'), 'a') as f:
+              f.write(f'## GOES-19 / Malabrigo\n\nTarget: `{lat}, {lon}` at `{os.environ.get("TARGET","2026-09-04T12:40:00Z")}`\n\n`RESULT_FOUND={found}`\n')
+          PY
