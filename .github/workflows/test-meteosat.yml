@@ -40,40 +40,27 @@ jobs:
               '2026-09-04T15:50:00.000Z',
           ]
 
-          # Small WGS84 boxes around each reported location. WMS 1.3.0 + EPSG:4326
-          # requires bbox order lat,lon.
           for place, (lat, lon) in points.items():
-              dlat, dlon = 0.06, 0.06
+              dlat, dlon = 0.005, 0.005
               bbox = f'{lat-dlat},{lon-dlon},{lat+dlat},{lon+dlon}'
               print(f'\n=== {place} {lat},{lon} ===')
               for t in times:
                   params = {
-                      'service':'WMS',
-                      'request':'GetMap',
-                      'version':'1.3.0',
-                      'layers':'msg_fes:fire',
-                      'styles':'',
-                      'format':'image/png',
-                      'transparent':'true',
-                      'crs':'EPSG:4326',
-                      'bbox':bbox,
-                      'width':'600',
-                      'height':'600',
-                      'time':t,
+                      'service':'WMS', 'request':'GetMap', 'version':'1.3.0',
+                      'layers':'msg_fes:fire', 'styles':'', 'format':'image/png',
+                      'transparent':'true', 'crs':'EPSG:4326', 'bbox':bbox,
+                      'width':'101', 'height':'101', 'time':t,
                   }
                   url = 'https://view.eumetsat.int/geoserver/wms?' + urllib.parse.urlencode(params)
                   try:
-                      data = urllib.request.urlopen(url, timeout=60).read()
-                      im = Image.open(io.BytesIO(data)).convert('RGBA')
-                      arr = np.array(im)
-                      # Find pixels with alpha > 0. Fire layer is transparent elsewhere.
-                      alpha = arr[:,:,3]
-                      nz = np.argwhere(alpha > 0)
-                      print(t, 'HTTP_OK', 'size=', im.size, 'nontransparent=', len(nz))
-                      if len(nz):
-                          vals, counts = np.unique(arr[alpha>0][:,:3], axis=0, return_counts=True)
-                          order = np.argsort(counts)[::-1][:10]
-                          print('  top RGB:', [(vals[i].tolist(), int(counts[i])) for i in order])
+                      data = urllib.request.urlopen(url, timeout=30).read()
+                      arr = np.array(Image.open(io.BytesIO(data)).convert('RGBA'))
+                      center = arr[50,50].tolist()
+                      patch = arr[47:54,47:54]
+                      vals, counts = np.unique(patch.reshape(-1,4), axis=0, return_counts=True)
+                      order = np.argsort(counts)[::-1][:10]
+                      top = [(vals[i].tolist(), int(counts[i])) for i in order]
+                      print(t, 'CENTER_RGBA=', center, 'TOP_PATCH=', top)
                   except Exception as e:
                       print(t, 'ERROR', repr(e))
           PY
