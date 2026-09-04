@@ -16,7 +16,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install xarray netCDF4 s3fs pyproj numpy
+          pip install xarray netCDF4 pyproj numpy
 
       - name: Locate GOES-19 FDCF files
         run: |
@@ -24,9 +24,10 @@ jobs:
           YEAR=2026
           DOY=247
           HOUR=12
-          aws s3 ls "s3://noaa-goes19/ABI-L2-FDCF/${YEAR}/${DOY}/${HOUR}/" --no-sign-request > files.txt
+          PREFIX="ABI-L2-FDCF-M6"
+          aws s3 ls "s3://noaa-goes19/${PREFIX}/${YEAR}/${DOY}/${HOUR}/" --no-sign-request > files.txt
           cat files.txt
-          grep 'ABI-L2-FDCF' files.txt | awk '{print $4}' > fdcf_files.txt
+          grep "${PREFIX}" files.txt | awk '{print $4}' > fdcf_files.txt
           test -s fdcf_files.txt
 
       - name: Download and inspect Malabrigo pixel
@@ -42,7 +43,7 @@ jobs:
           print('FILES:', len(files))
           for name in files:
               local = '/tmp/' + os.path.basename(name)
-              subprocess.run(['aws','s3','cp',f's3://noaa-goes19/ABI-L2-FDCF/2026/247/12/{name}',local,'--no-sign-request'],check=True)
+              subprocess.run(['aws','s3','cp',f's3://noaa-goes19/ABI-L2-FDCF-M6/2026/247/12/{name}',local,'--no-sign-request'],check=True)
               ds = xr.open_dataset(local)
               try:
                   proj = ds['goes_imager_projection']
@@ -51,13 +52,16 @@ jobs:
                   a = float(proj.semi_major_axis)
                   b = float(proj.semi_minor_axis)
                   transformer = Transformer.from_crs('EPSG:4326', f'+proj=geos +h={h} +lon_0={lon_origin} +a={a} +b={b} +sweep=x', always_xy=True)
-                  xx, yy = transformer.transform(lon0, lat0)
+                  xx_m, yy_m = transformer.transform(lon0, lat0)
+                  xx, yy = xx_m / h, yy_m / h
                   xi = int(np.abs(ds['x'].values - xx).argmin())
                   yi = int(np.abs(ds['y'].values - yy).argmin())
                   print('\nFILE', name)
                   print('nearest indexes:', yi, xi)
+                  print('target fixed-grid x/y:', xx, yy)
+                  print('pixel fixed-grid x/y:', float(ds['x'].values[xi]), float(ds['y'].values[yi]))
                   print('x/y distance:', float(abs(ds['x'].values[xi]-xx)), float(abs(ds['y'].values[yi]-yy)))
-                  for var in ['Mask','Temp','Area','Power','Mask_DQF','Temp_DQF','Area_DQF','Power_DQF']:
+                  for var in ['Mask','Temp','Area','Power','DQF']:
                       if var in ds:
                           print(var, repr(ds[var].isel(y=yi,x=xi).values))
               finally:
