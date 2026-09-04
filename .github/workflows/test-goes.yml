@@ -44,7 +44,7 @@ jobs:
           import os, subprocess
           import numpy as np
           import xarray as xr
-          from pyproj import Transformer
+          from pyproj import CRS, Transformer
 
           lat0, lon0 = 43.16, -3.13
           key_prefix = os.environ['KEY_PREFIX']
@@ -62,7 +62,8 @@ jobs:
                   h = float(proj.perspective_point_height)
                   a = float(proj.semi_major_axis)
                   b = float(proj.semi_minor_axis)
-                  transformer = Transformer.from_crs('EPSG:4326', f'+proj=geos +h={h},lon_0={lon_origin},a={a},b={b},sweep=x', always_xy=True)
+                  crs = CRS.from_proj4(f'+proj=geos +h={h} +lon_0={lon_origin} +a={a} +b={b} +sweep=x +units=m')
+                  transformer = Transformer.from_crs('EPSG:4326', crs, always_xy=True)
                   xx_m, yy_m = transformer.transform(lon0, lat0)
                   xx, yy = xx_m / h, yy_m / h
                   xi = int(np.abs(ds['x'].values - xx).argmin())
