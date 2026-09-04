@@ -1,4 +1,4 @@
-name: Test GOES-19 FDCF Zalla Angostura
+name: Test GOES-19 FDCF Gordexola
 
 on:
   workflow_dispatch:
@@ -35,20 +35,22 @@ jobs:
           test -s fdcf_files.txt
           printf 'PREFIX=%s\nKEY_PREFIX=%s\n' "$PREFIX" "$KEY_PREFIX" > goes.env
 
-      - name: Download and inspect Zalla Angostura pixel
+      - name: Download and inspect Gordexola pixel
         run: |
           set -euo pipefail
           source goes.env
+          export KEY_PREFIX
           python - <<'PY'
           import os, subprocess
           import numpy as np
           import xarray as xr
           from pyproj import Transformer
 
-          lat0, lon0 = 43.1879, -3.154360
+          lat0, lon0 = 43.16, -3.13
           key_prefix = os.environ['KEY_PREFIX']
           files = [x.strip() for x in open('fdcf_files.txt') if x.strip()]
           print('TARGET:', lat0, lon0)
+          print('EXPECTED FIREHUB TIME: 17:26 local = 15:26 UTC')
           print('FILES:', len(files))
           for name in files:
               local = '/tmp/' + os.path.basename(name)
