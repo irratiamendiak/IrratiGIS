@@ -1,8 +1,74 @@
 (()=>{
   "use strict";
   const API="https://irratigis-erreketak.kulixka-mendiak.workers.dev";
+  const METEOSAT_WMS="https://view.eumetsat.int/geoserver/wms";
   let pendingOpen=false;
+  let meteosatLayer=null;
+  let meteosatRowBound=false;
   function token(){return window.IrratiGISAuth?.getToken?.()||"";}
+  function meteosatTime(){
+    const d=new Date(Date.now()-20*60*1000);
+    d.setUTCMinutes(Math.floor(d.getUTCMinutes()/15)*15,0,0);
+    return d.toISOString();
+  }
+  function getMeteosatLayer(){
+    if(meteosatLayer||typeof L==="undefined")return meteosatLayer;
+    meteosatLayer=L.tileLayer.wms(METEOSAT_WMS,{
+      layers:"msg_fes:fire",
+      styles:"",
+      format:"image/png",
+      transparent:true,
+      version:"1.3.0",
+      opacity:.9,
+      time:meteosatTime(),
+      attribution:"© EUMETSAT"
+    });
+    window.IrratiGISMeteosatLayer=meteosatLayer;
+    return meteosatLayer;
+  }
+  function ensureMeteosatRow(){
+    const leafletMap=(typeof map!=="undefined")?map:null;
+    const layer=getMeteosatLayer();
+    const list=document.querySelector(".leaflet-control-layers-overlays");
+    if(!leafletMap||!layer||!list)return null;
+    let row=list.querySelector(".irrati-meteosat-layer-row");
+    if(!row){
+      row=document.createElement("label");
+      row.className="irrati-meteosat-layer-row";
+      row.style.display="block";
+      const input=document.createElement("input");
+      input.type="checkbox";
+      input.className="leaflet-control-layers-selector";
+      row.appendChild(input);
+      const span=document.createElement("span");
+      span.textContent=" 🌍 Meteosat - incendios";
+      row.appendChild(span);
+      list.appendChild(row);
+    }
+    const input=row.querySelector("input");
+    if(input&&!meteosatRowBound){
+      meteosatRowBound=true;
+      input.addEventListener("change",()=>{
+        const m=(typeof map!=="undefined")?map:null;
+        const l=getMeteosatLayer();
+        if(!m||!l)return;
+        if(input.checked){
+          l.setParams({time:meteosatTime()});
+          l.addTo(m);
+        }else{
+          m.removeLayer(l);
+        }
+      });
+    }
+    if(input)input.checked=leafletMap.hasLayer(layer);
+    return input;
+  }
+  function refreshMeteosat(){
+    const m=(typeof map!=="undefined")?map:null;
+    const l=getMeteosatLayer();
+    if(!m||!l||!m.hasLayer(l))return;
+    l.setParams({time:meteosatTime()});
+  }
   function setup(){
     if(document.getElementById("irratiFirmsControl"))return;
     const leafletMap=(typeof map!=="undefined")?map:null;
@@ -29,6 +95,10 @@
     };
     control.addTo(leafletMap);
     window.IrratiGISFirms={layer,control,open:()=>{pendingOpen=true;const d=document.getElementById("irratiFirmsControl");if(d){d.classList.add("open");pendingOpen=false;setTimeout(()=>{const b=d.querySelector(".firms-load");if(b)b.click()},100);}}};
+    window.IrratiGISMeteosat={layer:getMeteosatLayer(),refresh:refreshMeteosat,registerLayerControl:ensureMeteosatRow,open:()=>{const m=(typeof map!=="undefined")?map:null,l=getMeteosatLayer();if(m&&l){ensureMeteosatRow();l.setParams({time:meteosatTime()});l.addTo(m);const input=ensureMeteosatRow();if(input)input.checked=true;}}};
+    ensureMeteosatRow();
+    setTimeout(ensureMeteosatRow,500);
+    setInterval(()=>{ensureMeteosatRow();refreshMeteosat()},10*60*1000);
     if(pendingOpen){const d=document.getElementById("irratiFirmsControl");if(d)d.classList.add("open");}
   }
   setup();
