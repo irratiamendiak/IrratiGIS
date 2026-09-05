@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'cf-api/_worker.js'
+      - 'cf-api/wrangler.jsonc'
       - '.github/workflows/deploy-pages-api.yml'
   workflow_dispatch:
 
@@ -29,7 +30,7 @@ jobs:
       - name: Deploy Pages API bridge
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: npx --yes wrangler@latest pages deploy cf-api --project-name irratigis-api --branch main --service IRRATIGIS_BACKEND=irratigis-erreketak --commit-message "Use service binding for API bridge"
+        run: npx --yes wrangler@latest pages deploy cf-api --project-name irratigis-api --branch main --commit-message "Configure Pages service binding"
       - name: Smoke test
         run: |
           set -e
