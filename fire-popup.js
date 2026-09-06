@@ -13,7 +13,7 @@ function boot(){const map=getMap(),firms=getLayer();if(!map||!firms)return;ensur
 
 const METEOSAT_WMS="https://adaguc.lsasvcs.ipma.pt//adagucserver";
 const METEOSAT_DATASET="MSG-FRP";
-const METEOSAT_BASE={dataset:METEOSAT_DATASET,layers:"",styles:"",format:"image/png",transparent:true,version:"1.1.1",opacity:.98,zIndex:650,attribution:"© EUMETSAT / LSA SAF"};
+const METEOSAT_BASE={dataset:METEOSAT_DATASET,layers:"",styles:"",format:"image/png",transparent:true,version:"1.1.1",tileSize:512,updateWhenIdle:true,keepBuffer:0,opacity:.98,zIndex:650,attribution:"© EUMETSAT / LSA SAF"};
 let meteosatLayer=null,meteosatBusy=false,meteosatLayerName="",meteosatTileLoads=0,meteosatTileErrors=0;
 function round15(d){const x=new Date(d);x.setUTCMinutes(Math.floor(x.getUTCMinutes()/15)*15,0,0);return x}
 function fallbackMeteosatTime(){return new Date(round15(Date.now()-30*60*1000)).toISOString()}
@@ -42,7 +42,7 @@ function attachMeteosatDiagnostics(l){
   if(!l||l.__irratiDiag)return l;l.__irratiDiag=true;
   l.on("tileloadstart",e=>{meteosatTileLoads++;console.info("IrratiGIS Meteosat GetMap START",e.tile?.src||e);});
   l.on("tileload",e=>{console.info("IrratiGIS Meteosat GetMap OK",{url:e.tile?.src||"",layers:l.wmsParams?.layers||"",time:l.wmsParams?.time||"",loads:meteosatTileLoads,errors:meteosatTileErrors});});
-  l.on("tileerror",e=>{meteosatTileErrors++;console.error("IrratiGIS Meteosat GetMap ERROR",{url:e.tile?.src||"",layers:l.wmsParams?.layers||"",time:l.wmsParams?.time||"",error:e.error||e,loads:meteosatTileLoads,errors:meteosatTileErrors});status(`Meteosat: GetMap ERROR (${meteosatTileErrors}) — abre F12 > Console` ,"error")});
+  l.on("tileerror",e=>{meteosatTileErrors++;console.error("IrratiGIS Meteosat GetMap ERROR",{url:e.tile?.src||"",layers:l.wmsParams?.layers||"",time:l.wmsParams?.time||"",error:e.error||e,loads:meteosatTileLoads,errors:meteosatTileErrors});status(`Meteosat: GetMap ERROR (${meteosatTileErrors})` ,"error")});
   return l
 }
 function createMeteosatLayer(name){return attachMeteosatDiagnostics(L.tileLayer.wms(METEOSAT_WMS,{...METEOSAT_BASE,layers:name}))}
@@ -56,7 +56,7 @@ async function refreshMeteosat(){
     meteosatLayer.setParams({...METEOSAT_BASE,layers:meteosatLayerName,time:info.time,_irrati:Date.now()});meteosatLayer.redraw();
     status(`Meteosat: FRP-PIXEL ${info.time.slice(11,16)} UTC · capa ${meteosatLayerName} · esperando GetMap…`,"ok");
     console.info("IrratiGIS Meteosat",{layer:meteosatLayerName,time:info.time,fallback:!!info.fallback});
-    setTimeout(()=>{if(meteosatTileLoads===0&&meteosatTileErrors===0)status(`Meteosat: sin respuesta de teselas GetMap — revisa F12 > Console`,`error`);else if(meteosatTileErrors>0)status(`Meteosat: GetMap con ${meteosatTileErrors} errores / ${meteosatTileLoads} cargas`,`error`);else status(`Meteosat: GetMap OK · capa ${meteosatLayerName} · ${meteosatTileLoads} teselas solicitadas`,"ok")},5000);
+    setTimeout(()=>{if(meteosatTileLoads===0&&meteosatTileErrors===0)status(`Meteosat: sin respuesta de teselas GetMap`,`error`);else if(meteosatTileErrors>0)status(`Meteosat: GetMap con ${meteosatTileErrors} errores / ${meteosatTileLoads} cargas`,`error`);else status(`Meteosat: GetMap OK · capa ${meteosatLayerName} · ${meteosatTileLoads} teselas solicitadas`,"ok")},5000);
   }catch(e){console.error("IrratiGIS Meteosat:",e);status(`Meteosat: ERROR — ${e.message||e}`,"error")}finally{meteosatBusy=false}
 }
 function initMeteosat(){
