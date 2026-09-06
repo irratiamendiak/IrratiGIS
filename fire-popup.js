@@ -13,64 +13,16 @@ function boot(){const map=getMap(),firms=getLayer();if(!map||!firms)return;ensur
 
 const METEOSAT_WMS="https://adaguc.lsasvcs.ipma.pt//adagucserver";
 const METEOSAT_DATASET="MSG-FRP";
-const METEOSAT_BASE={dataset:METEOSAT_DATASET,layers:"",styles:"",format:"image/png",transparent:true,version:"1.1.1",tileSize:512,updateWhenIdle:true,keepBuffer:0,opacity:.98,zIndex:650,attribution:"© EUMETSAT / LSA SAF"};
+const METEOSAT_BASE={dataset:METEOSAT_DATASET,layers:"",styles:"",format:"image/png",transparent:true,version:"1.1.1",tileSize:1024,updateWhenIdle:true,keepBuffer:0,opacity:.98,zIndex:650,attribution:"© EUMETSAT / LSA SAF"};
 let meteosatLayer=null,meteosatBusy=false,meteosatLayerName="",meteosatTileLoads=0,meteosatTileErrors=0;
 function round15(d){const x=new Date(d);x.setUTCMinutes(Math.floor(x.getUTCMinutes()/15)*15,0,0);return x}
 function fallbackMeteosatTime(){return new Date(round15(Date.now()-30*60*1000)).toISOString()}
 function findTimeDimension(layer){let node=layer;while(node){const direct=[...node.children].find(e=>{const n=e.getAttribute?.("name")?.toLowerCase();return (e.localName==="Dimension"||e.localName==="Extent")&&n==="time"});if(direct)return direct;node=node.parentElement}return null}
-async function readMeteosatCapabilities(){
-  const url=`${METEOSAT_WMS}?dataset=${encodeURIComponent(METEOSAT_DATASET)}&SERVICE=WMS&REQUEST=GetCapabilities&_irrati=${Date.now()}`;
-  const r=await fetch(url,{cache:"no-store",mode:"cors"});
-  if(!r.ok)throw new Error(`GetCapabilities HTTP ${r.status}`);
-  const text=await r.text();
-  const xml=new DOMParser().parseFromString(text,"text/xml");
-  if(xml.getElementsByTagName("parsererror").length)throw new Error("GetCapabilities XML inválido");
-  const all=[...xml.getElementsByTagName("Layer")];
-  const target=all.find(l=>{const title=[...l.children].find(e=>e.localName==="Title")?.textContent||"";const abstract=[...l.children].find(e=>e.localName==="Abstract")?.textContent||"";return /FRP-PIXEL/i.test(title)||/FRP-PIXEL/i.test(abstract)});
-  if(!target)throw new Error("No se encontró la capa FRP-PIXEL en GetCapabilities");
-  const name=[...target.children].find(e=>e.localName==="Name")?.textContent?.trim();
-  if(!name)throw new Error("La capa FRP-PIXEL no tiene Name");
-  const dim=findTimeDimension(target);
-  if(!dim)throw new Error("La capa FRP-PIXEL no tiene dimensión TIME");
-  const raw=dim.textContent.replace(/\s+/g," ").trim();
-  const parts=raw.split(/[;,]/).map(s=>s.trim()).filter(Boolean);let candidate=parts[parts.length-1]||"";if(candidate.includes("/"))candidate=candidate.split("/")[1];
-  const dt=new Date(candidate);if(!Number.isFinite(dt.getTime()))throw new Error("TIME de FRP-PIXEL no es válido");
-  const latest=new Date(Math.min(dt.getTime(),Date.now())).toISOString();return {name,time:latest}
-}
+async function readMeteosatCapabilities(){const url=`${METEOSAT_WMS}?dataset=${encodeURIComponent(METEOSAT_DATASET)}&SERVICE=WMS&REQUEST=GetCapabilities&_irrati=${Date.now()}`;const r=await fetch(url,{cache:"no-store",mode:"cors"});if(!r.ok)throw new Error(`GetCapabilities HTTP ${r.status}`);const text=await r.text();const xml=new DOMParser().parseFromString(text,"text/xml");if(xml.getElementsByTagName("parsererror").length)throw new Error("GetCapabilities XML inválido");const all=[...xml.getElementsByTagName("Layer")];const target=all.find(l=>{const title=[...l.children].find(e=>e.localName==="Title")?.textContent||"";const abstract=[...l.children].find(e=>e.localName==="Abstract")?.textContent||"";return /FRP-PIXEL/i.test(title)||/FRP-PIXEL/i.test(abstract)});if(!target)throw new Error("No se encontró la capa FRP-PIXEL en GetCapabilities");const name=[...target.children].find(e=>e.localName==="Name")?.textContent?.trim();if(!name)throw new Error("La capa FRP-PIXEL no tiene Name");const dim=findTimeDimension(target);if(!dim)throw new Error("La capa FRP-PIXEL no tiene dimensión TIME");const raw=dim.textContent.replace(/\s+/g," ").trim();const parts=raw.split(/[;,]/).map(s=>s.trim()).filter(Boolean);let candidate=parts[parts.length-1]||"";if(candidate.includes("/"))candidate=candidate.split("/")[1];const dt=new Date(candidate);if(!Number.isFinite(dt.getTime()))throw new Error("TIME de FRP-PIXEL no es válido");const latest=new Date(Math.min(dt.getTime(),Date.now())).toISOString();return {name,time:latest}}
 async function latestMeteosat(){try{return await readMeteosatCapabilities()}catch(e){console.warn("IrratiGIS Meteosat GetCapabilities:",e);return {name:meteosatLayerName||"",time:fallbackMeteosatTime(),fallback:true,error:e}}}
-function attachMeteosatDiagnostics(l){
-  if(!l||l.__irratiDiag)return l;l.__irratiDiag=true;
-  l.on("tileloadstart",e=>{meteosatTileLoads++;console.info("IrratiGIS Meteosat GetMap START",e.tile?.src||e);});
-  l.on("tileload",e=>{console.info("IrratiGIS Meteosat GetMap OK",{url:e.tile?.src||"",layers:l.wmsParams?.layers||"",time:l.wmsParams?.time||"",loads:meteosatTileLoads,errors:meteosatTileErrors});});
-  l.on("tileerror",e=>{meteosatTileErrors++;console.error("IrratiGIS Meteosat GetMap ERROR",{url:e.tile?.src||"",layers:l.wmsParams?.layers||"",time:l.wmsParams?.time||"",error:e.error||e,loads:meteosatTileLoads,errors:meteosatTileErrors});status(`Meteosat: GetMap ERROR (${meteosatTileErrors})` ,"error")});
-  return l
-}
+function attachMeteosatDiagnostics(l){if(!l||l.__irratiDiag)return l;l.__irratiDiag=true;l.on("tileloadstart",e=>{meteosatTileLoads++;console.info("IrratiGIS Meteosat GetMap START",e.tile?.src||e);});l.on("tileload",e=>{console.info("IrratiGIS Meteosat GetMap OK",{url:e.tile?.src||"",layers:l.wmsParams?.layers||"",time:l.wmsParams?.time||"",loads:meteosatTileLoads,errors:meteosatTileErrors});});l.on("tileerror",e=>{meteosatTileErrors++;console.error("IrratiGIS Meteosat GetMap ERROR",{url:e.tile?.src||"",layers:l.wmsParams?.layers||"",time:l.wmsParams?.time||"",error:e.error||e,loads:meteosatTileLoads,errors:meteosatTileErrors});status(`Meteosat: GetMap ERROR (${meteosatTileErrors})`,"error")});return l}
 function createMeteosatLayer(name){return attachMeteosatDiagnostics(L.tileLayer.wms(METEOSAT_WMS,{...METEOSAT_BASE,layers:name}))}
-async function refreshMeteosat(){
-  const map=getMap();if(!map||!meteosatLayer||!map.hasLayer(meteosatLayer)||meteosatBusy)return;
-  meteosatBusy=true;meteosatTileLoads=0;meteosatTileErrors=0;status("Meteosat: buscando último FRP-PIXEL…");
-  try{
-    const info=await latestMeteosat();
-    if(info.name&&info.name!==meteosatLayerName){meteosatLayerName=info.name;const wasOn=map.hasLayer(meteosatLayer);map.removeLayer(meteosatLayer);meteosatLayer=createMeteosatLayer(meteosatLayerName);window.IrratiGISMeteosatLayer=meteosatLayer;if(wasOn)meteosatLayer.addTo(map)}
-    if(!meteosatLayerName)throw new Error(info.error?.message||"No se pudo determinar la capa FRP-PIXEL");
-    meteosatLayer.setParams({...METEOSAT_BASE,layers:meteosatLayerName,time:info.time,_irrati:Date.now()});meteosatLayer.redraw();
-    status(`Meteosat: FRP-PIXEL ${info.time.slice(11,16)} UTC · capa ${meteosatLayerName} · esperando GetMap…`,"ok");
-    console.info("IrratiGIS Meteosat",{layer:meteosatLayerName,time:info.time,fallback:!!info.fallback});
-    setTimeout(()=>{if(meteosatTileLoads===0&&meteosatTileErrors===0)status(`Meteosat: sin respuesta de teselas GetMap`,`error`);else if(meteosatTileErrors>0)status(`Meteosat: GetMap con ${meteosatTileErrors} errores / ${meteosatTileLoads} cargas`,`error`);else status(`Meteosat: GetMap OK · capa ${meteosatLayerName} · ${meteosatTileLoads} teselas solicitadas`,"ok")},5000);
-  }catch(e){console.error("IrratiGIS Meteosat:",e);status(`Meteosat: ERROR — ${e.message||e}`,"error")}finally{meteosatBusy=false}
-}
-function initMeteosat(){
-  const map=getMap();if(!map||typeof L==="undefined")return setTimeout(initMeteosat,500);
-  const list=document.querySelector(".leaflet-control-layers-overlays");if(!list)return setTimeout(initMeteosat,500);
-  let row=list.querySelector(".irrati-meteosat-layer-row");
-  if(!row){row=document.createElement("label");row.className="irrati-meteosat-layer-row";row.style.display="block";const input=document.createElement("input");input.type="checkbox";input.className="leaflet-control-layers-selector";row.appendChild(input);const span=document.createElement("span");span.textContent=" 🌍 Meteosat - incendios";row.appendChild(span);list.appendChild(row)}
-  const input=row.querySelector("input");
-  if(!input.dataset.meteosatBound){input.dataset.meteosatBound="1";input.addEventListener("change",async()=>{if(input.checked){if(!meteosatLayer)meteosatLayer=createMeteosatLayer(meteosatLayerName||"");meteosatLayer.addTo(map);await refreshMeteosat()}else{if(meteosatLayer)map.removeLayer(meteosatLayer);status("Meteosat: itzalita")}})}
-  input.checked=map.hasLayer(meteosatLayer);
-  window.IrratiGISMeteosat={get layer(){return meteosatLayer},open:async()=>{input.checked=true;if(!meteosatLayer)meteosatLayer=createMeteosatLayer(meteosatLayerName||"");meteosatLayer.addTo(map);await refreshMeteosat()},refresh:refreshMeteosat};
-  if(!window.IrratiGISMeteosatTimer)window.IrratiGISMeteosatTimer=setInterval(()=>window.IrratiGISMeteosat?.refresh?.(),15*60*1000)
-}
-window.IrratiGISFirms={get layer(){return getLayer()},load,registerLayerControl:ensureRow,open:()=>{const m=getMap(),l=getLayer();if(m&&l){ensureRow();l.addTo(m);load()}}};
-window.IrratiGISFirePopup={loadBurnsIntoLayer:boot,hookLayerControl:boot,openFirms:()=>window.IrratiGISFirms.open()};
-boot();initMeteosat();
+async function refreshMeteosat(){const map=getMap();if(!map||!meteosatLayer||!map.hasLayer(meteosatLayer)||meteosatBusy)return;meteosatBusy=true;meteosatTileLoads=0;meteosatTileErrors=0;status("Meteosat: buscando último FRP-PIXEL…");try{const info=await latestMeteosat();if(info.name&&info.name!==meteosatLayerName){meteosatLayerName=info.name;const wasOn=map.hasLayer(meteosatLayer);map.removeLayer(meteosatLayer);meteosatLayer=createMeteosatLayer(meteosatLayerName);window.IrratiGISMeteosatLayer=meteosatLayer;if(wasOn)meteosatLayer.addTo(map)}if(!meteosatLayerName)throw new Error(info.error?.message||"No se pudo determinar la capa FRP-PIXEL");meteosatLayer.setParams({...METEOSAT_BASE,layers:meteosatLayerName,time:info.time,_irrati:Date.now()});meteosatLayer.redraw();status(`Meteosat: FRP-PIXEL ${info.time.slice(11,16)} UTC · capa ${meteosatLayerName} · esperando GetMap…`,"ok");console.info("IrratiGIS Meteosat",{layer:meteosatLayerName,time:info.time,fallback:!!info.fallback});setTimeout(()=>{if(meteosatTileLoads===0&&meteosatTileErrors===0)status(`Meteosat: sin respuesta de teselas GetMap`,`error`);else if(meteosatTileErrors>0)status(`Meteosat: GetMap con ${meteosatTileErrors} errores / ${meteosatTileLoads} cargas`,`error`);else status(`Meteosat: GetMap OK · capa ${meteosatLayerName} · ${meteosatTileLoads} teselas solicitadas`,"ok")},5000)}catch(e){console.error("IrratiGIS Meteosat:",e);status(`Meteosat: ERROR — ${e.message||e}`,"error")}finally{meteosatBusy=false}}
+function initMeteosat(){const map=getMap();if(!map||typeof L==="undefined")return setTimeout(initMeteosat,500);const list=document.querySelector(".leaflet-control-layers-overlays");if(!list)return setTimeout(initMeteosat,500);let row=list.querySelector(".irrati-meteosat-layer-row");if(!row){row=document.createElement("label");row.className="irrati-meteosat-layer-row";row.style.display="block";const input=document.createElement("input");input.type="checkbox";input.className="leaflet-control-layers-selector";row.appendChild(input);const span=document.createElement("span");span.textContent=" 🌍 Meteosat - incendios";row.appendChild(span);list.appendChild(row)}const input=row.querySelector("input");if(!input.dataset.meteosatBound){input.dataset.meteosatBound="1";input.addEventListener("change",async()=>{if(input.checked){if(!meteosatLayer)meteosatLayer=createMeteosatLayer(meteosatLayerName||"");meteosatLayer.addTo(map);await refreshMeteosat()}else{if(meteosatLayer)map.removeLayer(meteosatLayer);status("Meteosat: itzalita")}})}input.checked=map.hasLayer(meteosatLayer);window.IrratiGISMeteosat={get layer(){return meteosatLayer},open:async()=>{input.checked=true;if(!meteosatLayer)meteosatLayer=createMeteosatLayer(meteosatLayerName||"");meteosatLayer.addTo(map);await refreshMeteosat()},refresh:refreshMeteosat};if(!window.IrratiGISMeteosatTimer)window.IrratiGISMeteosatTimer=setInterval(()=>window.IrratiGISMeteosat?.refresh?.(),15*60*1000)}
+window.IrratiGISFirms={get layer(){return getLayer()},load,registerLayerControl:ensureRow,open:()=>{const m=getMap(),l=getLayer();if(m&&l){ensureRow();l.addTo(m);load()}}};window.IrratiGISFirePopup={loadBurnsIntoLayer:boot,hookLayerControl:boot,openFirms:()=>window.IrratiGISFirms.open()};boot();initMeteosat();
 })();
