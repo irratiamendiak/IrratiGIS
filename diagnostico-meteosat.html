@@ -10,19 +10,21 @@ main{max-width:900px;margin:auto;background:white;border-radius:14px;padding:18p
 h1{font-size:22px;margin:0 0 8px} h2{font-size:17px;margin:20px 0 8px}
 button{font-size:17px;padding:12px 16px;border:0;border-radius:10px;background:#1769aa;color:white;margin:6px 6px 6px 0}
 pre{white-space:pre-wrap;word-break:break-word;background:#111;color:#eee;padding:12px;border-radius:10px;font-size:13px;line-height:1.4}
-.ok{color:#087a22;font-weight:700}.bad{color:#b00020;font-weight:700}.muted{color:#666}
+.ok{color:#087a22;font-weight:700}.bad{color:#b00020;font-weight:700}.warn{color:#9a5a00;font-weight:700}.muted{color:#666}
 img{max-width:100%;border:1px solid #bbb;border-radius:8px;background:#ddd}
 .card{border:1px solid #ddd;border-radius:10px;padding:12px;margin-top:10px}
+canvas{max-width:100%;border:1px solid #bbb;border-radius:8px;background:#ddd;image-rendering:auto}
 </style>
 </head>
 <body>
 <main>
 <h1>🔥 Diagnóstico Meteosat FRP-PIXEL</h1>
-<p class="muted">Esta página prueba directamente el WMS oficial de LSA SAF/ADAGUC desde el móvil. No modifica IrratiGIS.</p>
+<p class="muted">Esta página prueba directamente el WMS oficial de LSA SAF/ADAGUC desde el móvil. Además analiza los píxeles reales del PNG recibido para saber si contiene datos visibles.</p>
 <button id="run">▶ Ejecutar diagnóstico</button>
 <div id="status" class="card">Pulsa el botón para empezar.</div>
 <h2>1. GetCapabilities</h2><pre id="cap">Pendiente…</pre>
 <h2>2. GetMap</h2><pre id="maplog">Pendiente…</pre>
+<h2>3. Análisis del PNG</h2><pre id="pixelLog">Pendiente…</pre>
 <div id="imagebox"></div>
 </main>
 <script>
@@ -31,9 +33,8 @@ const DATASET='MSG-FRP';
 const BBOX='-4.8,42.3,-1.5,44.2';
 const $=id=>document.getElementById(id);
 function say(t,c=''){ $('status').textContent=t; $('status').className='card '+c; }
-function esc(s){return String(s).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
-function timeNode(layer){let n=layer;while(n){for(const e of n.children||[]){if((e.localName==='Dimension'||e.localName==='Extent')&&(e.getAttribute('name')||'').toLowerCase()==='time')return e;}n=n.parentElement;}return null;}
 function childText(layer,name){return [...layer.children].find(e=>e.localName===name)?.textContent?.trim()||'';}
+function timeNode(layer){let n=layer;while(n){for(const e of n.children||[]){if((e.localName==='Dimension'||e.localName==='Extent')&&(e.getAttribute('name')||'').toLowerCase()==='time')return e;}n=n.parentElement;}return null;}
 function parseCaps(text){
  const xml=new DOMParser().parseFromString(text,'text/xml');
  if(xml.getElementsByTagName('parsererror').length)throw new Error('XML inválido');
@@ -45,9 +46,8 @@ function parseCaps(text){
  const dim=timeNode(target); if(!dim)throw new Error('No se encontró dimensión TIME');
  const raw=dim.textContent.replace(/\s+/g,' ').trim();
  const parts=raw.split(/[;,]/).map(s=>s.trim()).filter(Boolean);
- let candidate=parts[parts.length-1]||''; if(candidate.includes('/')) candidate=candidate.split('/')[1];
+ let candidate=parts[parts.length-1]||''; if(candidate.includes('/'))candidate=candidate.split('/')[1];
  const d=new Date(candidate); if(!Number.isFinite(d.getTime()))throw new Error('TIME no válido: '+candidate);
- const times=[]; for(const l of layers){const x=timeNode(l);if(x)times.push(x.textContent.trim());}
  const crs=[...target.children].filter(e=>e.localName==='CRS'||e.localName==='SRS').map(e=>e.textContent.trim());
  return {name,title,time:new Date(Math.min(d.getTime(),Date.now())).toISOString(),rawTime:raw,crs};
 }
@@ -55,28 +55,62 @@ function mapUrl(info,srs){
  const p=new URLSearchParams({dataset:DATASET,SERVICE:'WMS',VERSION:'1.1.1',REQUEST:'GetMap',LAYERS:info.name,STYLES:'',SRS:srs,BBOX:BBOX,WIDTH:'900',HEIGHT:'520',FORMAT:'image/png',TRANSPARENT:'TRUE',TIME:info.time});
  return WMS+'?'+p.toString();
 }
+async function fetchImageAnalysis(url){
+ const t0=performance.now();
+ const r=await fetch(url+'&_pixel='+Date.now(),{cache:'no-store',mode:'cors'});
+ const ct=r.headers.get('content-type')||'';
+ if(!r.ok)throw new Error('HTTP '+r.status+' '+ct);
+ const blob=await r.blob();
+ if(!blob.type.startsWith('image/'))throw new Error('La respuesta no es una imagen: '+blob.type);
+ const bitmap=await createImageBitmap(blob);
+ const c=document.createElement('canvas'); c.width=bitmap.width; c.height=bitmap.height;
+ const ctx=c.getContext('2d',{willReadFrequently:true}); ctx.drawImage(bitmap,0,0); bitmap.close();
+ const data=ctx.getImageData(0,0,c.width,c.height).data;
+ let visible=0, alphaOnly=0, bbox={x0:c.width,y0:c.height,x1:-1,y1:-1};
+ const colors=new Map();
+ for(let i=0,p=0;i<data.length;i+=4,p++){
+  const r=data[i],g=data[i+1],b=data[i+2],a=data[i+3];
+  if(a>0){visible++; if(a<250)alphaOnly++; const x=p%c.width,y=Math.floor(p/c.width); if(x<bbox.x0)bbox.x0=x;if(y<bbox.y0)bbox.y0=y;if(x>bbox.x1)bbox.x1=x;if(y>bbox.y1)bbox.y1=y; const k=r+','+g+','+b+','+a; colors.set(k,(colors.get(k)||0)+1);}
+ }
+ const top=[...colors.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12).map(([k,n])=>k+' = '+n).join('\n');
+ const total=c.width*c.height;
+ const log='Dimensiones: '+c.width+' × '+c.height+' px\nTotal: '+total.toLocaleString('es-ES')+' px\nPíxeles con alpha > 0: '+visible.toLocaleString('es-ES')+' ('+(100*visible/total).toFixed(4)+' %)\nPíxeles con alpha 1–249: '+alphaOnly.toLocaleString('es-ES')+'\n'+(visible?'Bounding box visible: x '+bbox.x0+'–'+bbox.x1+', y '+bbox.y0+'–'+bbox.y1+'\n':'Sin ningún píxel no transparente.\n')+'\nColores no transparentes más frecuentes:\n'+(top||'(ninguno)')+'\nTiempo análisis: '+Math.round(performance.now()-t0)+' ms';
+ return {canvas:c,log,visible,total,colors};
+}
 async function testFetch(url){
  const t0=performance.now();
  try{const r=await fetch(url,{cache:'no-store',mode:'cors'});const ct=r.headers.get('content-type')||'';const text=ct.includes('xml')||ct.includes('text')?await r.text():'';return {ok:r.ok,status:r.status,ct,ms:Math.round(performance.now()-t0),text};}
  catch(e){return {ok:false,status:'FETCH ERROR',ct:'',ms:Math.round(performance.now()-t0),text:String(e)};}
 }
 async function run(){
- $('cap').textContent='Consultando GetCapabilities…';$('maplog').textContent='Pendiente…';$('imagebox').innerHTML='';say('⏳ Consultando el servicio oficial…');
+ $('cap').textContent='Consultando GetCapabilities…';$('maplog').textContent='Pendiente…';$('pixelLog').textContent='Pendiente…';$('imagebox').innerHTML='';say('⏳ Consultando el servicio oficial…');
  const capUrl=WMS+'?dataset='+encodeURIComponent(DATASET)+'&SERVICE=WMS&REQUEST=GetCapabilities&_irrati='+Date.now();
  let info;
  try{
-  const r=await fetch(capUrl,{cache:'no-store',mode:'cors'}); const text=await r.text();
+  const r=await fetch(capUrl,{cache:'no-store',mode:'cors'});const text=await r.text();
   if(!r.ok)throw new Error('HTTP '+r.status+' al pedir GetCapabilities');
   info=parseCaps(text);
   $('cap').textContent='OK\nHTTP '+r.status+'\nCapa Name: '+info.name+'\nTítulo: '+info.title+'\nTIME usado: '+info.time+'\nTIME original: '+info.rawTime+'\nCRS/SRS de la capa: '+(info.crs.join(', ')||'(heredados/no indicados directamente)');
   say('✅ GetCapabilities OK. Probando GetMap…','ok');
- }catch(e){$('cap').textContent='ERROR\n'+e; say('❌ Falló GetCapabilities: '+e,'bad');return;}
- const tests=[['EPSG:4326',mapUrl(info,'EPSG:4326')],['EPSG:3857',(()=>{const R=Math.PI/180;const f=x=>Math.log(Math.tan(Math.PI/4+x*R/2));const x1=-4.8*R*6378137,x2=-1.5*R*6378137;const y1=f(42.3)*6378137,y2=f(44.2)*6378137;return WMS+'?'+new URLSearchParams({dataset:DATASET,SERVICE:'WMS',VERSION:'1.1.1',REQUEST:'GetMap',LAYERS:info.name,STYLES:'',SRS:'EPSG:3857',BBOX:[x1,y1,x2,y2].join(','),WIDTH:'900',HEIGHT:'520',FORMAT:'image/png',TRANSPARENT:'TRUE',TIME:info.time}).toString();})()]];
+ }catch(e){$('cap').textContent='ERROR\n'+e;say('❌ Falló GetCapabilities: '+e,'bad');return;}
+ const tests=[['EPSG:4326',mapUrl(info,'EPSG:4326')]];
  let out='Capa: '+info.name+'\nTIME: '+info.time+'\n\n';
  for(const [srs,url] of tests){out+='--- '+srs+' ---\nURL:\n'+url+'\n';const r=await testFetch(url);out+='Resultado: '+(r.ok?'OK':'ERROR')+' | HTTP '+r.status+' | '+r.ct+' | '+r.ms+' ms\n';if(r.text)out+='Respuesta: '+r.text.slice(0,1200)+'\n';out+='\n';}
  $('maplog').textContent=out;
- const img=document.createElement('img'); img.alt='Resultado GetMap Meteosat'; img.src=tests[0][1]+'&_img='+Date.now(); img.onload=()=>{ $('imagebox').innerHTML='<p class="ok">✅ La imagen GetMap se puede cargar en el navegador.</p>'; $('imagebox').appendChild(img); }; img.onerror=()=>{ $('imagebox').innerHTML='<p class="bad">❌ El navegador no pudo cargar la imagen GetMap EPSG:4326.</p>'; };
- say('Diagnóstico terminado. Mira especialmente la sección GetMap y, si aparece, el texto de ERROR.','ok');
+ try{
+  say('⏳ PNG recibido. Analizando píxeles…');
+  const a=await fetchImageAnalysis(tests[0][1]);
+  $('pixelLog').textContent=a.log;
+  const title=a.visible?'⚠️ El PNG SÍ contiene píxeles visibles':'ℹ️ El PNG es completamente transparente';
+  $('pixelLog').className=a.visible?'warn':'muted';
+  const wrap=document.createElement('div');wrap.className='card';wrap.innerHTML='<strong>'+title+'</strong><br><span class="muted">Vista del PNG exactamente como lo devuelve el WMS:</span>';
+  wrap.appendChild(a.canvas);$('imagebox').appendChild(wrap);
+  say(a.visible?'⚠️ Prueba terminada: hay datos visibles en el PNG.':'ℹ️ Prueba terminada: el PNG no contiene píxeles visibles en este instante/área.','ok');
+ }catch(e){
+  $('pixelLog').textContent='NO SE PUDO ANALIZAR EL PNG\n'+e+'\n\nEl GetMap puede seguir funcionando, pero el navegador ha bloqueado la lectura de píxeles (CORS/canvas) o la respuesta no es decodificable.';
+  $('pixelLog').className='bad';
+  say('⚠️ GetMap funciona, pero el navegador no permite leer sus píxeles: '+e,'warn');
+ }
 }
 $('run').addEventListener('click',run);
 </script>
