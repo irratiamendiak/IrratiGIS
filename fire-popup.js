@@ -11,35 +11,17 @@
   function items(d){return Array.isArray(d?.fires)?d.fires:Array.isArray(d?.detections)?d.detections:Array.isArray(d?.data)?d.data:Array.isArray(d?.features)?d.features:[]}
   async function load(){if(loading)return;const map=getMap(),firms=getLayer(),t=token();if(!map||!firms||typeof L==="undefined"){status("NASA FIRMS: mapa ez dago prest","error");return}if(!t){status("NASA FIRMS: saio-tokenik ez","error");return}loading=true;status("NASA FIRMS: datuak kargatzen…");try{const r=await fetch(`${API}/api/firms?days=5`,{headers:{Authorization:`Bearer ${t}`}});const raw=await r.text();let d={};try{d=JSON.parse(raw)}catch(_){throw new Error(`FIRMS erantzuna ez da JSON: ${raw.slice(0,160)}`)}if(!r.ok)throw new Error(d.detail||d.error||`HTTP ${r.status}`);const arr=items(d);firms.clearLayers();let count=0,bad=0;for(const f of arr){const c=coords(f);if(!c){bad++;continue}const m=L.circleMarker(c,{radius:8,weight:2,color:"#8b0000",fillColor:"#ff3b00",fillOpacity:.95});m.bindPopup(`<strong>🛰️ NASA FIRMS</strong><br>Data: ${f.acqDate||f.acq_date||"—"}<br>Ordua: ${f.acqTime||f.acq_time||"—"}<br>Satelitea: ${f.satellite||f.satellite_name||"—"}<br>Konfiantza: ${f.confidence??f.confidence_pct??"—"}<br>FRP: ${f.frp??"—"} MW<br>Koordenatuak: ${c[0].toFixed(5)}, ${c[1].toFixed(5)}`);firms.addLayer(m);count++}if(count>0)firms.addTo(map);const input=ensureRow();if(input)input.checked=count>0;status(count>0?`NASA FIRMS: ${count} detekzio mapan (${bad} koordenatu baliogabe)`: `NASA FIRMS: 0 detekzio (APIak ${arr.length} erregistro bidali ditu)`,count>0?"ok":"info");console.info("IrratiGIS FIRMS",{count,bad,response:d})}catch(e){console.error("IrratiGIS FIRMS:",e);firms.clearLayers();status(`NASA FIRMS: ERROREA — ${e.message||e}`,"error")}finally{loading=false}}
   function boot(){const map=getMap(),firms=getLayer();if(!map||!firms)return;ensureRow();status("NASA FIRMS: prest");setTimeout(ensureRow,500);setTimeout(load,1200)}
+
   const METEOSAT_WMS="https://adaguc.lsasvcs.ipma.pt//adagucserver";
   const METEOSAT_BASE={dataset:"MSG-FRP",layers:"MSG:FRP-PIXEL",styles:"",format:"image/png",transparent:true,version:"1.1.1",opacity:.98,zIndex:650,attribution:"© EUMETSAT / LSA SAF"};
+  let meteosatLayer=null,meteosatFailures=0,meteosatBusy=false;
   function round15(d){const x=new Date(d);x.setUTCMinutes(Math.floor(x.getUTCMinutes()/15)*15,0,0);return x}
-  function fallbackMeteosatTime(){return new Date(round15(Date.now()-45*60*1000)).toISOString()}
-  async function latestMeteosatTime(){
-    const url=`${METEOSAT_WMS}?dataset=MSG-FRP&SERVICE=WMS&REQUEST=GetCapabilities&_irrati=${Date.now()}`;
-    try{
-      const r=await fetch(url,{cache:"no-store",mode:"cors"});
-      if(!r.ok)throw new Error(`GetCapabilities HTTP ${r.status}`);
-      const text=await r.text();
-      const m=text.match(/<Dimension[^>]*name=["']time["'][^>]*>([\s\S]*?)<\/Dimension>/i)||text.match(/<Extent[^>]*name=["']time["'][^>]*>([\s\S]*?)<\/Extent>/i);
-      if(!m)throw new Error("time dimension not found");
-      const raw=m[1].replace(/<!\[CDATA\[|\]\]>/g,"").trim();
-      const parts=raw.split(/[;,]/).map(s=>s.trim()).filter(Boolean);
-      let candidate=parts[parts.length-1]||"";
-      if(candidate.includes("/"))candidate=candidate.split("/")[1];
-      const dt=new Date(candidate);
-      if(!Number.isFinite(dt.getTime()))throw new Error("invalid time dimension");
-      const now=Date.now();
-      return new Date(Math.min(dt.getTime(),now)).toISOString();
-    }catch(e){console.warn("IrratiGIS Meteosat GetCapabilities:",e);return fallbackMeteosatTime()}
-  }
-  async function initMeteosat(){const map=getMap();if(!map||typeof L==="undefined")return setTimeout(initMeteosat,500);const list=document.querySelector(".leaflet-control-layers-overlays");if(!list)return setTimeout(initMeteosat,500);let ml=window.IrratiGISMeteosatLayer;if(!ml){ml=L.tileLayer.wms(METEOSAT_WMS,{...METEOSAT_BASE});window.IrratiGISMeteosatLayer=ml}let row=list.querySelector(".irrati-meteosat-layer-row");if(!row){row=document.createElement("label");row.className="irrati-meteosat-layer-row";row.style.display="block";const input=document.createElement("input");input.type="checkbox";input.className="leaflet-control-layers-selector";row.appendChild(input);const span=document.createElement("span");span.textContent=" 🌍 Meteosat - incendios";row.appendChild(span)}if(!row.parentNode)list.appendChild(row);const input=row.querySelector("input");
-    const refresh=async()=>{status("Meteosat: buscando último FRP-PIXEL…");const t=await latestMeteosatTime();ml.setParams({...METEOSAT_BASE,time:t,_irrati:Date.now()});ml.redraw();status(`Meteosat: FRP-PIXEL ${t.slice(11,16)} UTC · SEVIRI/MSG`,"ok")};
-    if(!input.dataset.meteosatBound){input.dataset.meteosatBound="1";input.addEventListener("change",async()=>{if(input.checked){ml.addTo(map);await refresh()}else{map.removeLayer(ml);status("Meteosat: itzalita")}})}
-    input.checked=map.hasLayer(ml);
-    if(!window.IrratiGISMeteosat){window.IrratiGISMeteosat={layer:ml,open:async()=>{input.checked=true;ml.addTo(map);await refresh()},refresh:async()=>{if(map.hasLayer(ml))await refresh()}}}
-    if(!window.IrratiGISMeteosatTimer)window.IrratiGISMeteosatTimer=setInterval(()=>window.IrratiGISMeteosat?.refresh?.(),15*60*1000);
-  }
+  function candidateTimes(){const now=round15(Date.now());return [null,...Array.from({length:8},(_,i)=>new Date(now.getTime()-(i+2)*15*60000).toISOString())]}
+  function makeMeteosatLayer(){const ml=L.tileLayer.wms(METEOSAT_WMS,{...METEOSAT_BASE});ml.on("tileerror",()=>{meteosatFailures++;if(meteosatFailures>=2&&!meteosatBusy){meteosatBusy=true;tryNextMeteosat(1).finally(()=>{meteosatBusy=false})}});return ml}
+  function setMeteosatTime(value){const params={...METEOSAT_BASE,_irrati:Date.now()};if(value)params.time=value;meteosatLayer.setParams(params);meteosatFailures=0;meteosatLayer.redraw()}
+  async function tryNextMeteosat(start){const map=getMap();if(!map||!meteosatLayer)return;const candidates=candidateTimes();for(let i=start;i<candidates.length;i++){const t=candidates[i];setMeteosatTime(t);await new Promise(r=>setTimeout(r,1800));if(meteosatFailures<2){status(t?`Meteosat: FRP-PIXEL ${t.slice(11,16)} UTC · SEVIRI/MSG`:"Meteosat: último FRP-PIXEL disponible · SEVIRI/MSG","ok");return}meteosatFailures=0}status("Meteosat: el servidor WMS no está entregando teselas FRP-PIXEL","error")}
+  async function refreshMeteosat(){const map=getMap();if(!map||!meteosatLayer||!map.hasLayer(meteosatLayer))return;if(meteosatBusy)return;meteosatBusy=true;status("Meteosat: cargando FRP-PIXEL…");try{setMeteosatTime(null);await new Promise(r=>setTimeout(r,1800));if(meteosatFailures>=2)await tryNextMeteosat(1);else status("Meteosat: último FRP-PIXEL disponible · SEVIRI/MSG","ok")}finally{meteosatBusy=false}}
+  function initMeteosat(){const map=getMap();if(!map||typeof L==="undefined")return setTimeout(initMeteosat,500);const list=document.querySelector(".leaflet-control-layers-overlays");if(!list)return setTimeout(initMeteosat,500);meteosatLayer=window.IrratiGISMeteosatLayer||makeMeteosatLayer();window.IrratiGISMeteosatLayer=meteosatLayer;let row=list.querySelector(".irrati-meteosat-layer-row");if(!row){row=document.createElement("label");row.className="irrati-meteosat-layer-row";row.style.display="block";const input=document.createElement("input");input.type="checkbox";input.className="leaflet-control-layers-selector";row.appendChild(input);const span=document.createElement("span");span.textContent=" 🌍 Meteosat - incendios";row.appendChild(span);list.appendChild(row)}const input=row.querySelector("input");if(!input.dataset.meteosatBound){input.dataset.meteosatBound="1";input.addEventListener("change",async()=>{if(input.checked){meteosatLayer.addTo(map);await refreshMeteosat()}else{map.removeLayer(meteosatLayer);status("Meteosat: itzalita")}})}input.checked=map.hasLayer(meteosatLayer);window.IrratiGISMeteosat={layer:meteosatLayer,open:async()=>{input.checked=true;meteosatLayer.addTo(map);await refreshMeteosat()},refresh:refreshMeteosat};if(!window.IrratiGISMeteosatTimer)window.IrratiGISMeteosatTimer=setInterval(refreshMeteosat,15*60*1000)}
   window.IrratiGISFirms={get layer(){return getLayer()},load,registerLayerControl:ensureRow,open:()=>{const m=getMap(),l=getLayer();if(m&&l){ensureRow();l.addTo(m);load()}}};
   window.IrratiGISFirePopup={loadBurnsIntoLayer:boot,hookLayerControl:boot,openFirms:()=>window.IrratiGISFirms.open()};
   boot();initMeteosat();
