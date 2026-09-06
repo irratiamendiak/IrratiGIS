@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5">
+<title>Diagnóstico Meteosat FRP-PIXEL</title>
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:16px;background:#f5f5f5;color:#222}
+main{max-width:900px;margin:auto;background:white;border-radius:14px;padding:18px;box-shadow:0 2px 12px #0002}
+h1{font-size:22px;margin:0 0 8px} h2{font-size:17px;margin:20px 0 8px}
+button{font-size:17px;padding:12px 16px;border:0;border-radius:10px;background:#1769aa;color:white;margin:6px 6px 6px 0}
+pre{white-space:pre-wrap;word-break:break-word;background:#111;color:#eee;padding:12px;border-radius:10px;font-size:13px;line-height:1.4}
+.ok{color:#087a22;font-weight:700}.bad{color:#b00020;font-weight:700}.muted{color:#666}
+img{max-width:100%;border:1px solid #bbb;border-radius:8px;background:#ddd}
+.card{border:1px solid #ddd;border-radius:10px;padding:12px;margin-top:10px}
+</style>
+</head>
+<body>
+<main>
+<h1>🔥 Diagnóstico Meteosat FRP-PIXEL</h1>
+<p class="muted">Esta página prueba directamente el WMS oficial de LSA SAF/ADAGUC desde el móvil. No modifica IrratiGIS.</p>
+<button id="run">▶ Ejecutar diagnóstico</button>
+<div id="status" class="card">Pulsa el botón para empezar.</div>
+<h2>1. GetCapabilities</h2><pre id="cap">Pendiente…</pre>
+<h2>2. GetMap</h2><pre id="maplog">Pendiente…</pre>
+<div id="imagebox"></div>
+</main>
+<script>
+const WMS='https://adaguc.lsasvcs.ipma.pt//adagucserver';
+const DATASET='MSG-FRP';
+const BBOX='-4.8,42.3,-1.5,44.2';
+const $=id=>document.getElementById(id);
+function say(t,c=''){ $('status').textContent=t; $('status').className='card '+c; }
+function esc(s){return String(s).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
+function timeNode(layer){let n=layer;while(n){for(const e of n.children||[]){if((e.localName==='Dimension'||e.localName==='Extent')&&(e.getAttribute('name')||'').toLowerCase()==='time')return e;}n=n.parentElement;}return null;}
+function childText(layer,name){return [...layer.children].find(e=>e.localName===name)?.textContent?.trim()||'';}
+function parseCaps(text){
+ const xml=new DOMParser().parseFromString(text,'text/xml');
+ if(xml.getElementsByTagName('parsererror').length)throw new Error('XML inválido');
+ const layers=[...xml.getElementsByTagName('Layer')];
+ const target=layers.find(l=>/FRP-PIXEL/i.test(childText(l,'Title'))||/FRP-PIXEL/i.test(childText(l,'Abstract')));
+ if(!target)throw new Error('No se encontró una capa FRP-PIXEL');
+ const name=childText(target,'Name');
+ const title=childText(target,'Title');
+ const dim=timeNode(target); if(!dim)throw new Error('No se encontró dimensión TIME');
+ const raw=dim.textContent.replace(/\s+/g,' ').trim();
+ const parts=raw.split(/[;,]/).map(s=>s.trim()).filter(Boolean);
+ let candidate=parts[parts.length-1]||''; if(candidate.includes('/')) candidate=candidate.split('/')[1];
+ const d=new Date(candidate); if(!Number.isFinite(d.getTime()))throw new Error('TIME no válido: '+candidate);
+ const times=[]; for(const l of layers){const x=timeNode(l);if(x)times.push(x.textContent.trim());}
+ const crs=[...target.children].filter(e=>e.localName==='CRS'||e.localName==='SRS').map(e=>e.textContent.trim());
+ return {name,title,time:new Date(Math.min(d.getTime(),Date.now())).toISOString(),rawTime:raw,crs};
+}
+function mapUrl(info,srs){
+ const p=new URLSearchParams({dataset:DATASET,SERVICE:'WMS',VERSION:'1.1.1',REQUEST:'GetMap',LAYERS:info.name,STYLES:'',SRS:srs,BBOX:BBOX,WIDTH:'900',HEIGHT:'520',FORMAT:'image/png',TRANSPARENT:'TRUE',TIME:info.time});
+ return WMS+'?'+p.toString();
+}
+async function testFetch(url){
+ const t0=performance.now();
+ try{const r=await fetch(url,{cache:'no-store',mode:'cors'});const ct=r.headers.get('content-type')||'';const text=ct.includes('xml')||ct.includes('text')?await r.text():'';return {ok:r.ok,status:r.status,ct,ms:Math.round(performance.now()-t0),text};}
+ catch(e){return {ok:false,status:'FETCH ERROR',ct:'',ms:Math.round(performance.now()-t0),text:String(e)};}
+}
+async function run(){
+ $('cap').textContent='Consultando GetCapabilities…';$('maplog').textContent='Pendiente…';$('imagebox').innerHTML='';say('⏳ Consultando el servicio oficial…');
+ const capUrl=WMS+'?dataset='+encodeURIComponent(DATASET)+'&SERVICE=WMS&REQUEST=GetCapabilities&_irrati='+Date.now();
+ let info;
+ try{
+  const r=await fetch(capUrl,{cache:'no-store',mode:'cors'}); const text=await r.text();
+  if(!r.ok)throw new Error('HTTP '+r.status+' al pedir GetCapabilities');
+  info=parseCaps(text);
+  $('cap').textContent='OK\nHTTP '+r.status+'\nCapa Name: '+info.name+'\nTítulo: '+info.title+'\nTIME usado: '+info.time+'\nTIME original: '+info.rawTime+'\nCRS/SRS de la capa: '+(info.crs.join(', ')||'(heredados/no indicados directamente)');
+  say('✅ GetCapabilities OK. Probando GetMap…','ok');
+ }catch(e){$('cap').textContent='ERROR\n'+e; say('❌ Falló GetCapabilities: '+e,'bad');return;}
+ const tests=[['EPSG:4326',mapUrl(info,'EPSG:4326')],['EPSG:3857',(()=>{const R=Math.PI/180;const f=x=>Math.log(Math.tan(Math.PI/4+x*R/2));const x1=-4.8*R*6378137,x2=-1.5*R*6378137;const y1=f(42.3)*6378137,y2=f(44.2)*6378137;return WMS+'?'+new URLSearchParams({dataset:DATASET,SERVICE:'WMS',VERSION:'1.1.1',REQUEST:'GetMap',LAYERS:info.name,STYLES:'',SRS:'EPSG:3857',BBOX:[x1,y1,x2,y2].join(','),WIDTH:'900',HEIGHT:'520',FORMAT:'image/png',TRANSPARENT:'TRUE',TIME:info.time}).toString();})()]];
+ let out='Capa: '+info.name+'\nTIME: '+info.time+'\n\n';
+ for(const [srs,url] of tests){out+='--- '+srs+' ---\nURL:\n'+url+'\n';const r=await testFetch(url);out+='Resultado: '+(r.ok?'OK':'ERROR')+' | HTTP '+r.status+' | '+r.ct+' | '+r.ms+' ms\n';if(r.text)out+='Respuesta: '+r.text.slice(0,1200)+'\n';out+='\n';}
+ $('maplog').textContent=out;
+ const img=document.createElement('img'); img.alt='Resultado GetMap Meteosat'; img.src=tests[0][1]+'&_img='+Date.now(); img.onload=()=>{ $('imagebox').innerHTML='<p class="ok">✅ La imagen GetMap se puede cargar en el navegador.</p>'; $('imagebox').appendChild(img); }; img.onerror=()=>{ $('imagebox').innerHTML='<p class="bad">❌ El navegador no pudo cargar la imagen GetMap EPSG:4326.</p>'; };
+ say('Diagnóstico terminado. Mira especialmente la sección GetMap y, si aparece, el texto de ERROR.','ok');
+}
+$('run').addEventListener('click',run);
+</script>
+</body>
+</html>
