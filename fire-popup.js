@@ -17,6 +17,7 @@ const METEOSAT_BASE={dataset:METEOSAT_DATASET,layers:"",styles:"",format:"image/
 let meteosatLayer=null,meteosatBusy=false,meteosatLayerName="",meteosatTileLoads=0,meteosatTileErrors=0;
 function round15(d){const x=new Date(d);x.setUTCMinutes(Math.floor(x.getUTCMinutes()/15)*15,0,0);return x}
 function fallbackMeteosatTime(){return new Date(round15(Date.now()-30*60*1000)).toISOString()}
+function findTimeDimension(layer){let node=layer;while(node){const direct=[...node.children].find(e=>{const n=e.getAttribute?.("name")?.toLowerCase();return (e.localName==="Dimension"||e.localName==="Extent")&&n==="time"});if(direct)return direct;node=node.parentElement}return null}
 async function readMeteosatCapabilities(){
   const url=`${METEOSAT_WMS}?dataset=${encodeURIComponent(METEOSAT_DATASET)}&SERVICE=WMS&REQUEST=GetCapabilities&_irrati=${Date.now()}`;
   const r=await fetch(url,{cache:"no-store",mode:"cors"});
@@ -29,7 +30,7 @@ async function readMeteosatCapabilities(){
   if(!target)throw new Error("No se encontró la capa FRP-PIXEL en GetCapabilities");
   const name=[...target.children].find(e=>e.localName==="Name")?.textContent?.trim();
   if(!name)throw new Error("La capa FRP-PIXEL no tiene Name");
-  const dim=[...target.children].find(e=>e.localName==="Dimension"&&e.getAttribute("name")?.toLowerCase()==="time")||[...target.children].find(e=>e.localName==="Extent"&&e.getAttribute("name")?.toLowerCase()==="time");
+  const dim=findTimeDimension(target);
   if(!dim)throw new Error("La capa FRP-PIXEL no tiene dimensión TIME");
   const raw=dim.textContent.replace(/\s+/g," ").trim();
   const parts=raw.split(/[;,]/).map(s=>s.trim()).filter(Boolean);let candidate=parts[parts.length-1]||"";if(candidate.includes("/"))candidate=candidate.split("/")[1];
@@ -40,8 +41,8 @@ async function latestMeteosat(){try{return await readMeteosatCapabilities()}catc
 function attachMeteosatDiagnostics(l){
   if(!l||l.__irratiDiag)return l;l.__irratiDiag=true;
   l.on("tileloadstart",e=>{meteosatTileLoads++;console.info("IrratiGIS Meteosat GetMap START",e.tile?.src||e);});
-  l.on("tileload",e=>{console.info("IrratiGIS Meteosat GetMap OK",{url:e.tile?.src||"",loads:meteosatTileLoads,errors:meteosatTileErrors});});
-  l.on("tileerror",e=>{meteosatTileErrors++;console.error("IrratiGIS Meteosat GetMap ERROR",{url:e.tile?.src||"",error:e.error||e,loads:meteosatTileLoads,errors:meteosatTileErrors});status(`Meteosat: GetMap ERROR (${meteosatTileErrors}) — abre F12 > Console` ,"error")});
+  l.on("tileload",e=>{console.info("IrratiGIS Meteosat GetMap OK",{url:e.tile?.src||"",layers:l.wmsParams?.layers||"",time:l.wmsParams?.time||"",loads:meteosatTileLoads,errors:meteosatTileErrors});});
+  l.on("tileerror",e=>{meteosatTileErrors++;console.error("IrratiGIS Meteosat GetMap ERROR",{url:e.tile?.src||"",layers:l.wmsParams?.layers||"",time:l.wmsParams?.time||"",error:e.error||e,loads:meteosatTileLoads,errors:meteosatTileErrors});status(`Meteosat: GetMap ERROR (${meteosatTileErrors}) — abre F12 > Console` ,"error")});
   return l
 }
 function createMeteosatLayer(name){return attachMeteosatDiagnostics(L.tileLayer.wms(METEOSAT_WMS,{...METEOSAT_BASE,layers:name}))}
@@ -53,9 +54,9 @@ async function refreshMeteosat(){
     if(info.name&&info.name!==meteosatLayerName){meteosatLayerName=info.name;const wasOn=map.hasLayer(meteosatLayer);map.removeLayer(meteosatLayer);meteosatLayer=createMeteosatLayer(meteosatLayerName);window.IrratiGISMeteosatLayer=meteosatLayer;if(wasOn)meteosatLayer.addTo(map)}
     if(!meteosatLayerName)throw new Error(info.error?.message||"No se pudo determinar la capa FRP-PIXEL");
     meteosatLayer.setParams({...METEOSAT_BASE,layers:meteosatLayerName,time:info.time,_irrati:Date.now()});meteosatLayer.redraw();
-    status(`Meteosat: FRP-PIXEL ${info.time.slice(11,16)} UTC · SEVIRI/MSG · esperando GetMap…`,"ok");
+    status(`Meteosat: FRP-PIXEL ${info.time.slice(11,16)} UTC · capa ${meteosatLayerName} · esperando GetMap…`,"ok");
     console.info("IrratiGIS Meteosat",{layer:meteosatLayerName,time:info.time,fallback:!!info.fallback});
-    setTimeout(()=>{if(meteosatTileLoads===0&&meteosatTileErrors===0)status(`Meteosat: sin respuesta de teselas GetMap — revisa F12 > Console`,`error`);else if(meteosatTileErrors>0)status(`Meteosat: GetMap con ${meteosatTileErrors} errores / ${meteosatTileLoads} cargas`,`error`);else status(`Meteosat: GetMap OK · ${meteosatTileLoads} teselas solicitadas`,"ok")},5000);
+    setTimeout(()=>{if(meteosatTileLoads===0&&meteosatTileErrors===0)status(`Meteosat: sin respuesta de teselas GetMap — revisa F12 > Console`,`error`);else if(meteosatTileErrors>0)status(`Meteosat: GetMap con ${meteosatTileErrors} errores / ${meteosatTileLoads} cargas`,`error`);else status(`Meteosat: GetMap OK · capa ${meteosatLayerName} · ${meteosatTileLoads} teselas solicitadas`,"ok")},5000);
   }catch(e){console.error("IrratiGIS Meteosat:",e);status(`Meteosat: ERROR — ${e.message||e}`,"error")}finally{meteosatBusy=false}
 }
 function initMeteosat(){
