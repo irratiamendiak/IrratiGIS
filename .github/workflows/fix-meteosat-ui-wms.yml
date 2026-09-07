@@ -1,0 +1,45 @@
+name: Fix Meteosat UI and WMS detection
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/fix-meteosat-ui-wms.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Meteosat
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('meteosat.js')
+          s=p.read_text()
+          old='if(a>30&&((rr+gg+bb)<735||(mx-mn)>45))cells.add(`${Math.floor(x/step)},${Math.floor(y/step)}`)'
+          new='if(a>30&&((rr+gg+bb)<735||(mx-mn)>45||rr>180||gg>120||bb>120))cells.add(`${Math.floor(x/step)},${Math.floor(y/step)}`)'
+          s=s.replace(old,new)
+          s=s.replace('bottom:8px;z-index:1002;width:min(220px','bottom:42px;z-index:1002;width:min(220px')
+          s=s.replace('el.style.marginBottom=`${Math.max(8,met.offsetHeight+10)}px`','el.style.marginBottom=`${Math.max(10,met.offsetHeight+12)}px`')
+          p.write_text(s)
+          idx=Path('index.html')
+          h=idx.read_text()
+          import re
+          h=re.sub(r'meteosat\\.js\\?v=20260907-\\d+', 'meteosat.js?v=20260907-06', h)
+          idx.write_text(h)
+          PY
+      - name: Commit
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add meteosat.js index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix Meteosat panel position and WMS fire detection"
+          git push
+      - name: Remove helper
+        if: success()
+        run: |
+          git rm .github/workflows/fix-meteosat-ui-wms.yml
+          git commit -m "Remove Meteosat fix helper"
+          git push
