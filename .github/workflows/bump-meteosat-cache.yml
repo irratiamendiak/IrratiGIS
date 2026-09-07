@@ -1,0 +1,29 @@
+name: Bump Meteosat cache version
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bump cache
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for name, old, new in [
+            ('auth.js','fire-popup.js?v=20260907-46','fire-popup.js?v=20260907-47'),
+            ('index.html','auth.js?v=20260907-46','auth.js?v=20260907-47')
+          ]:
+            p=Path(name); s=p.read_text()
+            if old not in s: raise SystemExit(f'{old} not found in {name}')
+            p.write_text(s.replace(old,new,1))
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f .github/workflows/bump-meteosat-cache.yml
+          git add auth.js index.html .github/workflows/bump-meteosat-cache.yml
+          git commit -m 'Bump Meteosat cache version'
+          git push
