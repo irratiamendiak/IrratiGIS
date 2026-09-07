@@ -81,10 +81,11 @@ function ageClass(t,ref){
 
 function mapUrl(t){
   const p=new URLSearchParams({
-    dataset:DATASET,SERVICE:"WMS",VERSION:"1.1.1",REQUEST:"GetMap",
-    LAYERS:LAYER,STYLES:"",SRS:"EPSG:4326",BBOX:BBOX.join(","),
+    dataset:DATASET,SERVICE:"WMS",VERSION:"1.3.0",REQUEST:"GetMap",
+    LAYERS:LAYER,STYLES:"auto/nearest",CRS:"EPSG:4326",
+    BBOX:`${BBOX[1]},${BBOX[0]},${BBOX[3]},${BBOX[2]}`,
     WIDTH:"1200",HEIGHT:"680",FORMAT:"image/png",TRANSPARENT:"TRUE",
-    TIME:iso(t),_irrati:Date.now().toString()+Math.random().toString(36).slice(2)
+    TIME:iso(t)
   });
   return WMS+"?"+p.toString();
 }
