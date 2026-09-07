@@ -9,12 +9,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Apply patch
         run: |
-          echo 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCmltcG9ydCByZQpwPVBhdGgoIm1ldGVvc2F0LmpzIikKcz1wLnJlYWRfdGV4dCgpCnBhdD1yJycnY29uc3QgYT1hZ2VcKHhcLnRpbWVcLmdldFRpbWVcKFwpXCksc2l6ZT0yMixpY29uPUxcLmRpdkljb25cKFx7Lio/XH1cKTtjb25zdCBtPUxcLm1hcmtlcicnJwpyZXA9JycnY29uc3QgYT1hZ2UoeC50aW1lLmdldFRpbWUoKSksc2l6ZT0yOCxzdmc9YDxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjgiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAyOCAyOCI+PHBhdGggZD0iTTE0IDEuNWwzLjI1IDcuMSA3Ljc1Ljg1LTUuNzUgNS4xNSAxLjU1IDcuNTVMMTQgMTguMjVsLTYuOCAzLjkgMS41NS03LjU1TDMgOS40NWw3Ljc1LS44NXoiIGZpbGw9IiR7YS5jfSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48L3N2Zz5gLGljb249TC5kaXZJY29uKHtjbGFzc05hbWU6ImlycmF0aS1tZXRlb3NhdC1zdGFyIixodG1sOnN2ZyxpY29uU2l6ZTpbc2l6ZSxzaXplXSxpY29uQW5jaG9yOltzaXplLzIsc2l6ZS8yXSxwb3B1cEFuY2hvcjpbMCwtc2l6ZS8yXX0pO2NvbnN0IG09TC5tYXJrZXInJycKczI9cmUuc3ViKHBhdCxyZXAscixjb3VudD0xLGZsYWdzPXJlLlMpCmlmIHMyPT1zOiByYWlzZSBTeXN0ZW1FeGl0KCJpY29uIHBhdHRlcm4gbm90IGZvdW5kIikKcz1zMi5yZXBsYWNlKCdib3R0b206NDJweDsnLCdib3R0b206NzhweDsnLDEpCnM9cy5yZXBsYWNlKCcuaXJyYXRpLW1ldGVvc2F0LXN0YXJ7YmFja2dyb3VuZDp0cmFuc3BhcmVudCFpbXBvcnRhbnQ7Ym9yZGVyOjAhaW1wb3J0YW50fScsICcuaXJyYXRpLW1ldGVvc2F0LXN0YXJ7YmFja2dyb3VuZDp0cmFuc3BhcmVudCFpbXBvcnRhbnQ7Ym9yZGVyOjAhaW1wb3J0YW50O29wYWNpdHk6MSFpbXBvcnRhbnQ7ei1pbmRleDo5OTk5OSFpbXBvcnRhbnR9JykKcC53cml0ZV90ZXh0KHMpCmk9UGF0aCgiaW5kZXguaHRtbCIpCnQ9aS5yZWFkX3RleHQoKS5yZXBsYWNlKCJtZXRlb3NhdC5qcz92PTIwMjYwOTA3LTA2IiwibWV0ZW9zYXQuanM/dj0yMDI2MDkwNy0wNyIpCmkud3JpdGVfdGV4dCh0KQo=' | base64 -d >/tmp/patch.py
-          python3 /tmp/patch.py
+          sed -i 's/bottom:42px;/bottom:78px;/' meteosat.js
+          sed -i 's/zIndex:620/zIndex:700/' meteosat.js
+          sed -i 's/zIndexOffset:1500/zIndexOffset:5000/' meteosat.js
+          sed -i 's/width:22px;height:22px;font-size:21px/width:30px;height:30px;font-size:30px/' meteosat.js
+          sed -i 's/meteosat.js?v=20260907-06/meteosat.js?v=20260907-07/' index.html
       - name: Commit patch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add meteosat.js index.html
-          git commit -m 'Fix Meteosat marker visibility and panel position'
+          git commit -m 'Fix Meteosat panel and marker visibility'
           git push
