@@ -7,11 +7,11 @@
  *
  * Principio de calibración:
  * - La industria solo domina cuando el punto está realmente sobre/cerca de
- *   una instalación industrial inequívoca y la señal es débil.
+ *   una instalación industrial inequívoca y la señal es baja/moderada.
  * - Una industria a cientos de metros no debe convertir un incendio de
  *   vegetación en industrial.
- * - Un incendio puede ocurrir dentro de un entorno industrial, por lo que una
- *   señal fuerte o un clúster con evidencia forestal prevalece.
+ * - Un incendio puede ocurrir dentro de un entorno industrial: con señal muy
+ *   fuerte o corroboración espacial/temporal, el incendio vuelve a prevalecer.
  */
 const INDUSTRIAL_TAGS=[
   "industrial","quarry","brownfield","works","kiln","plant","chimney",
@@ -62,10 +62,9 @@ function classify(firms,context={}){
   else if(clusterForest){score+=20;reasons.push("clúster próximo con entorno forestal")}
   else if(vegetation){score+=20;reasons.push("entorno de vegetación/rural")}
 
-  /* Solo penalizamos industria de forma relevante cuando está realmente
-     próxima. A 453 m, por ejemplo, una instalación industrial no debe
-     dominar una detección de vegetación. */
-  if(industrialTag&&veryNearIndustrial){score-=15;reasons.push("actividad industrial inmediata")}
+  /* La proximidad industrial solo pesa de verdad cuando la instalación está
+     prácticamente pegada al píxel FIRMS. A cientos de metros no domina. */
+  if(industrialTag&&veryNearIndustrial){score-=20;reasons.push("actividad industrial inmediata")}
   else if(nearIndustrial){score-=4;reasons.push(`actividad industrial a ${Math.round(nearestIndustrial)} m`)}
   if(urban){score-=12;reasons.push("entorno urbano")}
 
@@ -96,31 +95,39 @@ function classify(firms,context={}){
   const strongSignal=(frp!=null&&frp>=20)||(confidence!=null&&confidence>=80);
   const fireEvidence=clusterFire||strongSignal||temporalRepeated>=1;
   const forestEvidence=forest||clusterForest;
+  const industrialCorroborated=clusterFire||clusterForest||repeated>0||temporalRepeated>0;
 
   /*
-   * Fuente industrial: punto inequívocamente industrial y muy próximo,
-   * con señal baja. Subimos el umbral a 10 MW para no convertir en incendio
-   * cualquier fuente térmica industrial moderada (p.ej. hornos, chimeneas,
-   * depósitos). Una señal fuerte sigue prevaleciendo.
+   * Una instalación inequívoca a <=100 m debe dominar las detecciones
+   * térmicas bajas/moderadas. Esto evita que chimeneas, hornos, depósitos,
+   * etc. aparezcan como incendios forestales solo porque OSM también contiene
+   * un meadow/vegetación cerca.
+   *
+   * Si hay una señal fuerte o corroboración del propio evento, no afirmamos
+   * que sea una fuente industrial: pasa a posible incendio o, con evidencia
+   * forestal clara y repetición, a probable incendio forestal.
    */
   const industrialSourceLikely=industrialTag&&
     veryNearIndustrial&&
-    (frp==null||frp<10)&&
+    (frp==null||frp<20)&&
     (confidence==null||confidence<80)&&
-    !forestEvidence&&!clusterFire;
+    !industrialCorroborated;
 
   let category="thermal_anomaly";
 
-  /* Vegetación + confianza nominal o mejor ya es una señal compatible con
-     incendio. La industria a >300 m no puede anularla. */
+  /* Una fuente industrial inmediata sin corroboración bloquea la categoría
+     de probable incendio forestal. En esos casos preferimos ser prudentes. */
+  const industrialDominant=industrialTag&&veryNearIndustrial&&!industrialCorroborated;
+
   const vegetationFireLikely=vegetation&&
     (confidence==null||confidence>=50)&&
-    !veryNearIndustrial;
+    !industrialDominant;
 
-  if(fireEvidence&&forestEvidence&&score>=55)category="probable_forest_fire";
-  else if(industrialSourceLikely)category="probable_industrial_source";
+  if(industrialSourceLikely)category="probable_industrial_source";
+  else if(fireEvidence&&forestEvidence&&score>=55)category="probable_forest_fire";
   else if(vegetationFireLikely&&score>=50)category="probable_forest_fire";
   else if(score>=40||strongSignal||clusterFire)category="possible_fire";
+  else if(industrialTag&&veryNearIndustrial)category="probable_industrial_source";
 
   const labels={
     probable_forest_fire:"🔥 Probable incendio forestal",
