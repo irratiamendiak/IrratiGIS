@@ -1,0 +1,21 @@
+name: Meteosat pane fix
+on: push
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch
+        run: |
+          sed -i 's/p.style.zIndex=620/p.style.zIndex=700/' meteosat.js
+          sed -i 's/.irrati-meteosat-star-inner{display:block;/.irrati-meteosat-star-inner{display:block!important;visibility:visible!important;opacity:1!important;/' meteosat.js
+          sed -i 's/meteosat.js?v=20260907-07/meteosat.js?v=20260907-08/' index.html
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add meteosat.js index.html
+          git commit -m 'Raise Meteosat markers above map layers'
+          git push
