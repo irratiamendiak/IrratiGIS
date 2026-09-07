@@ -1,0 +1,34 @@
+name: Bump Meteosat cache
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bump-meteo-cache.yml'
+      - 'meteosat.js'
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bump script cache
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          s=s.replace('meteosat.js?v=20260907-05','meteosat.js?v=20260907-06')
+          p.write_text(s)
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html
+          git commit -m 'Bump Meteosat cache' || true
+          git push
+      - name: Remove helper
+        run: |
+          rm -f .github/workflows/bump-meteo-cache.yml
+          git add -A
+          git commit -m 'Remove cache helper' || true
+          git push
