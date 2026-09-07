@@ -1,0 +1,28 @@
+name: Bump Meteosat script
+on:
+  push:
+    paths: ['.github/workflows/fix-index-meteo.yml']
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bump cachebuster
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          s=s.replace('meteosat.js?v=20260907-01','meteosat.js?v=20260907-04')
+          p.write_text(s)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Actualizar cachebuster Meteosat' || true
+          git push
+      - name: Remove helper
+        run: |
+          git rm .github/workflows/fix-index-meteo.yml || true
+          git commit -m 'Eliminar helper temporal Meteosat' || true
+          git push || true
