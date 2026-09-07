@@ -1,0 +1,32 @@
+name: Bump Meteosat cache version
+on:
+  push:
+    paths:
+      - 'fire-popup.js'
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bump cache
+        shell: bash
+        run: |
+          sed -i 's/fire-popup\.js?v=20260907-47/fire-popup.js?v=20260907-48/g' auth.js
+          sed -i 's/auth\.js?v=20260907-47/auth.js?v=20260907-48/g' index.html
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add auth.js index.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'Bump Meteosat cache version'
+          git push
+      - name: Remove temporary workflow
+        if: ${{ success() }}
+        shell: bash
+        run: |
+          git rm .github/workflows/bump-meteosat-cache.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Remove temporary cache workflow'
+          git push
