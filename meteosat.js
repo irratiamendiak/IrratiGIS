@@ -2,7 +2,7 @@
 "use strict";
 /* Meteosat FRP-PIXEL: puntos horarios + último slot disponible. NASA FIRMS no se modifica. */
 const API="https://irratigis-api.pages.dev/api/meteosat",WMS="https://irratigis-api.pages.dev/api/meteosat-wms?slot=",HOUR=3600000,REFRESH=900000,LATENCY=35*60000,HISTORY=5*24*HOUR;
-const BBOX={west:-5,south:42.3,east:-0.8,north:44},C={fresh:"#e31a1c",recent:"#ff8c00",old:"#ffd21f",oldest:"#8b8b8b"};
+const BBOX={west:-25,south:34,east:45,north:72},C={fresh:"#e31a1c",recent:"#ff8c00",old:"#ffd21f",oldest:"#8b8b8b"};
 let map=null,enabled=false,loading=false,timer=null,h5=null,h5Promise=null;const files=new Map();let latestWms=null,directWms=null;
 const $=id=>document.getElementById(id),getMap=()=>window.IrratiGISMap||((typeof window.map!=="undefined")?window.map:null);
 function r15(d){const x=new Date(d);x.setUTCSeconds(0,0);x.setUTCMinutes(Math.floor(x.getUTCMinutes()/15)*15);return x}
