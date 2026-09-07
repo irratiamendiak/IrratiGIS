@@ -6,17 +6,21 @@
  * No elimina detecciones ni decide por sí solo que exista un incendio.
  */
 
+/*
+ * Solo contextos inequívocamente industriales.
+ * IMPORTANTE: commercial/retail, amenity=fuel (gasolineras) y similares
+ * no cuentan como industria para la clasificación.
+ */
 const INDUSTRIAL_TAGS=[
-  "industrial","commercial","retail","quarry","brownfield","construction",
-  "depot","landfill","works","kiln","plant","chimney","storage_tank",
-  "silo","power","generator","substation"
+  "industrial","quarry","brownfield","works","kiln","plant","chimney",
+  "storage_tank","silo","power","generator","substation","landfill"
 ];
 const FOREST_TAGS=["forest","wood","scrub","heath","fell"];
 const RURAL_TAGS=[
   "forest","farmland","meadow","orchard","vineyard","grassland","scrub",
   "heath","wood","fell","allotments"
 ];
-const URBAN_TAGS=["residential","retail","institutional","parking"];
+const URBAN_TAGS=["residential","retail","institutional","parking","commercial"];
 
 function num(value){const n=Number(value);return Number.isFinite(n)?n:null}
 function confidenceValue(value){
@@ -50,7 +54,7 @@ function classify(firms,context={}){
 
   /* El contexto pesa más que una señal térmica aislada. */
   if(forest){score+=25;reasons.push("entorno forestal/natural")}
-  else if(rural){score+=12;reasons.push("entorno rural")}
+  else if(rural){score+=12;reasons.push("entorno rural/agrícola")}
   if(industrialTag){score-=18;reasons.push("actividad industrial en el entorno")}
   if(nearbyIndustrial){
     if(nearestIndustrial<=100)score-=25;
@@ -81,12 +85,6 @@ function classify(firms,context={}){
 
   score=Math.max(0,Math.min(100,Math.round(score)));
 
-  /*
-   * Señal fuerte: FRP alto o confianza alta.
-   * Una señal fuerte cerca de una industria no se convierte automáticamente
-   * en "fuente industrial": puede ser un incendio real. En ese caso queda
-   * como "Posible incendio" salvo que exista evidencia forestal clara.
-   */
   const strongSignal=(frp!=null&&frp>=20)||(confidence!=null&&confidence>=80);
   const corroborated=forest&&(repeated>=1||strongSignal);
   const industrialSourceLikely=closeIndustrial&&!forest&&(
