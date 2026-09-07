@@ -14,3 +14,4 @@ function hook(){const m=map(),row=document.querySelector(".irrati-meteosat-layer
 function boot(){if(hook())return;setTimeout(boot,500)}
 boot();
 })();
+// trigger installer
