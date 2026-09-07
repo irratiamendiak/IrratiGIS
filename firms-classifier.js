@@ -1,6 +1,6 @@
 (()=>{
 "use strict";
-const VERSION="20260907-10";
+const VERSION="20260907-11";
 
 /*
  * Clasificador orientativo de detecciones NASA FIRMS.
@@ -8,14 +8,12 @@ const VERSION="20260907-10";
  *
  * Regla principal:
  * - Entorno forestal o interfaz urbano-forestal local => incendio forestal.
- * - Solo si NO hay entorno forestal local, una instalación urbana/industrial
+ * - Si el punto tiene contexto forestal OSM y forma parte de un grupo de
+ *   detecciones, ese contexto forestal refuerza la clasificación aunque OSM
+ *   también tenga actividad industrial cerca.
+ * - Solo si NO hay señal forestal suficiente, una instalación urbana/industrial
  *   identificada cerca puede clasificarse como fuente industrial.
  * - La intensidad del pixel NO decide por sí sola la categoría forestal.
- *
- * IMPORTANTE: los tags agregados de objetos cercanos no bastan para llamar
- * forestal a un punto. Se usa localForest / nearestForestMeters como contexto
- * espacial, y no se deja que una industria situada a cientos de metros
- * anule un entorno forestal.
  */
 const INDUSTRIAL_TAGS=[
   "industrial","quarry","brownfield","works","kiln","plant","chimney",
@@ -55,19 +53,19 @@ function classify(firms,context={}){
   const nearestIndustrial=num(context.nearestIndustrialMeters);
   const nearestForest=num(context.nearestForestMeters);
   const industrialTag=hasTag(context,INDUSTRIAL_TAGS);
+  const explicitForest=hasTag(context,FOREST_TAGS);
   const urban=hasTag(context,URBAN_TAGS)||industrialTag;
 
-  /*
-   * localForest es la señal más fiable para el entorno inmediato.
-   * Para interfaz urbano-forestal permitimos hasta 300 m al borde forestal.
-   * Una fábrica a 70 m NO debe ganar si el punto FIRMS está en monte/borde
-   * forestal; al contrario, una industria aislada sin monte cercano sí puede
-   * clasificarse como fuente industrial.
-   */
   const localForest=context.localForest===true;
   const vegetation=localForest||hasTag(context,VEGETATION_TAGS);
+
+  // El centroide OSM de una gran parcela forestal puede quedar lejos del foco.
+  // Por eso, si OSM identifica bosque/natural y hay varias detecciones próximas,
+  // lo tratamos como evidencia de incendio forestal aunque haya industria cerca.
+  const forestCluster=explicitForest&&(clusterFire||repeated>=2||temporalRepeated>=1);
   const interfaceForest=nearestForest!=null&&nearestForest<=300;
-  const forestEnvironment=localForest||interfaceForest;
+  const forestEnvironment=localForest||interfaceForest||forestCluster;
+
   const veryNearIndustrial=nearestIndustrial!=null&&nearestIndustrial<=100;
   const nearIndustrial=nearestIndustrial!=null&&nearestIndustrial<=300;
 
@@ -77,6 +75,9 @@ function classify(firms,context={}){
   if(localForest){
     score+=30;
     reasons.push("entorno forestal/natural inmediato")
+  }else if(forestCluster){
+    score+=30;
+    reasons.push("contexto forestal + grupo de detecciones")
   }else if(interfaceForest){
     score+=25;
     reasons.push(`borde forestal cercano (${Math.round(nearestForest)} m)`)
@@ -124,17 +125,13 @@ function classify(firms,context={}){
 
   /*
    * PRIORIDAD GEOGRAFICA:
-   * 1. Forestal / interfaz forestal -> incendio forestal.
-   * 2. Sin bosque cercano: instalación industrial/urbana -> fuente industrial.
-   * 3. Resto -> posible incendio / anomalía según evidencias.
+   * 1. Forestal / interfaz / bosque + cluster -> incendio forestal.
+   * 2. Sin señal forestal suficiente: instalación urbana/industrial -> industrial.
+   * 3. Resto -> posible incendio / anomalía.
    *
-   * Esto evita dos errores observados:
-   * - un foco de Arza no debe pasar a industrial por una industria cercana;
-   * - un incendio forestal de Bermeo no debe quedar como industrial solo
-   *   porque OSM tenga contexto urbano/industrial alrededor.
-   *
-   * Las gasolineras (amenity=fuel) y comercios/retail NO están en
-   * INDUSTRIAL_TAGS y no se consideran industria por sí mismos.
+   * Esto evita que una industria cercana anule Arza o Bermeo cuando el foco
+   * está asociado a un entorno forestal y a otros focos próximos.
+   * Las gasolineras (amenity=fuel) y retail NO están en INDUSTRIAL_TAGS.
    */
   let category="thermal_anomaly";
 
