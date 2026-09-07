@@ -12,26 +12,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Patch Meteosat
-        shell: python
         run: |
+          echo 'cHl0aG9uIHNjcmlwdCBsb2FkIGZhaWxlZA==' >/dev/null
+          cat > /tmp/patch.py <<'PY'
           from pathlib import Path
           import re
           p=Path('meteosat.js')
           s=p.read_text()
-          s=re.sub(r'function render\(rows\)\{.*?\}\nasync function fetchSlot', '''function render(rows){const g=L.layerGroup();rows.forEach(x=>{const a=age(x.time.getTime()),size=28,svg=`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><path d="M14 1.5l3.25 7.1 7.75.85-5.75 5.15 1.55 7.55L14 18.25l-6.8 3.9 1.55-7.55L3 9.45l7.75-.85z" fill="${a.c}" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M14 4.5l2.35 5.05 5.5.6-4.05 3.6 1.1 5.35L14 15.95l-4.9 3.15 1.1-5.35-4.05-3.6 5.5-.6z" fill="${a.c}"/></svg>`;const icon=L.divIcon({className:"irrati-meteosat-star",html:svg,iconSize:[size,size],iconAnchor:[size/2,size/2],popupAnchor:[0,-size/2]});const m=L.marker([x.lat,x.lon],{icon,pane:"meteosatPane",zIndexOffset:5000,interactive:true,title:`Meteosat FRP-PIXEL · ${a.l}`});const frp=x.frp==null?"—":`${Number(x.frp).toFixed(1)} MW`,conf=x.conf==null?"—":`${Math.round(Number(x.conf))}%`,area=x.area==null?"—":`${Number(x.area).toFixed(2)} km²`;m.bindPopup(`<strong>★ Meteosat FRP-PIXEL</strong><br>Observación: ${fmt(x.time)}<br>Antigüedad: ${a.l}<br>FRP: ${frp}<br>Confianza: ${conf}<br>Área efectiva: ${area}<br>Lat/Lon: ${x.lat.toFixed(4)}, ${x.lon.toFixed(4)}`);g.addLayer(m)});g.addTo(map);return g}
-async function fetchSlot''', s, count=1, flags=re.S)
+          new_render = '''function render(rows){const g=L.layerGroup();rows.forEach(x=>{const a=age(x.time.getTime()),size=28,svg=`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><path d="M14 1.5l3.25 7.1 7.75.85-5.75 5.15 1.55 7.55L14 18.25l-6.8 3.9 1.55-7.55L3 9.45l7.75-.85z" fill="${a.c}" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M14 4.5l2.35 5.05 5.5.6-4.05 3.6 1.1 5.35L14 15.95l-4.9 3.15 1.1-5.35-4.05-3.6 5.5-.6z" fill="${a.c}"/></svg>`;const icon=L.divIcon({className:"irrati-meteosat-star",html:svg,iconSize:[size,size],iconAnchor:[size/2,size/2],popupAnchor:[0,-size/2]});const m=L.marker([x.lat,x.lon],{icon,pane:"meteosatPane",zIndexOffset:5000,interactive:true,title:`Meteosat FRP-PIXEL · ${a.l}`});const frp=x.frp==null?"—":`${Number(x.frp).toFixed(1)} MW`,conf=x.conf==null?"—":`${Math.round(Number(x.conf))}%`,area=x.area==null?"—":`${Number(x.area).toFixed(2)} km²`;m.bindPopup(`<strong>★ Meteosat FRP-PIXEL</strong><br>Observación: ${fmt(x.time)}<br>Antigüedad: ${a.l}<br>FRP: ${frp}<br>Confianza: ${conf}<br>Área efectiva: ${area}<br>Lat/Lon: ${x.lat.toFixed(4)}, ${x.lon.toFixed(4)}`);g.addLayer(m)});g.addTo(map);return g}
+async function fetchSlot'''
+          s2=re.sub(r'function render\(rows\)\{.*?\}\nasync function fetchSlot',new_render,s,count=1,flags=re.S)
+          if s2==s: raise SystemExit('render replacement failed')
+          s=s2
           marker='''async function showLatestWms(d){try{const z=await wmsImage(d);if(latestWms){try{map.removeLayer(latestWms.layer)}catch{}try{URL.revokeObjectURL(latestWms.url)}catch{}}const url=URL.createObjectURL(z);latestWms={url,layer:L.imageOverlay(url,[[BBOX.south,BBOX.west],[BBOX.north,BBOX.east]],{opacity:.9,interactive:false,zIndex:610}).addTo(map)}}catch(e){console.warn("Meteosat latest WMS",slot(d),e)}}
 '''
-          s=s.replace('async function fetchSlot(d){', marker+'async function fetchSlot(d){', 1)
+          s=s.replace('async function fetchSlot(d){',marker+'async function fetchSlot(d){',1)
           old='''if(rows===null){try{const z=await wmsRows(d);rows=z.rows;source="WMS";if(k===r15(new Date(Date.now()-LATENCY)).getTime()){if(latestWms){try{map.removeLayer(latestWms.layer)}catch{}try{URL.revokeObjectURL(latestWms.url)}catch{}}const url=URL.createObjectURL(z.blob);latestWms={url,layer:L.imageOverlay(url,[[BBOX.south,BBOX.west],[BBOX.north,BBOX.east]],{opacity:.78,interactive:false,zIndex:610}).addTo(map)}}}catch(e){console.warn("Meteosat WMS",slot(d),e);return-1}}const layer=render(rows);'''
           new='''if(rows===null){try{const z=await wmsRows(d);rows=z.rows;source="WMS"}catch(e){console.warn("Meteosat WMS",slot(d),e);return-1}}if(k===r15(new Date(Date.now()-LATENCY)).getTime())showLatestWms(d);const layer=render(rows);'''
-          if old not in s:
-            raise SystemExit('fetchSlot block not found')
+          if old not in s: raise SystemExit('fetch block not found')
           s=s.replace(old,new,1)
           s=s.replace('bottom:42px;','bottom:78px;',1)
           s=s.replace('.irrati-meteosat-star{background:transparent!important;border:0!important}.irrati-meteosat-star-inner{display:block;width:22px;height:22px;font-size:21px;line-height:22px;text-align:center;text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff,0 1px 4px rgba(0,0,0,.55)}', '.irrati-meteosat-star{background:transparent!important;border:0!important;opacity:1!important;z-index:99999!important;pointer-events:auto}.irrati-meteosat-star svg{display:block;overflow:visible;filter:drop-shadow(0 1px 2px rgba(0,0,0,.65))}')
           p.write_text(s)
-          i=Path('index.html'); t=i.read_text(); t=t.replace('meteosat.js?v=20260907-06','meteosat.js?v=20260907-07'); i.write_text(t)
+          i=Path('index.html'); t=i.read_text().replace('meteosat.js?v=20260907-06','meteosat.js?v=20260907-07'); i.write_text(t)
+          PY
+          python3 /tmp/patch.py
       - name: Commit
         run: |
           git config user.name 'github-actions[bot]'
