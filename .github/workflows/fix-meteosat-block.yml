@@ -1,0 +1,37 @@
+name: Fix Meteosat blocking
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Meteosat without touching FIRMS
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('fire-popup.js')
+          s=p.read_text()
+          old='const caps=await readCapabilities(),'
+          new='const caps=readCapabilities(),'
+          if old not in s:
+              raise SystemExit('Expected Meteosat line not found')
+          p.write_text(s.replace(old,new,1))
+          p=Path('auth.js')
+          s=p.read_text()
+          s=s.replace('fire-popup.js?v=20260907-43','fire-popup.js?v=20260907-45',1)
+          p.write_text(s)
+          p=Path('index.html')
+          s=p.read_text()
+          s=s.replace('auth.js?v=20260907-44','auth.js?v=20260907-45',1)
+          p.write_text(s)
+          PY
+          rm -f .github/workflows/fix-meteosat-block.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add fire-popup.js auth.js index.html .github/workflows/fix-meteosat-block.yml
+          git diff --cached --quiet || git commit -m 'Fix Meteosat loading timeout'
+          git push
