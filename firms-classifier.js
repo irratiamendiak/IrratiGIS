@@ -5,13 +5,13 @@
  * Clasificador orientativo de detecciones NASA FIRMS.
  * No elimina detecciones ni decide por sí solo que exista un incendio.
  *
- * Regla principal de calibración:
+ * Regla principal:
  * - Entorno forestal o interfaz urbano-forestal => incendio forestal.
- *   La intensidad del píxel NO invalida esta regla: un incendio real puede
- *   tener focos FIRMS de baja intensidad.
- * - Entorno urbano sin evidencia forestal => probable fuente industrial.
- * - La proximidad industrial solo sirve como apoyo; no debe convertir un
- *   incendio forestal en industrial cuando existe contexto forestal.
+ * - Entorno urbano/industrial sin contexto forestal inmediato => fuente industrial.
+ * - La intensidad del píxel NO decide si existe incendio forestal.
+ *
+ * IMPORTANTE: el bosque lejano o el bosque asociado a otro punto del clúster
+ * no convierte una detección urbana en forestal. El contexto debe ser local.
  */
 const INDUSTRIAL_TAGS=[
   "industrial","quarry","brownfield","works","kiln","plant","chimney",
@@ -22,7 +22,10 @@ const VEGETATION_TAGS=[
   "forest","wood","scrub","heath","fell","farmland","meadow",
   "orchard","vineyard","grassland","allotments"
 ];
-const URBAN_TAGS=["residential","retail","institutional","parking","commercial"];
+const URBAN_TAGS=[
+  "residential","retail","institutional","parking","commercial",
+  "industrial","construction","depot"
+];
 
 function num(value){const n=Number(value);return Number.isFinite(n)?n:null}
 function confidenceValue(value){
@@ -45,16 +48,16 @@ function classify(firms,context={}){
   const repeated=Math.max(0,Math.round(num(context.repeatedDetections)??0));
   const temporalRepeated=Math.max(0,Math.round(num(context.temporalRepeatedDetections)??0));
   const clusterFire=context.clusterFire===true;
-  const clusterForest=context.clusterForest===true;
   const nearestIndustrial=num(context.nearestIndustrialMeters);
   const nearestForest=num(context.nearestForestMeters);
 
-  const forest=hasTag(context,FOREST_TAGS)||nearestForest!=null&&nearestForest<=300;
+  /* Solo cuenta el entorno forestal local, no el de otros puntos del clúster. */
+  const forest=hasTag(context,FOREST_TAGS)||(nearestForest!=null&&nearestForest<=300);
   const vegetation=forest||hasTag(context,VEGETATION_TAGS);
   const industrialTag=hasTag(context,INDUSTRIAL_TAGS);
-  const urban=hasTag(context,URBAN_TAGS);
+  const urban=hasTag(context,URBAN_TAGS)||industrialTag;
   const interfaceForest=forest&&urban;
-  const forestEnvironment=forest||clusterForest;
+  const forestEnvironment=forest;
   const veryNearIndustrial=nearestIndustrial!=null&&nearestIndustrial<=100;
   const nearIndustrial=nearestIndustrial!=null&&nearestIndustrial<=300;
 
@@ -67,9 +70,6 @@ function classify(firms,context={}){
   }else if(forest){
     score+=30;
     reasons.push("entorno forestal/natural")
-  }else if(clusterForest){
-    score+=25;
-    reasons.push("clúster próximo con entorno forestal")
   }else if(vegetation){
     score+=20;
     reasons.push("entorno de vegetación/rural")
@@ -113,15 +113,10 @@ function classify(firms,context={}){
   score=Math.max(0,Math.min(100,Math.round(score)));
 
   /*
-   * La categoría ya no depende principalmente de la intensidad.
-   * El contexto geográfico tiene prioridad:
-   *
+   * El contexto geográfico manda sobre la intensidad:
    * 1. Forestal/interfaz urbano-forestal -> incendio forestal.
-   * 2. Urbano sin contexto forestal -> fuente industrial.
-   * 3. Resto -> scoring orientativo tradicional.
-   *
-   * Esto evita que una instalación industrial cercana o un FRP bajo convierta
-   * en industrial/posible una detección que forma parte de un incendio forestal.
+   * 2. Urbano/industrial sin bosque local -> fuente industrial.
+   * 3. Resto -> scoring orientativo.
    */
   let category="thermal_anomaly";
 
