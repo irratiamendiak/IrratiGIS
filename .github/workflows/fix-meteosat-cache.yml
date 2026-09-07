@@ -1,0 +1,24 @@
+name: Fix Meteosat cache
+on: push
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update cachebuster
+        run: |
+          sed -E -i 's/meteosat\.js\?v=[0-9-]+/meteosat.js?v=20260907-10/' index.html
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Refresh Meteosat cachebuster'
+          git push
+      - name: Remove helper
+        run: |
+          git rm .github/workflows/fix-meteosat-cache.yml
+          git commit -m 'Remove Meteosat cache helper'
+          git push
