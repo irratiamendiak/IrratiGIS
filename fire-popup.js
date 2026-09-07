@@ -25,3 +25,4 @@ function rows(){const m=map(),list=document.querySelector(".leaflet-control-laye
 function boot(){const m=map();if(!m||typeof L==="undefined")return setTimeout(boot,500);rows();window.IrratiGISFirms={get layer(){return firmsLayer()},load:loadFirms,open:()=>{firmsLayer().addTo(m);loadFirms()}};window.IrratiGISFirePopup={openFirms:()=>window.IrratiGISFirms.open(),loadBurnsIntoLayer:boot,hookLayerControl:boot};window.IrratiGISMeteosat={open:refreshMeteosat,refresh:refreshMeteosat};setTimeout(()=>{rows();loadFirms()},1200);m.on("moveend zoomend",()=>{if(meteosatLayers.length&&!meteosatBusy)refreshMeteosat()})}
 boot();
 })();
+// cache-bust trigger
