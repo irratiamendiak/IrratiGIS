@@ -9,7 +9,7 @@ if((u.pathname==="/api/meteosat"||u.pathname==="/api/meteosat-wms")&&request.met
   const y=slot.slice(0,4),m=slot.slice(4,6),d=slot.slice(6,8);
   if(u.pathname==="/api/meteosat-wms"){
     const iso=`${y}-${m}-${d}T${slot.slice(8,10)}:${slot.slice(10,12)}:00Z`;
-    const q=new URLSearchParams({service:"WMS",request:"GetMap",version:"1.1.1",layers:"MSG:FRP-PIXEL",styles:"",srs:"EPSG:4326",bbox:"-5,42.3,-0.8,44",width:"1000",height:"600",format:"image/png",transparent:"true",time:iso});
+    const q=new URLSearchParams({service:"WMS",request:"GetMap",version:"1.3.0",layers:"MSG:FRP-PIXEL",styles:"",crs:"EPSG:4326",bbox:"42.3,-5,44,-0.8",width:"1000",height:"600",format:"image/png",transparent:"true",time:iso});
     try{
       const r=await fetch(`https://adaguc.lsasvcs.ipma.pt//adagucserver?dataset=MSG-FRP&${q.toString()}`,{cf:{cacheTtl:300,cacheEverything:true}});
       if(r.ok)return out(r.body,200,origin,{"Content-Type":"image/png","Cache-Control":"public,max-age=300"});
