@@ -1,0 +1,36 @@
+name: Fix Meteosat WMS style negotiation
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Meteosat WMS
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('fire-popup.js')
+          s=p.read_text()
+          reps=[
+            ('STYLES:variant.style??meteosatStyle??"default"','STYLES:variant.style??meteosatStyle??""'),
+            ('const candidates=[base,...recentTimes(4).slice(1)];let current=null,used=null;for(const t of candidates){if(Date.now()-started>12000)break;used=await tryMeteosatSlot(t,.9);if(used){current=t;break}}','const candidates=[base,...recentTimes(8).slice(1)];let current=null,used=null;for(const t of candidates){if(Date.now()-started>15000)break;used=await tryMeteosatSlot(t,.9);if(used){current=t;break}}'),
+            ('readCapabilities();const base=roundedNow()','const caps=await Promise.race([readCapabilities(),new Promise(r=>setTimeout(()=>r(false),2800))]);const base=roundedNow()'),
+            ('status("Meteosat: no se ha encontrado un slot WMS disponible en 12 s.","error")','status("Meteosat: no se ha encontrado un slot WMS disponible en 15 s.","error")'),
+            ('if(Date.now()-started>30000){status(`Meteosat: ${count}/${total} imágenes cargadas · límite de 30 s alcanzado`,count?"ok":"error");break}','if(Date.now()-started>45000){status(`Meteosat: ${count}/${total} imágenes cargadas · límite de 45 s alcanzado`,count?"ok":"error");break}')
+          ]
+          for a,b in reps:
+              if a not in s:
+                  raise SystemExit(f'Missing expected text: {a}')
+              s=s.replace(a,b,1)
+          p.write_text(s)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f .github/workflows/fix-meteosat-wms.yml
+          git add fire-popup.js .github/workflows/fix-meteosat-wms.yml
+          git diff --cached --quiet || git commit -m 'Fix Meteosat WMS style negotiation'
+          git push
