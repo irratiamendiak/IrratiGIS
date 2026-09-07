@@ -82,7 +82,7 @@ function ageClass(t,ref){
 function mapUrl(t){
   const p=new URLSearchParams({
     dataset:DATASET,SERVICE:"WMS",VERSION:"1.3.0",REQUEST:"GetMap",
-    LAYERS:LAYER,STYLES:"auto/nearest",CRS:"EPSG:4326",
+    LAYERS:LAYER,STYLES:"",CRS:"EPSG:4326",
     BBOX:`${BBOX[1]},${BBOX[0]},${BBOX[3]},${BBOX[2]}`,
     WIDTH:"1200",HEIGHT:"680",FORMAT:"image/png",TRANSPARENT:"TRUE",
     TIME:iso(t)
@@ -268,11 +268,11 @@ function injectStyle(){
   if($("irratiMeteosatStyle"))return;
   const s=document.createElement("style");s.id="irratiMeteosatStyle";
   s.textContent=`
-  .irrati-meteosat-panel{position:absolute;left:10px;bottom:34px;z-index:1002;width:min(320px,calc(100vw - 20px));background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.22);padding:8px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1c2d24}
-  .irrati-meteosat-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.irrati-meteosat-head strong{font-size:13px}.irrati-meteosat-head button{border:0;background:#eef3ef;border-radius:7px;padding:4px 8px;cursor:pointer}
-  .irrati-meteosat-sub,.irrati-meteosat-note{color:#65736b;margin-top:3px}.irrati-meteosat-ranges{display:flex;gap:6px;margin-top:9px}.irrati-meteosat-ranges button{flex:1;border:0;border-radius:8px;background:#edf3ef;color:#234233;padding:6px 7px;font-weight:800;cursor:pointer}.irrati-meteosat-ranges button.active{background:#176b43;color:#fff}
+  .irrati-meteosat-panel{position:absolute;left:10px;bottom:34px;z-index:1002;width:min(270px,calc(100vw - 20px));background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.22);padding:7px;font:11px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1c2d24}
+  .irrati-meteosat-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.irrati-meteosat-head strong{font-size:12px}.irrati-meteosat-head button{border:0;background:#eef3ef;border-radius:7px;padding:4px 8px;cursor:pointer}
+  .irrati-meteosat-sub,.irrati-meteosat-note{color:#65736b;margin-top:3px}.irrati-meteosat-ranges{display:flex;gap:4px;margin-top:7px}.irrati-meteosat-ranges button{flex:1;border:0;border-radius:8px;background:#edf3ef;color:#234233;padding:5px 6px;font-weight:800;cursor:pointer}.irrati-meteosat-ranges button.active{background:#176b43;color:#fff}
   .irrati-meteosat-legend{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-top:6px}.irrati-meteosat-legend span{display:flex;align-items:center;gap:4px;font-size:9px;font-weight:800;color:#46564d}.irrati-meteosat-legend i{display:inline-block;width:10px;height:10px;border-radius:50%}.irrati-meteosat-legend .fresh{background:#e31a1c}.irrati-meteosat-legend .recent{background:#ff8c00}.irrati-meteosat-legend .old{background:#ffd21f}.irrati-meteosat-legend .oldest{background:#8b8b8b}
-  .irrati-meteosat-time{text-align:center;font-weight:800;margin:9px 0 4px}.irrati-meteosat-status{margin-top:7px;padding:7px 8px;background:#f7faf8;border-radius:8px;font-weight:700}.irrati-meteosat-note{font-size:9px;margin-top:7px}
+  .irrati-meteosat-time{text-align:center;font-weight:800;margin:7px 0 3px}.irrati-meteosat-status{margin-top:5px;padding:5px 6px;background:#f7faf8;border-radius:8px;font-weight:700}.irrati-meteosat-note{font-size:8px;margin-top:5px}
   @media(max-width:520px){.irrati-meteosat-panel{left:7px;bottom:52px;width:calc(100vw - 20px)}.irrati-meteosat-legend{grid-template-columns:repeat(2,1fr)}}`;
   document.head.appendChild(s);
 }
