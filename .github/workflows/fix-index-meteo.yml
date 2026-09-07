@@ -2,6 +2,8 @@ name: Bump Meteosat script
 on:
   push:
     paths: ['.github/workflows/fix-index-meteo.yml']
+permissions:
+  contents: write
 jobs:
   bump:
     runs-on: ubuntu-latest
@@ -26,4 +28,3 @@ jobs:
           git rm .github/workflows/fix-index-meteo.yml || true
           git commit -m 'Eliminar helper temporal Meteosat' || true
           git push || true
-          echo helper-bump
