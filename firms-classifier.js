@@ -6,12 +6,14 @@
  * No elimina detecciones ni decide por sí solo que exista un incendio.
  *
  * Regla principal:
- * - Entorno forestal o interfaz urbano-forestal => incendio forestal.
- * - Entorno urbano/industrial sin contexto forestal inmediato => fuente industrial.
- * - La intensidad del píxel NO decide si existe incendio forestal.
+ * - Una instalacion industrial/urbana identificada localmente => fuente industrial.
+ * - Entorno forestal local => incendio forestal.
+ * - Interfaz urbano-forestal => incendio forestal, salvo que el propio punto
+ *   este identificado como instalacion industrial.
+ * - La intensidad del pixel NO decide si existe incendio forestal.
  *
- * IMPORTANTE: el bosque lejano o el bosque asociado a otro punto del clúster
- * no convierte una detección urbana en forestal. El contexto debe ser local.
+ * IMPORTANTE: los tags agregados de objetos cercanos no bastan para llamar
+ * forestal a un punto. Se usa localForest, calculado por fire-popup.js.
  */
 const INDUSTRIAL_TAGS=[
   "industrial","quarry","brownfield","works","kiln","plant","chimney",
@@ -50,14 +52,18 @@ function classify(firms,context={}){
   const clusterFire=context.clusterFire===true;
   const nearestIndustrial=num(context.nearestIndustrialMeters);
   const nearestForest=num(context.nearestForestMeters);
-
-  /* Solo cuenta el entorno forestal local, no el de otros puntos del clúster. */
-  const forest=hasTag(context,FOREST_TAGS)||(nearestForest!=null&&nearestForest<=300);
-  const vegetation=forest||hasTag(context,VEGETATION_TAGS);
   const industrialTag=hasTag(context,INDUSTRIAL_TAGS);
   const urban=hasTag(context,URBAN_TAGS)||industrialTag;
-  const interfaceForest=forest&&urban;
-  const forestEnvironment=forest;
+
+  /*
+   * No usamos simplemente nearestForest<=300 como "forestal": una fabrica,
+   * gasolinera o empresa puede tener monte a unos cientos de metros.
+   * localForest representa contexto forestal inmediato al punto.
+   */
+  const localForest=context.localForest===true;
+  const vegetation=localForest||hasTag(context,VEGETATION_TAGS);
+  const interfaceForest=!industrialTag&&urban&&(localForest||(nearestForest!=null&&nearestForest<=150));
+  const forestEnvironment=localForest||interfaceForest;
   const veryNearIndustrial=nearestIndustrial!=null&&nearestIndustrial<=100;
   const nearIndustrial=nearestIndustrial!=null&&nearestIndustrial<=300;
 
@@ -67,7 +73,7 @@ function classify(firms,context={}){
   if(interfaceForest){
     score+=30;
     reasons.push("interfaz urbano-forestal")
-  }else if(forest){
+  }else if(localForest){
     score+=30;
     reasons.push("entorno forestal/natural")
   }else if(vegetation){
@@ -113,14 +119,18 @@ function classify(firms,context={}){
   score=Math.max(0,Math.min(100,Math.round(score)));
 
   /*
-   * El contexto geográfico manda sobre la intensidad:
-   * 1. Forestal/interfaz urbano-forestal -> incendio forestal.
-   * 2. Urbano/industrial sin bosque local -> fuente industrial.
+   * PRIORIDAD GEOGRAFICA:
+   * 1. Instalacion industrial identificada localmente -> industrial.
+   * 2. Forestal/interfaz urbano-forestal -> incendio forestal.
    * 3. Resto -> scoring orientativo.
+   *
+   * Asi un punto FIRMS sobre Michelin, Cementos Lemona, etc. no se convierte
+   * en incendio forestal solo porque exista bosque/monte dentro de 300-1000 m.
    */
   let category="thermal_anomaly";
-
-  if(forestEnvironment){
+  if(industrialTag&&veryNearIndustrial){
+    category="probable_industrial_source";
+  }else if(forestEnvironment){
     category="probable_forest_fire";
   }else if(urban){
     category="probable_industrial_source";
