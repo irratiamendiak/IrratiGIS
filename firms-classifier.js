@@ -1,6 +1,6 @@
 (()=>{
 "use strict";
-const VERSION="20260907-11";
+const VERSION="20260907-12";
 
 /*
  * Clasificador orientativo de detecciones NASA FIRMS.
@@ -11,8 +11,11 @@ const VERSION="20260907-11";
  * - Si el punto tiene contexto forestal OSM y forma parte de un grupo de
  *   detecciones, ese contexto forestal refuerza la clasificación aunque OSM
  *   también tenga actividad industrial cerca.
- * - Solo si NO hay señal forestal suficiente, una instalación urbana/industrial
- *   identificada cerca puede clasificarse como fuente industrial.
+ * - Un entorno de vegetación/rural en contacto con zona urbana se considera
+ *   interfaz urbano-forestal cuando no hay una instalación industrial
+ *   inmediata que explique mejor el foco.
+ * - Solo si NO hay señal forestal/interfaz suficiente, una instalación
+ *   urbana/industrial identificada cerca puede clasificarse como fuente industrial.
  * - La intensidad del pixel NO decide por sí sola la categoría forestal.
  */
 const INDUSTRIAL_TAGS=[
@@ -63,7 +66,9 @@ function classify(firms,context={}){
   // Por eso, si OSM identifica bosque/natural y hay varias detecciones próximas,
   // lo tratamos como evidencia de incendio forestal aunque haya industria cerca.
   const forestCluster=explicitForest&&(clusterFire||repeated>=2||temporalRepeated>=1);
-  const interfaceForest=nearestForest!=null&&nearestForest<=300;
+  const interfaceEvidence=vegetation&&urban&&!industrialTag&&
+    (nearestIndustrial==null||nearestIndustrial>100);
+  const interfaceForest=interfaceEvidence || (nearestForest!=null&&nearestForest<=300);
   const forestEnvironment=localForest||interfaceForest||forestCluster;
 
   const veryNearIndustrial=nearestIndustrial!=null&&nearestIndustrial<=100;
@@ -78,7 +83,10 @@ function classify(firms,context={}){
   }else if(forestCluster){
     score+=30;
     reasons.push("contexto forestal + grupo de detecciones")
-  }else if(interfaceForest){
+  }else if(interfaceEvidence){
+    score+=28;
+    reasons.push("interfaz urbano-forestal")
+  }else if(nearestForest!=null&&nearestForest<=300){
     score+=25;
     reasons.push(`borde forestal cercano (${Math.round(nearestForest)} m)`)
   }else if(vegetation){
@@ -126,11 +134,11 @@ function classify(firms,context={}){
   /*
    * PRIORIDAD GEOGRAFICA:
    * 1. Forestal / interfaz / bosque + cluster -> incendio forestal.
-   * 2. Sin señal forestal suficiente: instalación urbana/industrial -> industrial.
+   * 2. Sin señal forestal/interfaz suficiente: instalación urbana/industrial -> industrial.
    * 3. Resto -> posible incendio / anomalía.
    *
    * Esto evita que una industria cercana anule Arza o Bermeo cuando el foco
-   * está asociado a un entorno forestal y a otros focos próximos.
+   * está asociado a un entorno forestal o a una interfaz urbano-forestal.
    * Las gasolineras (amenity=fuel) y retail NO están en INDUSTRIAL_TAGS.
    */
   let category="thermal_anomaly";
