@@ -1,6 +1,6 @@
 (()=>{
 "use strict";
-const VERSION="20260907-15";
+const VERSION="20260907-16";
 const INDUSTRIAL_TAGS=["industrial","quarry","brownfield","works","kiln","plant","chimney","storage_tank","silo","power","generator","substation","landfill"];
 const FOREST_TAGS=["forest","wood","scrub","heath","fell"];
 const VEGETATION_TAGS=["forest","wood","scrub","heath","fell","farmland","farmyard","meadow","orchard","vineyard","grassland","grass","allotments","greenfield","plant_nursery","greenhouse_horticulture","animal_keeping"];
@@ -38,7 +38,7 @@ function classify(firms,context={}){
  let category="thermal_anomaly";
  if(parcelUrban) category=(industrialTag||veryNearIndustrial)?"probable_industrial_source":(strong||clusterFire?"possible_fire":"thermal_anomaly");
  else if(industrialTag&&veryNearIndustrial) category="probable_industrial_source";
- else if(localForest||((parcelRural||vegetation)&& (clusterFire||temporal>0||repeated>=2))) category="probable_forest_fire";
+ else if(localForest||((parcelRural||vegetation)&&(clusterFire||temporal>0||repeated>=2))) category="probable_forest_fire";
  else if(ruralNatural&&(strong||clusterFire||temporal>0||repeated>0||score>=40)) category="probable_forest_fire";
  else if(ruralNatural) category="possible_fire";
  else if(vegetation&&(clusterFire||strong||temporal>0)&&score>=45) category="probable_forest_fire";
