@@ -5,10 +5,10 @@
  * Clasificador orientativo de detecciones NASA FIRMS.
  * No elimina detecciones ni decide por sí solo que exista un incendio.
  *
- * PRINCIPIO: la proximidad a una empresa/polígono NO demuestra que una
- * detección sea una fuente industrial. Un incendio real puede ocurrir
- * dentro o junto a una zona industrial. Por eso la categoría industrial
- * exige evidencia adicional y persistencia.
+ * PRINCIPIO: una detección aislada sobre/near una empresa NO debe convertirse
+ * en fuente industrial. Y un incendio real puede estar dentro de un entorno
+ * industrial. La clasificación debe considerar el conjunto espacial de
+ * detecciones y, para "industrial", la persistencia temporal.
  */
 const INDUSTRIAL_TAGS=[
   "industrial","quarry","brownfield","works","kiln","plant","chimney",
@@ -40,6 +40,9 @@ function classify(firms,context={}){
   const frp=num(firms?.frp);
   const confidence=confidenceValue(firms?.confidence??firms?.confidence_pct);
   const repeated=Math.max(0,Math.round(num(context.repeatedDetections)??0));
+  const temporalRepeated=Math.max(0,Math.round(num(context.temporalRepeatedDetections)??0));
+  const clusterFire=context.clusterFire===true;
+  const clusterForest=context.clusterForest===true;
   const nearestIndustrial=num(context.nearestIndustrialMeters);
   const rural=hasTag(context,RURAL_TAGS);
   const forest=hasTag(context,FOREST_TAGS);
@@ -50,9 +53,13 @@ function classify(firms,context={}){
   let score=25;
   const reasons=[];
 
-  /* El contexto ambiental pesa más que una señal térmica aislada. */
+  /* Un contexto forestal pesa, pero no debe anular una evidencia industrial.
+     El contexto del clúster permite reconocer incendios que ocupan varios
+     puntos FIRMS aunque solo uno de ellos caiga sobre una zona forestal OSM. */
   if(forest){score+=25;reasons.push("entorno forestal/natural")}
+  else if(clusterForest){score+=20;reasons.push("clúster próximo con entorno forestal")}
   else if(rural){score+=10;reasons.push("entorno rural/agrícola")}
+
   if(industrialTag){score-=8;reasons.push("actividad industrial en el entorno")}
   if(nearbyIndustrial){
     if(nearestIndustrial<=100)score-=12;
@@ -66,6 +73,10 @@ function classify(firms,context={}){
   if(repeated>0){
     const bonus=Math.min(24,repeated*8);score+=bonus;
     reasons.push(`${repeated} detección${repeated===1?"":"es"} próxima${repeated===1?"":"s"}`)
+  }
+  if(temporalRepeated>0){
+    const bonus=Math.min(18,temporalRepeated*6);score+=bonus;
+    reasons.push(`${temporalRepeated} detección${temporalRepeated===1?"":"es"} en momentos distintos`)
   }
   if(frp!=null){
     if(frp>=50)score+=20;
@@ -84,26 +95,23 @@ function classify(firms,context={}){
   score=Math.max(0,Math.min(100,Math.round(score)));
 
   const strongSignal=(frp!=null&&frp>=20)||(confidence!=null&&confidence>=80);
-  const corroborated=forest&&(repeated>=1||strongSignal);
+  const fireEvidence=clusterFire||strongSignal||temporalRepeated>=1;
+  const forestEvidence=forest||clusterForest;
 
   /*
-   * MUY IMPORTANTE: estar dentro de un polígono industrial no basta para
-   * etiquetar una detección como fuente industrial. Para evitar convertir
-   * incendios reales en "industriales", exigimos:
-   *   - elemento OSM inequívocamente industrial,
-   *   - proximidad <=300 m,
-   *   - al menos una repetición cercana,
-   *   - señal no fuerte.
-   * Una detección industrial aislada queda como posible incendio/anomalía.
+   * Fuente industrial: solo cuando hay un objeto OSM industrial inequívoco,
+   * está muy cerca y existe persistencia temporal. Las detecciones espaciales
+   * del mismo paso satelital NO cuentan como persistencia. Si la señal es
+   * fuerte, prevalece la hipótesis de incendio aunque haya industria.
    */
   const industrialSourceLikely=industrialTag&&
     nearestIndustrial!=null&&nearestIndustrial<=300&&
-    repeated>=1&&!strongSignal;
+    temporalRepeated>=1&&!strongSignal&&!forestEvidence&&!clusterFire;
 
   let category="thermal_anomaly";
-  if(corroborated&&score>=60)category="probable_forest_fire";
+  if(fireEvidence&&forestEvidence&&score>=55)category="probable_forest_fire";
   else if(industrialSourceLikely)category="probable_industrial_source";
-  else if(score>=40||strongSignal)category="possible_fire";
+  else if(score>=40||strongSignal||clusterFire)category="possible_fire";
 
   const labels={
     probable_forest_fire:"🔥 Probable incendio forestal",
@@ -114,7 +122,8 @@ function classify(firms,context={}){
   return {
     category,label:labels[category],score,reasons,confidence,frp,
     nearestIndustrialMeters:nearestIndustrial,
-    repeatedDetections:repeated
+    repeatedDetections:repeated,
+    temporalRepeatedDetections:temporalRepeated
   };
 }
 window.IrratiGISFirmsClassifier={classify};
