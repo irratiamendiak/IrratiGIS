@@ -1,0 +1,37 @@
+name: one-shot-europe-ui
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aplicar ajustes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('meteosat.js')
+          s = p.read_text()
+          old = 'const BBOX={west:-5,south:42.3,east:-0.8,north:44}'
+          new = 'const BBOX={west:-25,south:34,east:45,north:72}'
+          if old in s:
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          p = Path('index.html')
+          s = p.read_text()
+          s = s.replace('auth.js?v=20260904-36', 'auth.js?v=20260907-03', 1)
+          s = s.replace('meteosat.js?v=20260907-10', 'meteosat.js?v=20260907-11', 1)
+          p.write_text(s)
+          PY
+      - name: Commitar cambios y eliminar workflow temporal
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add meteosat.js index.html .github/workflows/one-shot-europe-ui.yml
+          git commit -m "Ampliar Meteosat a Europa y actualizar cachebusters" || exit 0
+          git push
