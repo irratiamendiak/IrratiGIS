@@ -1,0 +1,22 @@
+name: Bump FIRMS cache
+on:
+  push:
+    branches: [main]
+jobs:
+  bump:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bump fire-popup cache
+        run: sed -i 's/fire-popup.js?v=20260906-41/fire-popup.js?v=20260907-01/' auth.js
+      - name: Commit cache bump and remove helper
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add auth.js
+          git rm .github/workflows/bump-firms-cache.yml
+          git commit -m 'Refresh FIRMS module cachebuster'
+          git push
