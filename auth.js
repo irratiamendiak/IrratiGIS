@@ -17,4 +17,5 @@
   function validateToken(token){try{const p=token.split(".");if(p.length!==2)return false;const raw=p[0].replace(/-/g,"+").replace(/_/g,"/");const payload=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(raw+"===".slice((raw.length+3)%4)),c=>c.charCodeAt(0))));return !!payload.sub&&Number(payload.exp)>Math.floor(Date.now()/1000)}catch(_){return false}}
   async function startAuth(){setupAppArchitecture();const hash=new URLSearchParams(location.hash.replace(/^#/,""));const incoming=hash.get("irrati_token");if(incoming){history.replaceState(null,"",location.pathname+location.search);saveToken(incoming,hash.get("remember")==="1")}const token=getToken();if(token&&validateToken(token)){addLogoutButton();runRealBurns();return}if(token)clearToken();showLogin()}
   window.IrratiGISAuth={API,TOKEN_KEY,getToken,logout:()=>{clearToken();location.reload()}};window.IrratiGISAuthReady=startAuth();
+  // cache refresh marker
 })();
