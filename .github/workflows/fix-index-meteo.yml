@@ -26,3 +26,4 @@ jobs:
           git rm .github/workflows/fix-index-meteo.yml || true
           git commit -m 'Eliminar helper temporal Meteosat' || true
           git push || true
+          echo helper-bump
