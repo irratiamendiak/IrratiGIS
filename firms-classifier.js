@@ -3,7 +3,7 @@
 const VERSION="20260907-15";
 const INDUSTRIAL_TAGS=["industrial","quarry","brownfield","works","kiln","plant","chimney","storage_tank","silo","power","generator","substation","landfill"];
 const FOREST_TAGS=["forest","wood","scrub","heath","fell"];
-const VEGETATION_TAGS=["forest","wood","scrub","heath","fell","farmland","meadow","orchard","vineyard","grassland","allotments"];
+const VEGETATION_TAGS=["forest","wood","scrub","heath","fell","farmland","farmyard","meadow","orchard","vineyard","grassland","grass","allotments","greenfield","plant_nursery","greenhouse_horticulture","animal_keeping"];
 const URBAN_TAGS=["residential","retail","institutional","parking","commercial","construction","depot"];
 const NAV_WFS="https://idena.navarra.es/ogc/wfs",SPAIN_WFS="https://ovc.catastro.meh.es/INSPIRE/wfsCP.aspx",ARABA_WFS="https://geo.araba.eus/WFS_INSPIRE_CP";
 const cadCache=new Map();
@@ -19,12 +19,13 @@ function classify(firms,context={}){
  const nearestIndustrial=num(context.nearestIndustrialMeters),nearestForest=num(context.nearestForestMeters);
  const veryNearIndustrial=nearestIndustrial!=null&&nearestIndustrial<=100;
  const localForest=context.localForest===true||explicitForest||(nearestForest!=null&&nearestForest<=150);
+ const ruralNatural=!parcelUrban&&(parcelRural||vegetation||localForest||context.ruralNatural===true);
  const strong=(frp!=null&&frp>=20)||(confidence!=null&&confidence>=80);
  let score=25,reasons=[];
  if(parcelUrban){score-=25;reasons.push("parcela catastral urbana")}
  if(parcelRural){score+=18;reasons.push("parcela catastral rústica")}
  if(localForest&&!parcelUrban){score+=35;reasons.push("entorno forestal/natural")}
- else if(vegetation&&!parcelUrban){score+=20;reasons.push("entorno de vegetación/rural")}
+ else if(vegetation&&!parcelUrban){score+=20;reasons.push("entorno de vegetación rural")}
  if(urbanOsm){score-=10;reasons.push("entorno urbano")}
  if(industrialTag&&veryNearIndustrial){score-=25;reasons.push("actividad industrial inmediata")}
  else if(nearestIndustrial!=null&&nearestIndustrial<=300){score-=5;reasons.push(`actividad industrial a ${Math.round(nearestIndustrial)} m`)}
@@ -32,11 +33,14 @@ function classify(firms,context={}){
  if(temporal>0){score+=Math.min(18,temporal*6);reasons.push(`${temporal} detección${temporal===1?"":"es"} en momentos distintos`)}
  if(frp!=null){score+=frp>=50?20:frp>=20?15:frp>=5?8:2;reasons.push(`FRP ${frp} MW`)}
  if(confidence!=null){score+=confidence>=80?15:confidence>=50?8:2;reasons.push(`confianza ${Math.round(confidence)}%`)}
+ if(ruralNatural&&!parcelUrban&&!veryNearIndustrial){score+=10;reasons.push("entorno rural/natural compatible con incendio de vegetación")}
  score=Math.max(0,Math.min(100,Math.round(score)));
  let category="thermal_anomaly";
  if(parcelUrban) category=(industrialTag||veryNearIndustrial)?"probable_industrial_source":(strong||clusterFire?"possible_fire":"thermal_anomaly");
  else if(industrialTag&&veryNearIndustrial) category="probable_industrial_source";
- else if(localForest||(parcelRural&&vegetation&&clusterFire)) category="probable_forest_fire";
+ else if(localForest||((parcelRural||vegetation)&& (clusterFire||temporal>0||repeated>=2))) category="probable_forest_fire";
+ else if(ruralNatural&&(strong||clusterFire||temporal>0||repeated>0||score>=40)) category="probable_forest_fire";
+ else if(ruralNatural) category="possible_fire";
  else if(vegetation&&(clusterFire||strong||temporal>0)&&score>=45) category="probable_forest_fire";
  else if(strong||clusterFire||score>=40) category="possible_fire";
  const labels={probable_forest_fire:"🔥 Probable incendio forestal",possible_fire:"🟠 Posible incendio",thermal_anomaly:"♨️ Anomalía térmica",probable_industrial_source:"🏭 Probable fuente industrial"};
