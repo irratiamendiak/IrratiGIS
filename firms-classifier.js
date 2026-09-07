@@ -73,13 +73,21 @@ function classify(firms,context={}){
   /*
    * La categoría máxima exige contexto rural/forestal y una señal FIRMS
    * razonablemente sólida. Una detección agrícola aislada ya no basta.
+   *
+   * Una fuente industrial probable requiere además persistencia o una
+   * señal no especialmente fuerte. Una señal FIRMS fuerte junto a industria
+   * no se etiqueta automáticamente como fuente industrial.
    */
   let category="thermal_anomaly";
   const strongSignal=(frp!=null&&frp>=20)||(confidence!=null&&confidence>=80);
   const corroborated=rural&&(repeated>=1||strongSignal);
+  const closeIndustrial=industrial&&nearestIndustrial!=null&&nearestIndustrial<=300;
+  const industrialSourceLikely=closeIndustrial&&(repeated>=2||!strongSignal);
+
   if(corroborated&&score>=70)category="probable_forest_fire";
+  else if(closeIndustrial&&strongSignal)category="possible_fire";
   else if(score>=45)category="possible_fire";
-  else if(nearestIndustrial!=null&&nearestIndustrial<=300)category="probable_industrial_source";
+  else if(industrialSourceLikely)category="probable_industrial_source";
 
   const labels={
     probable_forest_fire:"🔥 Probable incendio forestal",
