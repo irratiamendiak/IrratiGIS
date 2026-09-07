@@ -103,7 +103,7 @@ function makePanel(){
   c.id="irratiMeteosatPanel";
   c.className="irrati-meteosat-panel leaflet-control";
   c.innerHTML=`
-    <div class="irrati-meteosat-head"><strong>🛰️ Meteosat · FRP-PIXEL</strong><button id="irratiMeteosatClose" type="button">×</button></div>
+    <div class="irrati-meteosat-head"><strong>🛰️ Meteosat · FRP</strong><button id="irratiMeteosatClose" type="button">×</button></div>
     <div class="irrati-meteosat-sub">Mapa acumulado · una observación cada 15 min</div>
     <div class="irrati-meteosat-ranges">
       <button id="irratiMeteosatR24" type="button" class="active">24 h</button>
@@ -268,11 +268,11 @@ function injectStyle(){
   if($("irratiMeteosatStyle"))return;
   const s=document.createElement("style");s.id="irratiMeteosatStyle";
   s.textContent=`
-  .irrati-meteosat-panel{position:absolute;left:10px;bottom:42px;z-index:1002;width:min(430px,calc(100vw - 28px));background:#fff;border-radius:12px;box-shadow:0 3px 18px rgba(0,0,0,.25);padding:11px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1c2d24}
-  .irrati-meteosat-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.irrati-meteosat-head strong{font-size:14px}.irrati-meteosat-head button{border:0;background:#eef3ef;border-radius:7px;padding:4px 8px;cursor:pointer}
-  .irrati-meteosat-sub,.irrati-meteosat-note{color:#65736b;margin-top:4px}.irrati-meteosat-ranges{display:flex;gap:6px;margin-top:9px}.irrati-meteosat-ranges button{flex:1;border:0;border-radius:8px;background:#edf3ef;color:#234233;padding:8px 9px;font-weight:800;cursor:pointer}.irrati-meteosat-ranges button.active{background:#176b43;color:#fff}
-  .irrati-meteosat-legend{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:9px}.irrati-meteosat-legend span{display:flex;align-items:center;gap:4px;font-size:10px;font-weight:800;color:#46564d}.irrati-meteosat-legend i{display:inline-block;width:11px;height:11px;border-radius:50%}.irrati-meteosat-legend .fresh{background:#e31a1c}.irrati-meteosat-legend .recent{background:#ff8c00}.irrati-meteosat-legend .old{background:#ffd21f}.irrati-meteosat-legend .oldest{background:#8b8b8b}
-  .irrati-meteosat-time{text-align:center;font-weight:800;margin:9px 0 4px}.irrati-meteosat-status{margin-top:7px;padding:7px 8px;background:#f7faf8;border-radius:8px;font-weight:700}.irrati-meteosat-note{font-size:10px;margin-top:7px}
+  .irrati-meteosat-panel{position:absolute;left:10px;bottom:34px;z-index:1002;width:min(320px,calc(100vw - 20px));background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.22);padding:8px;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1c2d24}
+  .irrati-meteosat-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.irrati-meteosat-head strong{font-size:13px}.irrati-meteosat-head button{border:0;background:#eef3ef;border-radius:7px;padding:4px 8px;cursor:pointer}
+  .irrati-meteosat-sub,.irrati-meteosat-note{color:#65736b;margin-top:3px}.irrati-meteosat-ranges{display:flex;gap:6px;margin-top:9px}.irrati-meteosat-ranges button{flex:1;border:0;border-radius:8px;background:#edf3ef;color:#234233;padding:6px 7px;font-weight:800;cursor:pointer}.irrati-meteosat-ranges button.active{background:#176b43;color:#fff}
+  .irrati-meteosat-legend{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-top:6px}.irrati-meteosat-legend span{display:flex;align-items:center;gap:4px;font-size:9px;font-weight:800;color:#46564d}.irrati-meteosat-legend i{display:inline-block;width:10px;height:10px;border-radius:50%}.irrati-meteosat-legend .fresh{background:#e31a1c}.irrati-meteosat-legend .recent{background:#ff8c00}.irrati-meteosat-legend .old{background:#ffd21f}.irrati-meteosat-legend .oldest{background:#8b8b8b}
+  .irrati-meteosat-time{text-align:center;font-weight:800;margin:9px 0 4px}.irrati-meteosat-status{margin-top:7px;padding:7px 8px;background:#f7faf8;border-radius:8px;font-weight:700}.irrati-meteosat-note{font-size:9px;margin-top:7px}
   @media(max-width:520px){.irrati-meteosat-panel{left:7px;bottom:52px;width:calc(100vw - 20px)}.irrati-meteosat-legend{grid-template-columns:repeat(2,1fr)}}`;
   document.head.appendChild(s);
 }
