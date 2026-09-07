@@ -3,7 +3,7 @@
 
 /*
  * Clasificador orientativo de detecciones NASA FIRMS.
- * Independiente de fire-popup.js: no altera capa, iconos ni activación.
+ * No elimina detecciones ni decide por sí solo que exista un incendio.
  */
 
 const INDUSTRIAL_TAGS=[
@@ -11,6 +11,7 @@ const INDUSTRIAL_TAGS=[
   "depot","landfill","works","kiln","plant","chimney","storage_tank",
   "silo","power","generator","substation"
 ];
+const FOREST_TAGS=["forest","wood","scrub","heath","fell"];
 const RURAL_TAGS=[
   "forest","farmland","meadow","orchard","vineyard","grassland","scrub",
   "heath","wood","fell","allotments"
@@ -28,11 +29,6 @@ function confidenceValue(value){
   }
   const n=num(value);return n==null?null:Math.max(0,Math.min(100,n));
 }
-function distanceScore(distanceMeters){
-  const d=num(distanceMeters);if(d==null)return 0;
-  if(d<=50)return -35;if(d<=150)return -28;if(d<=300)return -20;
-  if(d<=600)return -10;if(d<=1000)return -5;return 0;
-}
 function hasTag(context,tags){
   const values=Array.isArray(context?.tags)?context.tags.map(x=>String(x).toLowerCase()):[];
   return tags.some(tag=>values.includes(tag));
@@ -43,51 +39,64 @@ function classify(firms,context={}){
   const repeated=Math.max(0,Math.round(num(context.repeatedDetections)??0));
   const nearestIndustrial=num(context.nearestIndustrialMeters);
   const rural=hasTag(context,RURAL_TAGS);
-  const industrial=hasTag(context,INDUSTRIAL_TAGS);
+  const forest=hasTag(context,FOREST_TAGS);
+  const industrialTag=hasTag(context,INDUSTRIAL_TAGS);
   const urban=hasTag(context,URBAN_TAGS);
-  let score=30;
+  const closeIndustrial=nearestIndustrial!=null&&nearestIndustrial<=300;
+  const nearbyIndustrial=nearestIndustrial!=null&&nearestIndustrial<=1000;
+
+  let score=25;
   const reasons=[];
 
-  if(rural){score+=25;reasons.push("entorno rural/forestal")}
-  if(industrial){
-    score+=distanceScore(nearestIndustrial);
-    if(nearestIndustrial!=null&&nearestIndustrial<=1000)
-      reasons.push(`actividad industrial a ${Math.round(nearestIndustrial)} m`);
+  /* El contexto pesa más que una señal térmica aislada. */
+  if(forest){score+=25;reasons.push("entorno forestal/natural")}
+  else if(rural){score+=12;reasons.push("entorno rural")}
+  if(industrialTag){score-=18;reasons.push("actividad industrial en el entorno")}
+  if(nearbyIndustrial){
+    if(nearestIndustrial<=100)score-=25;
+    else if(nearestIndustrial<=300)score-=20;
+    else if(nearestIndustrial<=600)score-=10;
+    else score-=5;
+    reasons.push(`actividad industrial a ${Math.round(nearestIndustrial)} m`);
   }
   if(urban){score-=15;reasons.push("entorno urbano")}
+
   if(repeated>0){
-    const bonus=Math.min(18,repeated*6);score+=bonus;
+    const bonus=Math.min(24,repeated*8);score+=bonus;
     reasons.push(`${repeated} detección${repeated===1?"":"es"} próxima${repeated===1?"":"s"}`)
   }
   if(frp!=null){
-    if(frp>=50)score+=15;else if(frp>=20)score+=10;else if(frp>=5)score+=5;
+    if(frp>=50)score+=20;
+    else if(frp>=20)score+=15;
+    else if(frp>=5)score+=8;
+    else score+=2;
     reasons.push(`FRP ${frp} MW`)
   }
   if(confidence!=null){
-    if(confidence>=80)score+=15;else if(confidence>=50)score+=10;else score+=4;
+    if(confidence>=80)score+=15;
+    else if(confidence>=50)score+=8;
+    else score+=2;
     reasons.push(`confianza ${Math.round(confidence)}%`)
   }
 
   score=Math.max(0,Math.min(100,Math.round(score)));
 
   /*
-   * La categoría máxima exige contexto rural/forestal y una señal FIRMS
-   * razonablemente sólida. Una detección agrícola aislada ya no basta.
-   *
-   * Una fuente industrial probable requiere además persistencia o una
-   * señal no especialmente fuerte. Una señal FIRMS fuerte junto a industria
-   * no se etiqueta automáticamente como fuente industrial.
+   * Señal fuerte: FRP alto o confianza alta.
+   * Una señal fuerte cerca de una industria no se convierte automáticamente
+   * en "fuente industrial": puede ser un incendio real. En ese caso queda
+   * como "Posible incendio" salvo que exista evidencia forestal clara.
    */
-  let category="thermal_anomaly";
   const strongSignal=(frp!=null&&frp>=20)||(confidence!=null&&confidence>=80);
-  const corroborated=rural&&(repeated>=1||strongSignal);
-  const closeIndustrial=industrial&&nearestIndustrial!=null&&nearestIndustrial<=300;
-  const industrialSourceLikely=closeIndustrial&&(repeated>=2||!strongSignal);
+  const corroborated=forest&&(repeated>=1||strongSignal);
+  const industrialSourceLikely=closeIndustrial&&!forest&&(
+    industrialTag || repeated>=1 || !strongSignal
+  );
 
-  if(corroborated&&score>=70)category="probable_forest_fire";
-  else if(closeIndustrial&&strongSignal)category="possible_fire";
-  else if(score>=45)category="possible_fire";
+  let category="thermal_anomaly";
+  if(corroborated&&score>=60)category="probable_forest_fire";
   else if(industrialSourceLikely)category="probable_industrial_source";
+  else if(score>=40||strongSignal)category="possible_fire";
 
   const labels={
     probable_forest_fire:"🔥 Probable incendio forestal",
@@ -95,7 +104,11 @@ function classify(firms,context={}){
     thermal_anomaly:"♨️ Anomalía térmica",
     probable_industrial_source:"🏭 Probable fuente industrial"
   };
-  return {category,label:labels[category],score,reasons,confidence,frp,nearestIndustrialMeters:nearestIndustrial,repeatedDetections:repeated};
+  return {
+    category,label:labels[category],score,reasons,confidence,frp,
+    nearestIndustrialMeters:nearestIndustrial,
+    repeatedDetections:repeated
+  };
 }
 window.IrratiGISFirmsClassifier={classify};
 })();
