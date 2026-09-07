@@ -99,20 +99,20 @@ function classify(firms,context={}){
 
   /*
    * Fuente industrial: punto inequívocamente industrial y muy próximo,
-   * con señal débil. No exigimos persistencia: una instalación industrial
-   * puede generar una única detección térmica. Una señal fuerte prevalece.
+   * con señal baja. Subimos el umbral a 10 MW para no convertir en incendio
+   * cualquier fuente térmica industrial moderada (p.ej. hornos, chimeneas,
+   * depósitos). Una señal fuerte sigue prevaleciendo.
    */
   const industrialSourceLikely=industrialTag&&
     veryNearIndustrial&&
-    (frp==null||frp<5)&&
+    (frp==null||frp<10)&&
     (confidence==null||confidence<80)&&
     !forestEvidence&&!clusterFire;
 
   let category="thermal_anomaly";
 
   /* Vegetación + confianza nominal o mejor ya es una señal compatible con
-     incendio. La industria a >300 m no puede anularla. Para bosque real,
-     además, una señal fuerte/persistencia/clúster refuerza la categoría. */
+     incendio. La industria a >300 m no puede anularla. */
   const vegetationFireLikely=vegetation&&
     (confidence==null||confidence>=50)&&
     !veryNearIndustrial;
