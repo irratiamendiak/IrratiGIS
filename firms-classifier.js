@@ -1,5 +1,6 @@
 (()=>{
 "use strict";
+const VERSION="20260907-10";
 
 /*
  * Clasificador orientativo de detecciones NASA FIRMS.
@@ -161,4 +162,5 @@ function classify(firms,context={}){
   };
 }
 window.IrratiGISFirmsClassifier={classify};
+window.IrratiGISFirmsClassifierVersion=VERSION;
 })();
