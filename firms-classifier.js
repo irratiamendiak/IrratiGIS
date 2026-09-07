@@ -7,14 +7,15 @@ const VERSION="20260907-10";
  * No elimina detecciones ni decide por sí solo que exista un incendio.
  *
  * Regla principal:
- * - Una instalacion industrial/urbana identificada localmente => fuente industrial.
- * - Entorno forestal local => incendio forestal.
- * - Interfaz urbano-forestal => incendio forestal, salvo que el propio punto
- *   este identificado como instalacion industrial.
- * - La intensidad del pixel NO decide si existe incendio forestal.
+ * - Entorno forestal o interfaz urbano-forestal local => incendio forestal.
+ * - Solo si NO hay entorno forestal local, una instalación urbana/industrial
+ *   identificada cerca puede clasificarse como fuente industrial.
+ * - La intensidad del pixel NO decide por sí sola la categoría forestal.
  *
  * IMPORTANTE: los tags agregados de objetos cercanos no bastan para llamar
- * forestal a un punto. Se usa localForest, calculado por fire-popup.js.
+ * forestal a un punto. Se usa localForest / nearestForestMeters como contexto
+ * espacial, y no se deja que una industria situada a cientos de metros
+ * anule un entorno forestal.
  */
 const INDUSTRIAL_TAGS=[
   "industrial","quarry","brownfield","works","kiln","plant","chimney",
@@ -57,13 +58,15 @@ function classify(firms,context={}){
   const urban=hasTag(context,URBAN_TAGS)||industrialTag;
 
   /*
-   * No usamos simplemente nearestForest<=300 como "forestal": una fabrica,
-   * gasolinera o empresa puede tener monte a unos cientos de metros.
-   * localForest representa contexto forestal inmediato al punto.
+   * localForest es la señal más fiable para el entorno inmediato.
+   * Para interfaz urbano-forestal permitimos hasta 300 m al borde forestal.
+   * Una fábrica a 70 m NO debe ganar si el punto FIRMS está en monte/borde
+   * forestal; al contrario, una industria aislada sin monte cercano sí puede
+   * clasificarse como fuente industrial.
    */
   const localForest=context.localForest===true;
   const vegetation=localForest||hasTag(context,VEGETATION_TAGS);
-  const interfaceForest=!industrialTag&&urban&&(localForest||(nearestForest!=null&&nearestForest<=150));
+  const interfaceForest=nearestForest!=null&&nearestForest<=300;
   const forestEnvironment=localForest||interfaceForest;
   const veryNearIndustrial=nearestIndustrial!=null&&nearestIndustrial<=100;
   const nearIndustrial=nearestIndustrial!=null&&nearestIndustrial<=300;
@@ -71,12 +74,12 @@ function classify(firms,context={}){
   let score=25;
   const reasons=[];
 
-  if(interfaceForest){
+  if(localForest){
     score+=30;
-    reasons.push("interfaz urbano-forestal")
-  }else if(localForest){
-    score+=30;
-    reasons.push("entorno forestal/natural")
+    reasons.push("entorno forestal/natural inmediato")
+  }else if(interfaceForest){
+    score+=25;
+    reasons.push(`borde forestal cercano (${Math.round(nearestForest)} m)`)
   }else if(vegetation){
     score+=20;
     reasons.push("entorno de vegetación/rural")
@@ -121,30 +124,29 @@ function classify(firms,context={}){
 
   /*
    * PRIORIDAD GEOGRAFICA:
-   * 1. Instalacion industrial identificada localmente -> industrial.
-   * 2. Forestal/interfaz urbano-forestal -> incendio forestal.
-   * 3. Resto -> scoring orientativo.
+   * 1. Forestal / interfaz forestal -> incendio forestal.
+   * 2. Sin bosque cercano: instalación industrial/urbana -> fuente industrial.
+   * 3. Resto -> posible incendio / anomalía según evidencias.
    *
-   * Asi un punto FIRMS sobre Michelin, Cementos Lemona, etc. no se convierte
-   * en incendio forestal solo porque exista bosque/monte dentro de 300-1000 m.
+   * Esto evita dos errores observados:
+   * - un foco de Arza no debe pasar a industrial por una industria cercana;
+   * - un incendio forestal de Bermeo no debe quedar como industrial solo
+   *   porque OSM tenga contexto urbano/industrial alrededor.
+   *
+   * Las gasolineras (amenity=fuel) y comercios/retail NO están en
+   * INDUSTRIAL_TAGS y no se consideran industria por sí mismos.
    */
   let category="thermal_anomaly";
-  if(industrialTag&&veryNearIndustrial){
-    category="probable_industrial_source";
-  }else if(forestEnvironment){
+
+  if(forestEnvironment){
     category="probable_forest_fire";
-  }else if(urban){
+  }else if(urban&&(industrialTag||veryNearIndustrial)){
     category="probable_industrial_source";
   }else{
     const strongSignal=(frp!=null&&frp>=20)||(confidence!=null&&confidence>=80);
     const fireEvidence=clusterFire||strongSignal||temporalRepeated>=1;
-    const industrialSourceLikely=industrialTag&&veryNearIndustrial&&
-      (frp==null||frp<20)&&
-      (confidence==null||confidence<80)&&
-      repeated===0&&temporalRepeated===0;
 
-    if(industrialSourceLikely)category="probable_industrial_source";
-    else if(vegetation&&fireEvidence&&score>=50)category="probable_forest_fire";
+    if(vegetation&&fireEvidence&&score>=50)category="probable_forest_fire";
     else if(score>=40||strongSignal||clusterFire)category="possible_fire";
   }
 
