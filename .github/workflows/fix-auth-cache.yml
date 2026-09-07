@@ -1,0 +1,23 @@
+name: Fix auth cache
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update auth cache version
+        run: |
+          sed -i 's/auth\.js?v=20260904-36/auth.js?v=20260907-44/' index.html
+          rm -f .github/workflows/fix-auth-cache.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html .github/workflows/fix-auth-cache.yml
+          git diff --cached --quiet || git commit -m "Fix auth cache bust"
+          git push
