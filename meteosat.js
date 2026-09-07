@@ -1,292 +1,36 @@
 (()=>{
 "use strict";
-
-/*
- * Meteosat FRP-PIXEL / LSA SAF
- * Objetivo: mapa acumulado de detecciones de las últimas 24/48/72 h.
- * Cada observación MSG/SEVIRI llega en slots de 15 min.
- * Las detecciones se colorean por antigüedad, al estilo FIRMS.
- * NASA FIRMS no se modifica.
- */
-const WMS="https://adaguc.lsasvcs.ipma.pt//adagucserver";
-const DATASET="MSG-FRP";
-const LAYER="MSG:FRP-PIXEL";
-const BBOX=[-5.0,42.3,-0.8,44.0];
-const SLOT=15*60*1000;
-const REFRESH=15*60*1000;
-const LATENCY=30*60*1000;
-const COLORS={
-  fresh:"#e31a1c",      // 0-6 h
-  recent:"#ff8c00",     // 6-24 h
-  old:"#ffd21f",        // 24-48 h
-  oldest:"#8b8b8b"      // 48-72 h
-};
-
-let map=null;
-let enabled=false;
-let rangeHours=24;
-let overlays=new Map();
-let currentTimes=[];
-let loading=false;
-let refreshTimer=null;
-let generation=0;
-let latestSlot=null;
-
+/* Meteosat FRP-PIXEL: puntos horarios + último slot disponible, coloreados por antigüedad. NASA FIRMS no se modifica. */
+const API="https://irratigis-api.pages.dev/api/meteosat",HOUR=3600000,REFRESH=900000,LATENCY=35*60000,HISTORY=5*24*HOUR;
+const BBOX={west:-5,south:42.3,east:-0.8,north:44},C={fresh:"#e31a1c",recent:"#ff8c00",old:"#ffd21f",oldest:"#8b8b8b"};
+const SCALE={FRP:10,LATITUDE:100,LONGITUDE:100,FIRE_CONFIDENCE:100,PIXEL_SIZE:100};
+let map=null,enabled=false,loading=false,timer=null,h5=null,h5Promise=null;const files=new Map();
 const $=id=>document.getElementById(id);
 function getMap(){return window.IrratiGISMap||((typeof window.map!=="undefined")?window.map:null)}
-function iso(d){return new Date(d).toISOString().replace(/\.000Z$/,"Z")}
-function round15(d){const x=new Date(d);x.setUTCSeconds(0,0);x.setUTCMinutes(Math.floor(x.getUTCMinutes()/15)*15);return x}
-function localFmt(d){return new Intl.DateTimeFormat("es-ES",{dateStyle:"short",timeStyle:"short",timeZone:"Europe/Madrid"}).format(d)}
-function esc(s){return String(s).replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]))}
-
-function status(text,type="info"){
-  const e=$("irratiMeteosatStatus");
-  if(!e)return;
-  e.textContent=text;
-  e.dataset.type=type;
-  e.style.color=type==="error"?"#a12626":type==="ok"?"#176b43":"#52645a";
-}
-
-function ensureFilters(){
-  if($("irratiMeteosatFilters"))return;
-  const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
-  svg.id="irratiMeteosatFilters";
-  svg.setAttribute("width","1");svg.setAttribute("height","1");
-  svg.style.cssText="position:absolute;width:1px;height:1px;left:-10px;top:-10px;pointer-events:none";
-  const defs=document.createElementNS("http://www.w3.org/2000/svg","defs");
-  const make=(id,color)=>{
-    const f=document.createElementNS("http://www.w3.org/2000/svg","filter");
-    f.id=id;f.setAttribute("color-interpolation-filters","sRGB");
-    const c=color.replace("#","");
-    const r=parseInt(c.slice(0,2),16)/255,g=parseInt(c.slice(2,4),16)/255,b=parseInt(c.slice(4,6),16)/255;
-    const m=document.createElementNS("http://www.w3.org/2000/svg","feColorMatrix");
-    m.setAttribute("type","matrix");
-    m.setAttribute("values",`0 0 0 0 ${r} 0 0 0 0 ${g} 0 0 0 0 ${b} 0 0 0 1 0`);
-    f.appendChild(m);defs.appendChild(f);
-  };
-  make("irratiMeteoFresh",COLORS.fresh);
-  make("irratiMeteoRecent",COLORS.recent);
-  make("irratiMeteoOld",COLORS.old);
-  make("irratiMeteoOldest",COLORS.oldest);
-  svg.appendChild(defs);document.body.appendChild(svg);
-}
-
-function ageClass(t,ref){
-  const h=Math.max(0,(ref-t)/3600000);
-  if(h<6)return {name:"fresh",label:"0–6 h",filter:"url(#irratiMeteoFresh)",opacity:.95};
-  if(h<24)return {name:"recent",label:"6–24 h",filter:"url(#irratiMeteoRecent)",opacity:.88};
-  if(h<48)return {name:"old",label:"24–48 h",filter:"url(#irratiMeteoOld)",opacity:.78};
-  return {name:"oldest",label:"48–72 h",filter:"url(#irratiMeteoOldest)",opacity:.68};
-}
-
-function mapUrl(t){
-  const p=new URLSearchParams({
-    dataset:DATASET,SERVICE:"WMS",VERSION:"1.3.0",REQUEST:"GetMap",
-    LAYERS:LAYER,STYLES:"",CRS:"EPSG:4326",
-    BBOX:`${BBOX[1]},${BBOX[0]},${BBOX[3]},${BBOX[2]}`,
-    WIDTH:"1200",HEIGHT:"680",FORMAT:"image/png",TRANSPARENT:"TRUE",
-    TIME:iso(t)
-  });
-  return WMS+"?"+p.toString();
-}
-
-function ensurePane(){
-  if(!map.getPane("meteosatPane")){
-    const p=map.createPane("meteosatPane");
-    p.style.zIndex=360;
-  }
-}
-
-function makePanel(){
-  if($("irratiMeteosatPanel"))return;
-  const c=document.createElement("div");
-  c.id="irratiMeteosatPanel";
-  c.className="irrati-meteosat-panel leaflet-control";
-  c.innerHTML=`
-    <div class="irrati-meteosat-head"><strong>🛰️ Meteosat · FRP</strong><button id="irratiMeteosatClose" type="button">×</button></div>
-    <div class="irrati-meteosat-sub">Mapa acumulado · una observación cada 15 min</div>
-    <div class="irrati-meteosat-ranges">
-      <button id="irratiMeteosatR24" type="button" class="active">24 h</button>
-      <button id="irratiMeteosatR48" type="button">48 h</button>
-      <button id="irratiMeteosatR72" type="button">72 h</button>
-    </div>
-    <div class="irrati-meteosat-legend">
-      <span><i class="fresh"></i>0–6 h</span>
-      <span><i class="recent"></i>6–24 h</span>
-      <span><i class="old"></i>24–48 h</span>
-      <span><i class="oldest"></i>48–72 h</span>
-    </div>
-    <div class="irrati-meteosat-time" id="irratiMeteosatTime">—</div>
-    <div id="irratiMeteosatStatus" class="irrati-meteosat-status">Meteosat apagado</div>
-    <div class="irrati-meteosat-note">El mapa se actualiza automáticamente cada 15 min. Fuente: LSA SAF / EUMETSAT · FRP-PIXEL LSA-502 · ~3 km</div>`;
-  map.getContainer().appendChild(c);
-  $("irratiMeteosatClose").onclick=()=>toggle(false);
-  [24,48,72].forEach(h=>$("irratiMeteosatR"+h).onclick=()=>setRange(h));
-}
-
-function updatePanel(){
-  [24,48,72].forEach(h=>$("irratiMeteosatR"+h)?.classList.toggle("active",h===rangeHours));
-  if($("irratiMeteosatTime")){
-    $("irratiMeteosatTime").textContent=latestSlot?`Hasta ${localFmt(latestSlot)} local`:`—`;
-  }
-}
-
-function clearOverlays(){
-  overlays.forEach(o=>{try{map.removeLayer(o.layer)}catch{}});
-  overlays.clear();
-}
-
-function removeOutside(start,end){
-  overlays.forEach((o,key)=>{
-    if(o.time<start||o.time>end){try{map.removeLayer(o.layer)}catch{};overlays.delete(key)}
-  });
-}
-
-function addSlot(t,ref,token){
-  const key=t.getTime();
-  if(overlays.has(key)){
-    const a=ageClass(t,ref);const o=overlays.get(key);o.layer.setOpacity(a.opacity);o.layer.getElement?.().style?.setProperty("filter",a.filter);return Promise.resolve(true);
-  }
-  return new Promise(resolve=>{
-    if(token!==generation||!enabled){resolve(false);return}
-    const a=ageClass(t,ref);
-    const layer=L.imageOverlay(mapUrl(t),[[BBOX[1],BBOX[0]],[BBOX[3],BBOX[2]]],{
-      opacity:a.opacity,alt:`Meteosat FRP-PIXEL ${iso(t)}`,zIndex:360,pane:"meteosatPane",interactive:false
-    });
-    let finished=false;
-    const done=ok=>{
-      if(finished)return;finished=true;
-      if(ok){
-        overlays.set(key,{time:key,layer});
-        const img=layer.getElement?.();
-        if(img)img.style.filter=a.filter;
-        resolve(true);
-      }else{try{map.removeLayer(layer)}catch{};resolve(false)}
-    };
-    layer.once("load",()=>done(true));
-    layer.once("error",()=>done(false));
-    layer.addTo(map);
-    setTimeout(()=>done(false),12000);
-  });
-}
-
-async function loadWindow(){
-  if(!map||!enabled||loading)return;
-  loading=true;
-  const token=++generation;
-  try{
-    /* LSA SAF publica el producto con latencia típica de hasta ~30 min. */
-    const ref=round15(new Date(Date.now()-LATENCY));
-    latestSlot=ref;
-    const start=new Date(ref.getTime()-rangeHours*3600000);
-    const times=[];
-    for(let t=start.getTime();t<=ref.getTime();t+=SLOT)times.push(new Date(t));
-    currentTimes=times;
-    removeOutside(start,ref);
-    updatePanel();
-
-    let done=0,failed=0;
-    const queue=times.filter(t=>!overlays.has(t.getTime()));
-    status(`Meteosat: cargando acumulado ${rangeHours} h · ${queue.length} observaciones pendientes…`);
-
-    /* Carga progresiva para no bloquear móviles ni saturar el WMS. */
-    const workers=Math.min(6,queue.length);
-    let cursor=0;
-    const worker=async()=>{
-      while(cursor<queue.length&&token===generation&&enabled){
-        const t=queue[cursor++];
-        const ok=await addSlot(t,ref,token);
-        if(ok)done++;else failed++;
-        if((done+failed)%6===0||done+failed===queue.length){
-          status(`Meteosat: ${done}/${times.length} observaciones cargadas${failed?` · ${failed} sin imagen`:""}`);
-        }
-      }
-    };
-    await Promise.all(Array.from({length:workers},worker));
-    if(token===generation&&enabled){
-      /* Reaplica color/opacidad por si el mapa llevaba tiempo abierto. */
-      overlays.forEach(o=>{const a=ageClass(new Date(o.time),ref);o.layer.setOpacity(a.opacity);const img=o.layer.getElement?.();if(img)img.style.filter=a.filter});
-      status(`Meteosat: acumulado de ${rangeHours} h · ${overlays.size} observaciones disponibles`+(failed?` · ${failed} sin imagen`:""),"ok");
-    }
-  }catch(e){
-    console.error(e);
-    status(`Meteosat: error — ${e.message||e}`,"error");
-  }finally{loading=false;updatePanel()}
-}
-
-function scheduleRefresh(){
-  if(refreshTimer)clearTimeout(refreshTimer);
-  const now=Date.now();
-  const next=(Math.floor(now/REFRESH)+1)*REFRESH+5000;
-  refreshTimer=setTimeout(async()=>{
-    refreshTimer=null;
-    if(enabled){
-      /* Solo reconstruimos la ventana; los slots ya descargados se reutilizan. */
-      await loadWindow();
-      scheduleRefresh();
-    }
-  },Math.max(5000,next-now));
-}
-
-async function toggle(on){
-  enabled=!!on;
-  makePanel();
-  $("irratiMeteosatPanel").style.display=on?"block":"none";
-  if(!on){
-    generation++;
-    if(refreshTimer)clearTimeout(refreshTimer);refreshTimer=null;
-    clearOverlays();currentTimes=[];latestSlot=null;
-    status("Meteosat apagado");
-    window.IrratiGISMeteosatLayer=null;
-    return;
-  }
-  ensureFilters();ensurePane();updatePanel();
-  await loadWindow();scheduleRefresh();
-}
-
-function setRange(h){
-  rangeHours=h;
-  if(!enabled){updatePanel();return}
-  loadWindow();
-}
-
-function addLayerRow(){
-  const lists=document.querySelectorAll(".leaflet-control-layers-overlays");
-  if(!lists.length)return false;
-  lists.forEach(list=>{
-    if(list.querySelector(".irrati-meteosat-layer-row"))return;
-    const row=document.createElement("label");row.className="irrati-meteosat-layer-row";row.style.display="block";
-    const input=document.createElement("input");input.type="checkbox";input.className="leaflet-control-layers-selector";input.checked=enabled;
-    input.addEventListener("change",()=>toggle(input.checked));
-    const span=document.createElement("span");span.textContent=" 🛰️ Meteosat FRP · acumulado 15 min";
-    row.appendChild(input);row.appendChild(span);list.appendChild(row);
-  });
-  return true;
-}
-
-function injectStyle(){
-  if($("irratiMeteosatStyle"))return;
-  const s=document.createElement("style");s.id="irratiMeteosatStyle";
-  s.textContent=`
-  .irrati-meteosat-panel{position:absolute;left:10px;bottom:34px;z-index:1002;width:min(270px,calc(100vw - 20px));background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.22);padding:7px;font:11px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1c2d24}
-  .irrati-meteosat-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.irrati-meteosat-head strong{font-size:12px}.irrati-meteosat-head button{border:0;background:#eef3ef;border-radius:7px;padding:4px 8px;cursor:pointer}
-  .irrati-meteosat-sub,.irrati-meteosat-note{color:#65736b;margin-top:3px}.irrati-meteosat-ranges{display:flex;gap:4px;margin-top:7px}.irrati-meteosat-ranges button{flex:1;border:0;border-radius:8px;background:#edf3ef;color:#234233;padding:5px 6px;font-weight:800;cursor:pointer}.irrati-meteosat-ranges button.active{background:#176b43;color:#fff}
-  .irrati-meteosat-legend{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-top:6px}.irrati-meteosat-legend span{display:flex;align-items:center;gap:4px;font-size:9px;font-weight:800;color:#46564d}.irrati-meteosat-legend i{display:inline-block;width:10px;height:10px;border-radius:50%}.irrati-meteosat-legend .fresh{background:#e31a1c}.irrati-meteosat-legend .recent{background:#ff8c00}.irrati-meteosat-legend .old{background:#ffd21f}.irrati-meteosat-legend .oldest{background:#8b8b8b}
-  .irrati-meteosat-time{text-align:center;font-weight:800;margin:7px 0 3px}.irrati-meteosat-status{margin-top:5px;padding:5px 6px;background:#f7faf8;border-radius:8px;font-weight:700}.irrati-meteosat-note{font-size:8px;margin-top:5px}
-  @media(max-width:520px){.irrati-meteosat-panel{left:7px;bottom:52px;width:calc(100vw - 20px)}.irrati-meteosat-legend{grid-template-columns:repeat(2,1fr)}}`;
-  document.head.appendChild(s);
-}
-
-function boot(){
-  map=getMap();
-  if(!map||typeof L==="undefined"){setTimeout(boot,500);return}
-  injectStyle();ensureFilters();makePanel();addLayerRow();
-  if(!window.__irratiMeteosatObserver){
-    window.__irratiMeteosatObserver=new MutationObserver(()=>addLayerRow());
-    window.__irratiMeteosatObserver.observe(document.body,{childList:true,subtree:true});
-  }
-}
-
-window.IrratiGISMeteosat={toggle,setRange};
-boot();
+function r15(d){const x=new Date(d);x.setUTCSeconds(0,0);x.setUTCMinutes(Math.floor(x.getUTCMinutes()/15)*15);return x}
+function rh(d){const x=new Date(d);x.setUTCMinutes(0,0,0);return x}
+function fmt(d){return new Intl.DateTimeFormat("es-ES",{dateStyle:"short",timeStyle:"short",timeZone:"Europe/Madrid"}).format(d)}
+function age(t){const h=Math.max(0,(Date.now()-t)/HOUR);if(h<6)return{c:C.fresh,l:"0–6 h"};if(h<24)return{c:C.recent,l:"6–24 h"};if(h<72)return{c:C.old,l:"1–3 d"};return{c:C.oldest,l:"3–5 d"}}
+function slot(d){const p=n=>String(n).padStart(2,"0");return `${d.getUTCFullYear()}${p(d.getUTCMonth()+1)}${p(d.getUTCDate())}${p(d.getUTCHours())}${p(d.getUTCMinutes())}`}
+function status(t,type="info"){const e=$("irratiMeteosatStatus");if(e){e.textContent=t;e.style.color=type==="error"?"#a12626":type==="ok"?"#176b43":"#52645a"}}
+function pane(){if(!map.getPane("meteosatPane")){const p=map.createPane("meteosatPane");p.style.zIndex=620}}
+function panel(){if($("irratiMeteosatPanel"))return;const c=document.createElement("div");c.id="irratiMeteosatPanel";c.className="irrati-meteosat-panel leaflet-control";c.innerHTML=`<div class="irrati-meteosat-head"><strong>🛰️ Meteosat · FRP</strong><button id="irratiMeteosatClose" type="button">×</button></div><div class="irrati-meteosat-sub">Detecciones · antigüedad</div><div class="irrati-meteosat-legend"><span><i class="fresh"></i>0–6 h</span><span><i class="recent"></i>6–24 h</span><span><i class="old"></i>1–3 d</span><span><i class="oldest"></i>3–5 d</span></div><div class="irrati-meteosat-time" id="irratiMeteosatTime">—</div><div id="irratiMeteosatStatus" class="irrati-meteosat-status">Meteosat apagado</div><div class="irrati-meteosat-note">LSA SAF / EUMETSAT · FRP-PIXEL LSA-502 · producto cada 15 min. Histórico representado por horas.</div>`;map.getContainer().appendChild(c);$("irratiMeteosatClose").onclick=()=>toggle(false)}
+function loadH5(){if(h5Promise)return h5Promise;h5Promise=import("https://cdn.jsdelivr.net/npm/h5wasm@0.10.3/dist/esm/hdf5_hl.js").then(async m=>{await m.default.ready;h5=m.default;return h5});return h5Promise}
+function get(o,n){try{return o.get(n)}catch{return null}}
+function find(root,names){const wanted=new Set(names),seen=new Set();function walk(o,d){if(!o||d>4||seen.has(o))return null;seen.add(o);let ks=[];try{ks=o.keys()}catch{return null}for(const k of ks){const ch=get(o,k);if(!ch)continue;if(wanted.has(String(k).toUpperCase()))return ch;const z=walk(ch,d+1);if(z)return z}return null}return walk(root,0)}
+function value(ds){try{return ds?.value}catch{return null}}
+function s(n,v){return Number(v)/(SCALE[n]||1)}
+function parse(f,slotDate){const lat=value(find(f,["LATITUDE"])),lon=value(find(f,["LONGITUDE"]));if(!lat||!lon)return[];const frp=value(find(f,["FRP"])),conf=value(find(f,["FIRE_CONFIDENCE"])),area=value(find(f,["PIXEL_SIZE"])),acq=value(find(f,["ACQTIME"])),out=[];for(let i=0;i<lat.length;i++){const la=s("LATITUDE",lat[i]),lo=s("LONGITUDE",lon[i]);if(!Number.isFinite(la)||!Number.isFinite(lo)||la<BBOX.south||la>BBOX.north||lo<BBOX.west||lo>BBOX.east)continue;const t=new Date(slotDate);if(acq&&Number.isFinite(Number(acq[i]))){const q=Number(acq[i]);t.setUTCHours(Math.floor(q/100),q%100,0,0)}out.push({lat:la,lon:lo,time:t,frp:frp?s("FRP",frp[i]):null,conf:conf?s("FIRE_CONFIDENCE",conf[i]):null,area:area?s("PIXEL_SIZE",area[i]):null})}return out}
+function rad(a){return Number.isFinite(a)&&a>0?Math.max(4,Math.min(9,Math.sqrt(a)/2)):5}
+function render(rows){const g=L.layerGroup();rows.forEach(x=>{const a=age(x.time.getTime()),m=L.circleMarker([x.lat,x.lon],{pane:"meteosatPane",radius:rad(x.area),color:a.c,weight:1,fillColor:a.c,fillOpacity:.85,opacity:.95});const frp=x.frp==null?"—":`${x.frp.toFixed(1)} MW`,conf=x.conf==null?"—":`${Math.round(x.conf)}%`,area=x.area==null?"—":`${(x.area/100).toFixed(2)} km²`;m.bindPopup(`<strong>Meteosat FRP-PIXEL</strong><br>Observación: ${fmt(x.time)}<br>Antigüedad: ${a.l}<br>FRP: ${frp}<br>Confianza: ${conf}<br>Área efectiva: ${area}<br>Lat/Lon: ${x.lat.toFixed(4)}, ${x.lon.toFixed(4)}`);g.addLayer(m)});g.addTo(map);return g}
+async function fetchSlot(d){const k=d.getTime();if(files.has(k))return files.get(k).count;try{const r=await fetch(`${API}?slot=${slot(d)}`,{cache:"no-store"});if(!r.ok)throw new Error(`HTTP ${r.status}`);const ab=await r.arrayBuffer(),M=await h5.ready,name=`frp_${k}.h5`;M.FS.writeFile(name,new Uint8Array(ab));const f=new h5.File(name,"r"),rows=parse(f,d);f.close();try{M.FS.unlink(name)}catch{}const layer=render(rows);files.set(k,{count:rows.length,layer,slot:new Date(d)});return rows.length}catch(e){console.warn("Meteosat",slot(d),e);return-1}}
+function purge(){const cut=Date.now()-HISTORY;files.forEach((v,k)=>{if(k<cut){try{map.removeLayer(v.layer)}catch{}files.delete(k)}})}
+function recolor(){files.forEach(v=>v.layer.eachLayer(m=>{const a=age(v.slot.getTime());m.setStyle({color:a.c,fillColor:a.c})}))}
+async function load(){if(loading||!enabled)return;loading=true;try{status("Meteosat: conectando con FRP-PIXEL…");await loadH5();const latest=r15(new Date(Date.now()-LATENCY)),hour=rh(latest),slots=[latest];for(let t=hour.getTime()-HOUR;t>=hour.getTime()-HISTORY;t-=HOUR)slots.push(new Date(t));let done=0,det=0,miss=0,cursor=0;const worker=async()=>{while(cursor<slots.length&&enabled){const d=slots[cursor++],n=await fetchSlot(d);done++;if(n<0)miss++;else det+=n;if(done%5===0||done===slots.length)status(`Meteosat: ${done}/${slots.length} observaciones · ${det} detecciones${miss?` · ${miss} sin datos`:""}`)}};await Promise.all([worker(),worker(),worker(),worker()]);purge();recolor();$("irratiMeteosatTime").textContent=`Último slot: ${fmt(latest)} local`;status(`Meteosat: ${Array.from(files.values()).reduce((n,v)=>n+v.count,0)} detecciones visibles${miss?` · ${miss} horas sin datos`:""}`,"ok")}catch(e){console.error(e);status(`Meteosat: error — ${e.message||e}`,"error")}finally{loading=false}}
+function schedule(){if(timer)clearTimeout(timer);const now=Date.now(),next=(Math.floor(now/REFRESH)+1)*REFRESH+4000;timer=setTimeout(async()=>{timer=null;if(enabled){await load();schedule()}},Math.max(5000,next-now))}
+async function toggle(on){enabled=!!on;panel();$("irratiMeteosatPanel").style.display=on?"block":"none";if(!on){if(timer)clearTimeout(timer);files.forEach(v=>{try{map.removeLayer(v.layer)}catch{}});files.clear();timer=null;window.IrratiGISMeteosatLayer=null;status("Meteosat apagado");return}pane();await load();window.IrratiGISMeteosatLayer={toggle};schedule()}
+function row(){document.querySelectorAll(".leaflet-control-layers-overlays").forEach(list=>{if(list.querySelector(".irrati-meteosat-layer-row"))return;const r=document.createElement("label");r.className="irrati-meteosat-layer-row";r.style.display="block";const i=document.createElement("input");i.type="checkbox";i.className="leaflet-control-layers-selector";i.checked=enabled;i.onchange=()=>toggle(i.checked);const s=document.createElement("span");s.textContent=" 🛰️ Meteosat FRP · antigüedad";r.append(i,s);list.appendChild(r)})}
+function styles(){if($("irratiMeteosatStyle"))return;const s=document.createElement("style");s.id="irratiMeteosatStyle";s.textContent=`.irrati-meteosat-panel{position:absolute;left:10px;bottom:34px;z-index:1002;width:min(270px,calc(100vw - 20px));background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.22);padding:7px;font:11px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1c2d24}.irrati-meteosat-head{display:flex;justify-content:space-between;align-items:center}.irrati-meteosat-head strong{font-size:12px}.irrati-meteosat-head button{border:0;background:#eef3ef;border-radius:7px;padding:4px 8px;cursor:pointer}.irrati-meteosat-sub,.irrati-meteosat-note{color:#65736b;margin-top:3px}.irrati-meteosat-legend{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-top:6px}.irrati-meteosat-legend span{display:flex;align-items:center;gap:4px;font-size:9px;font-weight:800;color:#46564d}.irrati-meteosat-legend i{display:inline-block;width:10px;height:10px;border-radius:50%}.irrati-meteosat-legend .fresh{background:#e31a1c}.irrati-meteosat-legend .recent{background:#ff8c00}.irrati-meteosat-legend .old{background:#ffd21f}.irrati-meteosat-legend .oldest{background:#8b8b8b}.irrati-meteosat-time{margin-top:6px;font-weight:800;color:#334b3e}.irrati-meteosat-status{margin-top:4px}.irrati-meteosat-note{font-size:9px;line-height:1.3}`;document.head.appendChild(s)}
+function boot(){map=getMap();if(!map){setTimeout(boot,500);return}styles();panel();row();new MutationObserver(row).observe(document.body,{childList:true,subtree:true});window.IrratiGISMeteosat={toggle}}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
 })();
