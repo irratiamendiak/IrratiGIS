@@ -38,7 +38,8 @@ function classify(firms,context={}){
  let category="thermal_anomaly";
  if(parcelUrban) category=(industrialTag||veryNearIndustrial)?"probable_industrial_source":(strong||clusterFire?"possible_fire":"thermal_anomaly");
  else if(industrialTag&&veryNearIndustrial) category="probable_industrial_source";
- else if(localForest||((parcelRural||vegetation)&&(clusterFire||temporal>0||repeated>=2))) category="probable_forest_fire";
+ else if(localForest) category="probable_forest_fire";
+ else if((parcelRural||vegetation)&&(clusterFire||temporal>0||repeated>=2)) category="probable_forest_fire";
  else if(ruralNatural&&(strong||clusterFire||temporal>0||repeated>0||score>=40)) category="probable_forest_fire";
  else if(ruralNatural) category="possible_fire";
  else if(vegetation&&(clusterFire||strong||temporal>0)&&score>=45) category="probable_forest_fire";
