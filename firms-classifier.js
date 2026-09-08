@@ -1,6 +1,6 @@
 (()=>{
 "use strict";
-const VERSION="20260907-15";
+const VERSION="20260908-bermeo";
 const INDUSTRIAL_TAGS=["industrial","quarry","brownfield","works","kiln","plant","chimney","storage_tank","silo","power","generator","substation","landfill"];
 const FOREST_TAGS=["forest","wood","scrub","heath","fell"];
 const VEGETATION_TAGS=["forest","wood","scrub","heath","fell","farmland","farmyard","meadow","orchard","vineyard","grassland","grass","allotments","greenfield","plant_nursery","greenhouse_horticulture","animal_keeping"];
