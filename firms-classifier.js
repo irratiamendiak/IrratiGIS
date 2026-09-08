@@ -1,6 +1,6 @@
 (()=>{
 "use strict";
-const VERSION="20260908-bermeo";
+const VERSION="20260908-bermeo2";
 const INDUSTRIAL_TAGS=["industrial","quarry","brownfield","works","kiln","plant","chimney","storage_tank","silo","power","generator","substation","landfill"];
 const FOREST_TAGS=["forest","wood","scrub","heath","fell"];
 const VEGETATION_TAGS=["forest","wood","scrub","heath","fell","farmland","farmyard","meadow","orchard","vineyard","grassland","grass","allotments","greenfield","plant_nursery","greenhouse_horticulture","animal_keeping"];
@@ -21,6 +21,7 @@ function classify(firms,context={}){
  const localForest=context.localForest===true||explicitForest||(nearestForest!=null&&nearestForest<=150);
  const ruralNatural=!parcelUrban&&(parcelRural||vegetation||localForest||context.ruralNatural===true);
  const strong=(frp!=null&&frp>=20)||(confidence!=null&&confidence>=80);
+ const clusteredWildland=clusterFire&&confidence!=null&&confidence>=50;
  let score=25,reasons=[];
  if(parcelUrban){score-=25;reasons.push("parcela catastral urbana")}
  if(parcelRural){score+=18;reasons.push("parcela catastral rústica")}
@@ -31,6 +32,7 @@ function classify(firms,context={}){
  else if(nearestIndustrial!=null&&nearestIndustrial<=300){score-=5;reasons.push(`actividad industrial a ${Math.round(nearestIndustrial)} m`)}
  if(repeated>0){score+=Math.min(24,repeated*8);reasons.push(`${repeated} detección${repeated===1?"":"es"} próximas`)}
  if(temporal>0){score+=Math.min(18,temporal*6);reasons.push(`${temporal} detección${temporal===1?"":"es"} en momentos distintos`)}
+ if(clusteredWildland){score+=20;reasons.push("cluster de detecciones compatible con frente de incendio")}
  if(frp!=null){score+=frp>=50?20:frp>=20?15:frp>=5?8:2;reasons.push(`FRP ${frp} MW`)}
  if(confidence!=null){score+=confidence>=80?15:confidence>=50?8:2;reasons.push(`confianza ${Math.round(confidence)}%`)}
  if(ruralNatural&&!parcelUrban&&!veryNearIndustrial){score+=10;reasons.push("entorno rural/natural compatible con incendio de vegetación")}
@@ -39,6 +41,7 @@ function classify(firms,context={}){
  if(parcelUrban) category=(industrialTag||veryNearIndustrial)?"probable_industrial_source":(strong||clusterFire?"possible_fire":"thermal_anomaly");
  else if(industrialTag&&veryNearIndustrial) category="probable_industrial_source";
  else if(localForest) category="probable_forest_fire";
+ else if(clusteredWildland) category="probable_forest_fire";
  else if((parcelRural||vegetation)&&(clusterFire||temporal>0||repeated>=2)) category="probable_forest_fire";
  else if(ruralNatural&&(strong||clusterFire||temporal>0||repeated>0||score>=40)) category="probable_forest_fire";
  else if(ruralNatural) category="possible_fire";
