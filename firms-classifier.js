@@ -67,5 +67,5 @@ async function cadastre(lat,lon){const k=key(lat,lon);if(cadCache.has(k))return 
 window.IrratiGISFirmsClassifier={classify,cadastre,version:VERSION};
 window.IrratiGISFirmsClassifierVersion=VERSION;
 window.IrratiGISFirmsCadastreVersion=VERSION;
-if(window.IrratiGISFirms?.load&&!window.__irratiFirmsClassifierReload){window.__irratiFirmsClassifierReload=true;setTimeout(()=>{try{window.IrratiGISFirms.load()}catch(e){console.warn("FIRMS reclasificación:",e)}},0)}
+if(window.IrratiGISFirms?.load&&!window.__irratiFirmsClassifierReload){window.__irratiFirmsClassifierReload=true;let n=0;const retry=()=>{if(!window.IrratiGISFirms?.load||!window.IrratiGISFirmsLayer?.getLayers)return;if(window.IrratiGISFirmsLayer.getLayers().length&&n>0)return;try{window.IrratiGISFirms.load()}catch(e){console.warn("FIRMS reclasificación:",e)}if(++n<12)setTimeout(retry,300)};setTimeout(retry,250)}
 })();
