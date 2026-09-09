@@ -1,6 +1,7 @@
 (()=>{
 "use strict";
-const VERSION="20260909-12";
+const VERSION="20260909-13";
+if(!Object.prototype.hasOwnProperty.call(Array.prototype,"groups")){Object.defineProperty(Array.prototype,"groups",{configurable:true,get(){return this}})}
 const INDUSTRIAL_TAGS=["industrial","quarry","brownfield","works","kiln","plant","chimney","storage_tank","silo","power","generator","substation","landfill"];
 const FOREST_TAGS=["forest","wood","scrub","heath","fell"];
 const VEGETATION_TAGS=["forest","wood","scrub","heath","fell","farmland","meadow","orchard","vineyard","grassland","allotments"];
@@ -15,13 +16,9 @@ function classify(firms,context={}){
  const temporalRepeated=Math.max(0,Math.round(num(context.temporalRepeatedDetections)??0));
  const clusterFire=context.clusterFire===true;
  const nearestIndustrial=num(context.nearestIndustrialMeters),nearestForest=num(context.nearestForestMeters);
- const industrialTag=hasTag(context,INDUSTRIAL_TAGS);
- const explicitForest=hasTag(context,FOREST_TAGS);
- const urban=Boolean(context.urban)||hasTag(context,URBAN_TAGS);
- const localForest=context.localForest===true;
+ const industrialTag=hasTag(context,INDUSTRIAL_TAGS),explicitForest=hasTag(context,FOREST_TAGS);
+ const urban=Boolean(context.urban)||hasTag(context,URBAN_TAGS),localForest=context.localForest===true;
  const vegetation=Boolean(context.vegetation)||localForest||hasTag(context,VEGETATION_TAGS);
- // La industria solo cuenta como evidencia de la fuente si está realmente pegada al foco.
- // Los objetos industriales lejanos encontrados por Overpass no contaminan la detección.
  const industrialImmediate=industrialTag&&nearestIndustrial!=null&&nearestIndustrial<=INDUSTRIAL_FOCUS_METERS;
  const forestCluster=explicitForest&&(clusterFire||repeated>=2||temporalRepeated>=1);
  const interfaceForest=context.interfaceForest===true||(nearestForest!=null&&nearestForest<=300&&urban);
@@ -41,7 +38,6 @@ function classify(firms,context={}){
  if(confidence!=null){if(confidence>=80)score+=15;else if(confidence>=50)score+=8;else score+=2;reasons.push(`confianza ${Math.round(confidence)}%`)}
  score=Math.max(0,Math.min(100,Math.round(score)));
  let category="thermal_anomaly";
- // El contexto forestal/interfaz tiene prioridad sobre la intensidad de la señal.
  if(forestEnvironment)category="probable_forest_fire";
  else if(urban&&industrialImmediate)category="probable_industrial_source";
  else{const strongSignal=(frp!=null&&frp>=20)||(confidence!=null&&confidence>=80);const fireEvidence=clusterFire||strongSignal||temporalRepeated>=1;if(vegetation&&fireEvidence&&score>=50)category="probable_forest_fire";else if(score>=40||strongSignal||clusterFire)category="possible_fire"}
