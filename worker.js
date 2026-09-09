@@ -3,7 +3,7 @@ const TOKEN_TTL_SECONDS=60*60*12;
 const GFA_BASE_URL="https://w390w.gipuzkoa.net/WAS/CORP/DMQQuemasWEB";
 const GFA_TIME_ZONE="Europe/Madrid";
 const FIRMS_BASE_URL="https://firms.modaps.eosdis.nasa.gov";
-function corsHeaders(origin=""){return{"Access-Control-Allow-Origin":origin===ALLOWED_ORIGIN?origin:ALLOWED_ORIGIN,"Access-Control-Allow-Methods":"GET, POST, OPTIONS","Access-Control-Allow-Headers":"Content-Type, Authorization, security-token, security-user-id","Vary:"Origin"}}
+function corsHeaders(origin=""){return{"Access-Control-Allow-Origin":origin===ALLOWED_ORIGIN?origin:ALLOWED_ORIGIN,"Access-Control-Allow-Methods":"GET, POST, OPTIONS","Access-Control-Allow-Headers":"Content-Type, Authorization, security-token, security-user-id","Vary":"Origin"}}
 function json(data,status=200,origin=""){return new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...corsHeaders(origin)}})}
 function b64(bytes){let s="";for(const b of bytes)s+=String.fromCharCode(b);return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"")}
 function unb64(s){const p=s.replace(/-/g,"+").replace(/_/g,"/");return Uint8Array.from(atob(p+"===").replace(/=/g,""),c=>c.charCodeAt(0))}
