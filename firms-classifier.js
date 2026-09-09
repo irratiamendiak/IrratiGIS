@@ -14,7 +14,7 @@ function classify(firms,context={}){
  const temporalRepeated=Math.max(0,Math.round(num(context.temporalRepeatedDetections)??0));
  const clusterFire=context.clusterFire===true;
  const nearestIndustrial=num(context.nearestIndustrialMeters),nearestForest=num(context.nearestForestMeters);
- const industrialTag=context.industrialTag===true||context.immediateIndustrial===true||(context.industrial===true&&nearestIndustrial!=null&&nearestIndustrial<=180);
+ const industrialTag=context.industrialTag===true||context.immediateIndustrial===true||(context.industrial===true&&nearestIndustrial!=null&&nearestIndustrial<=180)||(nearestIndustrial!=null&&nearestIndustrial<=180&&hasTag(context,INDUSTRIAL_TAGS));
  const explicitForest=hasTag(context,FOREST_TAGS);
  const urban=Boolean(context.urban)||hasTag(context,URBAN_TAGS);
  const localForest=context.localForest===true;
