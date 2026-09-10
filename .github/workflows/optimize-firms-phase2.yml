@@ -1,0 +1,40 @@
+name: Optimize FIRMS OSM context
+on:
+  push:
+    branches: [ main ]
+permissions:
+  contents: write
+jobs:
+  optimize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Optimize OSM context requests
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('fire-popup.js')
+          s=p.read_text()
+          anchor='const OSM_RADIUS=700;'
+          insert='''const OSM_RADIUS=700;\nconst OSM_CACHE_TTL=10*60*1000;\nconst OSM_MAX_CONCURRENCY=4;\nconst osmContextCache=new Map();\nconst osmContextInflight=new Map();\nlet osmContextActive=0;\nconst osmContextQueue=[];\nfunction osmContextKey(c){return `${Number(c[0]).toFixed(5)},${Number(c[1]).toFixed(5)}`}\nfunction runOsmQueued(task){return new Promise((resolve,reject)=>{osmContextQueue.push({task,resolve,reject});pumpOsmQueue()})}\nfunction pumpOsmQueue(){while(osmContextActive<OSM_MAX_CONCURRENCY&&osmContextQueue.length){const job=osmContextQueue.shift();osmContextActive++;Promise.resolve().then(job.task).then(job.resolve,job.reject).finally(()=>{osmContextActive--;pumpOsmQueue()})}}\nasync function osmContextFast(c){\n  const key=osmContextKey(c),now=Date.now(),hit=osmContextCache.get(key);\n  if(hit&&now-hit.time<OSM_CACHE_TTL)return hit.value;\n  if(osmContextInflight.has(key))return osmContextInflight.get(key);\n  const p=runOsmQueued(()=>osmContext(c)).then(value=>{osmContextCache.set(key,{time:Date.now(),value:value||{}});return value||{}}).finally(()=>osmContextInflight.delete(key));\n  osmContextInflight.set(key,p);\n  return p;\n}'''
+          if anchor not in s: raise SystemExit('OSM anchor not found')
+          if 'const OSM_CACHE_TTL=' not in s:
+            s=s.replace(anchor,insert,1)
+          old='async function classifyRecords(records){const contexts=await Promise.all(records.map(r=>osmContext(r.c)));'
+          new='async function classifyRecords(records){const contexts=await Promise.all(records.map(r=>osmContextFast(r.c)));'
+          if old not in s: raise SystemExit('classifyRecords anchor not found')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+          git diff --check
+      - name: Commit optimization and remove workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f .github/workflows/optimize-firms-phase2.yml
+          git add fire-popup.js .github/workflows/optimize-firms-phase2.yml
+          git commit -m 'Speed up FIRMS OSM context classification'
+          git push
