@@ -1,0 +1,25 @@
+name: Restore FIRMS previous classification UI
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  restore:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore fire-popup before three-state change
+        run: |
+          git checkout 183e6f72ba59c0116ac88e1cabcd7c2f3286dbb3 -- fire-popup.js
+          git diff --check
+      - name: Commit restore and remove workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add fire-popup.js
+          git commit -m 'Restore previous FIRMS classification behavior'
+          git rm .github/workflows/restore-firms-classifier-ui.yml
+          git commit -m 'Remove one-shot FIRMS restore workflow'
+          git push
