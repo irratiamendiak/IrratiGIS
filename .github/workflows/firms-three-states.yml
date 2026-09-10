@@ -1,0 +1,35 @@
+name: FIRMS three states
+on:
+  push:
+    branches: [main]
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch FIRMS
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('fire-popup.js')
+          s=p.read_text()
+          s=s.replace('const FIRMS_DAYS=5;\nconst FIRMS_INITIAL_DAYS=1;', 'const FIRMS_DAYS=5;\nconst FIRMS_INITIAL_DAYS=1;\nconst FIRMS_FOREST_PERSIST_H=120;\nconst FIRMS_NON_FOREST_ACTIVE_H=24;')
+          s=s.replace('const version="20260907-11";', 'const version="20260909-13";')
+          old='''const classified=await classifyRecords(records);if(!firmsEnabled)return;const groups=classified.summary.groups;let count=0;const catCounts={probable_forest_fire:0,possible_fire:0,probable_industrial_source:0,thermal_anomaly:0};for(const group of groups){if(!firmsEnabled)break;const gi=groupInfo(group);for(const rec0 of group){const rec=classified.records.find(x=>x.f===rec0.f)||rec0;const f=rec.f,c=rec.c,age=ageInfo(f),persistent=gi.count>1,size=age.radius*2+(gi.multiSatellite?2:0),icon=L.divIcon({className:"irrati-firms-dot",html:`<span class="irrati-firms-dot-inner${persistent?" persistent":""}${gi.multiSatellite?" multi":""}" style="width:${size}px;height:${size}px;background:${age.fill};border:2px solid ${age.stroke}">${gi.multiSatellite&&rec===group[0]?`<span style="font-size:9px">${gi.count}</span>`:""}</span>`,iconSize:[size,size],iconAnchor:[size/2,size/2],popupAnchor:[0,-size/2]}),m=L.marker(c,{icon,pane:"markerPane",zIndexOffset:2000,title:`NASA FIRMS · ${age.label}`});m.bindPopup(popupHtml(f,c,age,gi,rec.ctx,rec.result),{maxWidth:340});firms.addLayer(m);count++;if(rec.result?.category)catCounts[rec.result.category]=(catCounts[rec.result.category]||0)+1}}'''
+          new='''const classified=await classifyRecords(records);if(!firmsEnabled)return;const groups=classified.summary.groups;let count=0;const catCounts={probable_forest_fire:0,possible_fire:0,probable_industrial_source:0,thermal_anomaly:0};for(const group of groups){if(!firmsEnabled)break;const gi=groupInfo(group);for(const rec0 of group){const rec=classified.records.find(x=>x.f===rec0.f)||rec0;const f=rec.f,c=rec.c,age=ageInfo(f),h=(()=>{const d=fireDate(f);return d?Math.max(0,(Date.now()-d.getTime())/3600000):Infinity})();const category=rec.result?.category||"thermal_anomaly";const keep=category==="probable_forest_fire"?h<=FIRMS_FOREST_PERSIST_H:h<=FIRMS_NON_FOREST_ACTIVE_H;if(!keep)continue;const persistent=category==="probable_forest_fire"&&gi.count>1,size=age.radius*2+(gi.multiSatellite?2:0),stateClass=category==="probable_forest_fire"?" forest-fire":category==="possible_fire"?" possible-fire":" non-forest";const icon=L.divIcon({className:"irrati-firms-dot",html:`<span class="irrati-firms-dot-inner${persistent?" persistent":""}${gi.multiSatellite?" multi":""}${stateClass}" style="width:${size}px;height:${size}px;background:${age.fill};border:2px solid ${age.stroke}">${gi.multiSatellite&&rec===group[0]?`<span style="font-size:9px">${gi.count}</span>`:""}</span>`,iconSize:[size,size],iconAnchor:[size/2,size/2],popupAnchor:[0,-size/2]}),m=L.marker(c,{icon,pane:"markerPane",zIndexOffset:2000,title:`NASA FIRMS · ${age.label}`});m.bindPopup(popupHtml(f,c,age,gi,rec.ctx,rec.result),{maxWidth:340});firms.addLayer(m);count++;if(category)catCounts[category]=(catCounts[category]||0)+1}}'''
+          if old not in s:
+              raise SystemExit('render block not found')
+          s=s.replace(old,new)
+          s=s.replace('<div>⚪ 3–5 días</div>', '<div>⚪ 3–5 días · incendios forestales</div><div>♨️ No forestal: solo últimas 24 h</div>')
+          p.write_text(s)
+          PY
+          git diff --check
+      - name: Commit patch and remove workflow
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add fire-popup.js
+          git commit -m "Add FIRMS three-state persistence" || exit 0
+          git rm .github/workflows/firms-three-states.yml
+          git commit -m "Remove one-shot FIRMS patch workflow"
+          git push
