@@ -1,0 +1,39 @@
+name: Optimize FIRMS loading
+on:
+  push:
+    branches: [ main ]
+permissions:
+  contents: write
+jobs:
+  optimize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Optimize initial FIRMS load
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('fire-popup.js')
+          s=p.read_text()
+          s=s.replace('const FIRMS_DAYS=5;','const FIRMS_DAYS=5;\nconst FIRMS_INITIAL_DAYS=1;',1)
+          s=s.replace('async function loadFirms(){if(firmsLoading)return;','async function loadFirms(days=FIRMS_DAYS,background=false){if(firmsLoading)return;',1)
+          s=s.replace('status(`NASA FIRMS: cargando detecciones de los últimos ${FIRMS_DAYS} días…`);','status(`NASA FIRMS: cargando detecciones de los últimos ${days} día${days===1?"":"s"}…`);',1)
+          s=s.replace('fetch(`${API}/api/firms?days=${FIRMS_DAYS}`,','fetch(`${API}/api/firms?days=${days}`,',1)
+          marker='status(count?`NASA FIRMS: ${count} detecciones · 🔥 ${catCounts.probable_forest_fire} · 🟠 ${catCounts.possible_fire} · 🏭 ${catCounts.probable_industrial_source}`:`NASA FIRMS: 0 detecciones en la zona`,count?"ok":"info")}catch(e){'
+          repl='status(count?`NASA FIRMS: ${count} detecciones · 🔥 ${catCounts.probable_forest_fire} · 🟠 ${catCounts.possible_fire} · 🏭 ${catCounts.probable_industrial_source}`:`NASA FIRMS: 0 detecciones en la zona`,count?"ok":"info");if(!background&&days===FIRMS_INITIAL_DAYS&&firmsEnabled)queueMicrotask(()=>loadFirms(FIRMS_DAYS,true))}catch(e){'
+          if marker not in s: raise SystemExit('marker not found')
+          s=s.replace(marker,repl,1)
+          p.write_text(s)
+          PY
+          git diff --check
+      - name: Commit optimization and remove workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f .github/workflows/optimize-firms.yml
+          git add fire-popup.js .github/workflows/optimize-firms.yml
+          git commit -m 'Speed up initial NASA FIRMS loading'
+          git push
