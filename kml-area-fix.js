@@ -44,6 +44,34 @@ async function fixFile(f){
     window.dispatchEvent(new CustomEvent("irratiKmlAreaFixed",{detail:res}));
   }catch(e){console.error("KML area fix",e)}
 }
-function boot(){const input=$("file");if(!input)return setTimeout(boot,250);if(input.dataset.areaFix)return;input.dataset.areaFix="1";input.addEventListener("change",()=>fixFile(input.files&&input.files[0]),true)}
+function fixMapPanel(){
+  const mapPanel=$("map")?.closest(".panel");
+  const burn=document.getElementById("irratiBurnView");
+  const fire=document.getElementById("irratiFireView");
+  const tracks=document.getElementById("irratiTracksView");
+  if(!mapPanel||!burn||!fire||!tracks)return;
+  const active=[burn,fire,tracks].find(v=>v.classList.contains("active"));
+  if(active&&mapPanel.parentElement!==active)active.appendChild(mapPanel);
+  const tabs=document.querySelectorAll(".irrati-tab");
+  tabs.forEach(tab=>{
+    if(tab.dataset.mapFix)return;
+    tab.dataset.mapFix="1";
+    tab.addEventListener("click",()=>setTimeout(()=>{
+      const v=tab.dataset.view==="burns"?burn:tab.dataset.view==="fires"?fire:tracks;
+      if(v&&mapPanel.parentElement!==v)v.appendChild(mapPanel);
+      const m=window.IrratiGISMap;
+      if(m&&typeof m.invalidateSize==="function")setTimeout(()=>m.invalidateSize(),80);
+    },0));
+  });
+}
+function boot(){
+  const input=$("file");
+  if(input&&!input.dataset.areaFix){input.dataset.areaFix="1";input.addEventListener("change",()=>fixFile(input.files&&input.files[0]),true)}
+  fixMapPanel();
+  if(!window.__irratiKmlAreaMapFix){
+    window.__irratiKmlAreaMapFix=new MutationObserver(()=>fixMapPanel());
+    window.__irratiKmlAreaMapFix.observe(document.body,{childList:true,subtree:true});
+  }
+}
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
 })();
