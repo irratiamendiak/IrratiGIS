@@ -1,0 +1,14 @@
+.env
+*.pem
+*.key
+fingerPrint.txt
+fingerprint.txt
+fire_risk_v2.db
+*.db
+*.sqlite
+*.sqlite3
+euskalmet_error.log
+daily_parser_debug.jsonl
+v22_raw_cache/
+__pycache__/
+*.pyc
