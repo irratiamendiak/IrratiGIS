@@ -1,4 +1,7 @@
 import asyncio
+import os
+import subprocess
+import sys
 from datetime import date, timedelta, datetime
 import sqlite3
 
@@ -91,8 +94,16 @@ def bootstrap_real():
 
 
 if __name__ == '__main__':
+    init_db()
     if PROVIDER == 'demo':
         seed_demo()
-    else:
-        bootstrap_real()
+    elif V22_WRITE_ENABLED:
+        # The Render start command runs this script before uvicorn. Run the real
+        # bootstrap in a child process so the web server can bind its port at once.
+        subprocess.Popen(
+            [sys.executable, '-c', 'from seed_demo import bootstrap_real; bootstrap_real()'],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            start_new_session=True,
+        )
+        print('BASUGIX real bootstrap launched in background', flush=True)
     print('BASUGIX startup data ready', flush=True)
