@@ -1,8 +1,8 @@
 from datetime import date, timedelta, datetime
-import math
+import sqlite3
 
 from app_basugix_v22_10_5_15_HISTORICO_MAS_RAPIDO_CORREGIDO import (
-    con, init_db, FIXED_STATION_IDS, FIXED_STATIONS,
+    DB_PATH, init_db, FIXED_STATION_IDS, FIXED_STATIONS,
     demo_weather, calculate, danger_level,
     ire_gip_season, ire_gip_wind_factor, wind_cardinal,
 )
@@ -12,7 +12,10 @@ def seed():
     init_db()
     today = date.today()
     start = today - timedelta(days=30)
-    with con() as c:
+    # The application module may start its background scheduler on import.
+    # Use a generous SQLite timeout so the one-time demo seed waits for any
+    # short-lived startup transaction instead of failing with "database is locked".
+    with sqlite3.connect(str(DB_PATH), timeout=60.0) as c:
         for sid in FIXED_STATION_IDS:
             c.execute(
                 "INSERT OR IGNORE INTO stations(station_id,name,municipality,province,updated_at) VALUES(?,?,?,?,?)",
@@ -23,7 +26,6 @@ def seed():
             for i in range(31):
                 day = start + timedelta(days=i)
                 temp, rh, wind, rain = demo_weather(sid, day)
-                # Stable deterministic direction for the demo dataset.
                 direction = float((hash(f'wind-{sid}-{day.isoformat()}') % 36000) / 100.0)
                 res = calculate(temp, rh, wind, rain, month=day.month,
                                  prev_ffmc=ffmc, prev_dmc=dmc, prev_dc=dc)
