@@ -4,12 +4,21 @@ import subprocess
 import sys
 from datetime import date, timedelta, datetime
 import sqlite3
+from zoneinfo import ZoneInfo
 
 from app_basugix_v22_10_5_15_HISTORICO_MAS_RAPIDO_CORREGIDO import (
     DB_PATH, PROVIDER, V22_WRITE_ENABLED, init_db, FIXED_STATION_IDS, FIXED_STATIONS,
     demo_weather, update_day, calculate, danger_level,
     ire_gip_season, ire_gip_wind_factor, wind_cardinal,
 )
+
+MADRID = ZoneInfo('Europe/Madrid')
+
+
+def operational_day():
+    now = datetime.now(MADRID)
+    # Until 12:00 local time the operational day remains D-1.
+    return now.date() if now.hour >= 12 else now.date() - timedelta(days=1)
 
 
 def seed_demo():
@@ -71,24 +80,24 @@ def seed_demo():
 
 
 def bootstrap_real():
-    """Populate the first operational days so the main UI has cards/data immediately."""
+    """Populate only the currently published operational day."""
     init_db()
     if PROVIDER != 'euskalmet':
         return
     if not V22_WRITE_ENABLED:
-        print('BASUGIX real bootstrap skipped (V22_WRITE_ENABLED=0)')
+        print('BASUGIX real bootstrap skipped (V22_WRITE_ENABLED=0)', flush=True)
         return
 
     async def run():
-        today = date.today()
+        day = operational_day()
+        print(f'BASUGIX real bootstrap operational day={day.isoformat()} TZ=Europe/Madrid', flush=True)
         # Sequential per station preserves FFMC/DMC/DC memory from D-1 to D0.
         for sid in FIXED_STATION_IDS:
-            for day in (today - timedelta(days=1), today):
-                try:
-                    result = await update_day(sid, day)
-                    print(f'BASUGIX real bootstrap {sid} {day.isoformat()} OK fwi={result.get("fwi")} ire={result.get("ire_gip")}', flush=True)
-                except Exception as exc:
-                    print(f'BASUGIX real bootstrap {sid} {day.isoformat()} ERROR {type(exc).__name__}: {exc}', flush=True)
+            try:
+                result = await update_day(sid, day)
+                print(f'BASUGIX real bootstrap {sid} {day.isoformat()} OK fwi={result.get("fwi")} ire={result.get("ire_gip")}', flush=True)
+            except Exception as exc:
+                print(f'BASUGIX real bootstrap {sid} {day.isoformat()} ERROR {type(exc).__name__}: {exc}', flush=True)
 
     asyncio.run(run())
 
@@ -104,6 +113,7 @@ if __name__ == '__main__':
             [sys.executable, '-c', 'from seed_demo import bootstrap_real; bootstrap_real()'],
             cwd=os.path.dirname(os.path.abspath(__file__)),
             start_new_session=True,
+            env={**os.environ, 'PYTHONUNBUFFERED': '1'},
         )
         print('BASUGIX real bootstrap launched in background', flush=True)
     print('BASUGIX startup data ready', flush=True)
