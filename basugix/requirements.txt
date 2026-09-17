@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 httpx
 PyJWT
+cryptography
 APScheduler
 python-dotenv
 jinja2
