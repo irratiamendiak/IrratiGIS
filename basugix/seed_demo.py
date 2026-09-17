@@ -2,20 +2,23 @@ from datetime import date, timedelta, datetime
 import sqlite3
 
 from app_basugix_v22_10_5_15_HISTORICO_MAS_RAPIDO_CORREGIDO import (
-    DB_PATH, init_db, FIXED_STATION_IDS, FIXED_STATIONS,
+    DB_PATH, PROVIDER, init_db, FIXED_STATION_IDS, FIXED_STATIONS,
     demo_weather, calculate, danger_level,
     ire_gip_season, ire_gip_wind_factor, wind_cardinal,
 )
 
 
 def seed():
+    # Real Euskalmet mode must never seed synthetic demo observations.
+    # Keep the database initialization available for the application.
     init_db()
+    if PROVIDER != 'demo':
+        print(f'BASUGIX demo seed skipped (provider={PROVIDER})')
+        return
+
     today = date.today()
     start = today - timedelta(days=30)
 
-    # IMPORTANT: demo_weather() itself opens/commits a SQLite connection.
-    # Do all demo-weather generation before opening the bulk-write connection;
-    # otherwise SQLite can deadlock when the seed holds a write transaction.
     generated = []
     for sid in FIXED_STATION_IDS:
         ffmc, dmc, dc = 85.0, 6.0, 15.0
@@ -32,7 +35,6 @@ def seed():
                               res, season_name, sf, wf, ire))
             ffmc, dmc, dc = res.ffmc, res.dmc, res.dc
 
-    # Keep the write transaction short and isolated from demo_weather().
     with sqlite3.connect(str(DB_PATH), timeout=60.0) as c:
         for sid in FIXED_STATION_IDS:
             c.execute(
