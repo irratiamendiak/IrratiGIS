@@ -52,7 +52,7 @@ GIPUZKOA_BOUNDARY_CACHE=BASE_DIR/'gipuzkoa_boundary_cache.geojson'
 # Cartografía municipal oficial de la Diputación Foral de Gipuzkoa (B5M).
 GIPUZKOA_MUNICIPAL_GEOJSON_URL=os.getenv(
     'GIPUZKOA_MUNICIPAL_GEOJSON_URL',
-    'https://b5m.gipuzkoa.eus/datasets/GFA_DSET_MB.geojson'
+    'https://b5m.gipuzkoa.eus/api/2.0/topoquery2?coors=-2.70,42.80,-1.70,43.50&featuretypenames=m_municipalities&lang=es&format=json&geom=true&z=9'
 )
 GIPUZKOA_MUNICIPAL_CACHE=BASE_DIR/'gipuzkoa_municipios_b5m_cache.geojson'
 GIPUZKOA_MUNICIPAL_WGS84_CACHE=BASE_DIR/'gipuzkoa_municipios_b5m_wgs84_cache.geojson'
@@ -4314,13 +4314,17 @@ async def _gipuzkoa_municipal_geojson():
         raw=None
 
     if raw is None:
-        async with httpx.AsyncClient(timeout=120,follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=25,follow_redirects=True) as client:
             r=await client.get(
                 GIPUZKOA_MUNICIPAL_GEOJSON_URL,
-                headers={'User-Agent':'BASUGIX V22.8.1 FISIOCLIMATICA'}
+                headers={'User-Agent':'BASUGIX V22.10.5.15 MUNICIPIOS B5M'}
             )
             r.raise_for_status()
             raw=r.json()
+        # topoquery2 devuelve un envoltorio con `features`; normalizamos a
+        # FeatureCollection para que Leaflet/Turf no dependan de B5M.
+        if isinstance(raw,dict) and raw.get('features') and raw.get('type')!='FeatureCollection':
+            raw={'type':'FeatureCollection','features':raw.get('features',[])}
         try:
             GIPUZKOA_MUNICIPAL_CACHE.write_text(
                 json.dumps(raw,ensure_ascii=False),
