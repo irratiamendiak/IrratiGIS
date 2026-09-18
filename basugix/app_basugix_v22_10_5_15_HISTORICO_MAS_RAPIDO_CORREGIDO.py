@@ -4802,12 +4802,67 @@ async def _v221052_ensure_previous_operational_day(d):
         cur+=timedelta(days=1)
 
 
-async def _v221052_explicit_historical_day(day):
-    """Serve an explicit past date without the authenticated station endpoint.
+def _v221052_db_station_weather(station, day):
+    """Lee una estación histórica ya precalculada en SQLite sin tocar Euskalmet."""
+    ds=day.isoformat()
+    with con() as c:
+        w=c.execute("""
+            SELECT temperature,humidity,wind_kmh,rain_mm,source,observation_time,
+                   rain_points_present,rain_points_missing,rain_coverage_pct,
+                   rain_quality,data_quality,temperature_time,humidity_time,wind_time,
+                   temperature_delta_min,humidity_delta_min,wind_delta_min,
+                   noon_fallback_used,meteo_source_station,station_fallback_used,
+                   station_fallback_distance_km
+            FROM weather_daily WHERE station_id=? AND day=?
+        """,(station,ds)).fetchone()
+        f=c.execute("""
+            SELECT wind_direction_deg,wind_direction_cardinal
+            FROM fwi_daily WHERE station_id=? AND day=?
+        """,(station,ds)).fetchone()
+    if not w:
+        return None
+    try:
+        complete=(
+            all(w[k] is not None and math.isfinite(float(w[k])) for k in (0,1,2,3))
+            and w['rain_coverage_pct'] is not None
+            and float(w['rain_coverage_pct']) >= V221052_MIN_RAIN_COVERAGE_PCT
+        )
+    except Exception:
+        complete=False
+    if not complete:
+        return None
+    direction=f['wind_direction_deg'] if f else None
+    return {
+        'temperature':float(w['temperature']),'humidity':float(w['humidity']),
+        'wind_kmh':float(w['wind_kmh']),'rain_mm':float(w['rain_mm']),
+        'wind_direction_deg':direction,
+        'temperature_time':w['temperature_time'],'humidity_time':w['humidity_time'],
+        'wind_time':w['wind_time'],
+        'temperature_delta_min':w['temperature_delta_min'],
+        'humidity_delta_min':w['humidity_delta_min'],
+        'wind_delta_min':w['wind_delta_min'],
+        'noon_fallback_used':bool(w['noon_fallback_used']),
+        'post_cut_fallback_used':False,
+        'temperature_mode':'sqlite_historico_mediodia',
+        'humidity_mode':'sqlite_historico_mediodia',
+        'wind_mode':'sqlite_historico_mediodia',
+        'rain_points_present':w['rain_points_present'],
+        'rain_points_missing':w['rain_points_missing'],
+        'rain_coverage_pct':w['rain_coverage_pct'],
+        'rain_quality':w['rain_quality'],
+        'data_quality':w['data_quality'] or 'real',
+        'source':w['source'] or 'SQLite histórico V22 mediodía',
+        'observation_time':w['observation_time'] or '12:00',
+    }
 
-    Render uses the sitecustomize web-summary reader for historical days. This
-    path is deliberately separate from the operational/latest fallback so a
-    request for 2026-09-15 can never silently become 2026-09-17.
+
+async def _v221052_explicit_historical_day(day):
+    """Serve una fecha histórica usando primero el histórico SQLite de mediodía.
+
+    Para 2010-2025 el CSV histórico real ya se importa al arrancar Render.
+    Se consulta primero esa fuente local; sólo si falta una estación/día se
+    intenta Euskalmet externo. Si falta la estación objetivo pero existe otra
+    estación completa en SQLite, se usa esa estación íntegramente como respaldo.
     """
     thresholds=_v22_load_thresholds()
     async def one(sid):
@@ -4817,12 +4872,36 @@ async def _v221052_explicit_historical_day(day):
             'day':day.isoformat(),'thresholds':thresholds.get(sid,{})
         }
         try:
-            # Histórico 2026 puede requerir leer el ZIP anual completo; 35 s
-            # era demasiado corto y dejaba todas las estaciones en "Sin dato".
-            met=await asyncio.wait_for(
-                v22105_weather_with_station_fallback(sid,day),
-                timeout=90.0,
-            )
+            met=_v221052_db_station_weather(sid,day)
+            fallback_used=False
+            fallback_distance=0.0
+            fallback_source=sid
+            fallback_reason=None
+
+            if met is None:
+                candidates=await _v221051_backup_candidates(sid)
+                for cand in candidates:
+                    csid=cand['station_id']
+                    cmet=_v221052_db_station_weather(csid,day)
+                    if cmet is not None:
+                        met=cmet
+                        fallback_used=True
+                        fallback_source=csid
+                        fallback_distance=float(cand.get('distance_km') or 0.0)
+                        fallback_reason='Estación objetivo sin paquete histórico completo; sustitución por estación completa más cercana'
+                        break
+
+            if met is None:
+                # 2026 y fechas que no están precalculadas siguen la ruta Euskalmet.
+                met=await asyncio.wait_for(
+                    v22105_weather_with_station_fallback(sid,day),
+                    timeout=90.0,
+                )
+                fallback_used=bool(met.get('station_fallback_used'))
+                fallback_source=met.get('meteo_source_station',sid)
+                fallback_distance=float(met.get('station_fallback_distance_km') or 0.0)
+                fallback_reason=met.get('station_fallback_reason')
+
             pf,pd,pc=prev_state(sid,day)
             res=calculate(
                 met['temperature'],met['humidity'],met['wind_kmh'],met['rain_mm'],
@@ -4841,18 +4920,20 @@ async def _v221052_explicit_historical_day(day):
                 'wind_time':met.get('wind_time'),'temperature_delta_min':met.get('temperature_delta_min'),
                 'humidity_delta_min':met.get('humidity_delta_min'),'wind_delta_min':met.get('wind_delta_min'),
                 'noon_fallback_used':met.get('noon_fallback_used'),'post_cut_fallback_used':met.get('post_cut_fallback_used'),
-                'temperature_mode':'historical_noon_archive_api','humidity_mode':'historical_noon_archive_api','wind_mode':'historical_noon_archive_api',
+                'temperature_mode':met.get('temperature_mode','historical_noon_archive_api'),
+                'humidity_mode':met.get('humidity_mode','historical_noon_archive_api'),
+                'wind_mode':met.get('wind_mode','historical_noon_archive_api'),
                 'rain_points_present':met.get('rain_points_present'),'rain_points_missing':met.get('rain_points_missing'),
                 'rain_coverage_pct':met.get('rain_coverage_pct'),'rain_quality':met.get('rain_quality'),
                 'data_quality':met.get('data_quality'),'source':met.get('source'),
-                'meteo_source_station':met.get('meteo_source_station',sid),
-                'meteo_source_station_name':met.get('meteo_source_station_name',FIXED_STATIONS.get(sid,sid)),
-                'station_fallback_used':bool(met.get('station_fallback_used')),
-                'station_fallback_distance_km':met.get('station_fallback_distance_km',0.0),
-                'station_fallback_attempts':met.get('station_fallback_attempts',[]),
-                'station_fallback_reason':met.get('station_fallback_reason'),
-                'station_fallback_policy':met.get('station_fallback_policy','estacion_completa'),
-                'station_package_complete':bool(met.get('station_package_complete',True)),
+                'meteo_source_station':fallback_source,
+                'meteo_source_station_name':FIXED_STATIONS.get(fallback_source,fallback_source),
+                'station_fallback_used':fallback_used,
+                'station_fallback_distance_km':fallback_distance,
+                'station_fallback_attempts':[],
+                'station_fallback_reason':fallback_reason,
+                'station_fallback_policy':'estacion_completa',
+                'station_package_complete':True,
                 'ffmc':round(float(res.ffmc),4),'dmc':round(float(res.dmc),4),'dc':round(float(res.dc),4),
                 'isi':round(float(res.isi),4),'bui':round(float(res.bui),4),'fwi':round(float(res.fwi),4),
                 'fwi_level':v22_local_level(sid,res.fwi),'ire_gip':round(float(ire),4),
@@ -4861,12 +4942,9 @@ async def _v221052_explicit_historical_day(day):
                 'seed':{'ffmc':pf,'dmc':pd,'dc':pc},
             })
         except Exception as exc:
-            # Registrar el fallo real por estación/fecha: la UI no debe ocultar
-            # la causa cuando el proveedor histórico o el ZIP anual no responde.
             print(
                 f"BASUGIX historical error station={sid} day={day.isoformat()} "
-                f"type={type(exc).__name__} error={exc}",
-                flush=True,
+                f"type={type(exc).__name__} error={exc}",flush=True
             )
             base.update({'ok':False,'error_type':type(exc).__name__,'error':str(exc),
                          'temperature':None,'humidity':None,'wind_kmh':None,'rain_mm':None,
@@ -4879,11 +4957,11 @@ async def _v221052_explicit_historical_day(day):
     elapsed=round(time.perf_counter()-started,3)
     return {
         'ok':any(x.get('ok') for x in out),
-        'version':'V22.10.5.15 HISTÓRICO WEB SUMMARY',
+        'version':'V22.10.5.19 HISTÓRICO SQLITE + FALLBACK',
         'writes_to_database':False,'selected_day':day.isoformat(),'stations':out,
-        'mode':'explicit_historical_web_summary','calculation_seconds':elapsed,
-        'db_fast_path':False,'requested_day':day.isoformat(),
-        'note':'Fecha histórica explícita: T/HR/viento de observación próxima a 12:00 y lluvia acumulada 24 h hasta 12:00; si la estación objetivo está incompleta, se usa una estación Euskalmet completa de respaldo.',
+        'mode':'explicit_historical_sqlite_first','calculation_seconds':elapsed,
+        'db_fast_path':True,'requested_day':day.isoformat(),
+        'note':'Histórico 2010-2025: primero SQLite precalculado de mediodía; si falta la estación objetivo, se usa la estación completa más cercana disponible en SQLite. Sólo después se consulta Euskalmet externo.',
     }
 @app.get('/api/v22103/live')
 async def api_v22103_live(day:str|None=None, force:int=0, _skip_prev_sync:bool=False):
