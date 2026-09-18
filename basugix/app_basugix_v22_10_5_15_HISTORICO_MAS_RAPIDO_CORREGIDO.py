@@ -852,15 +852,33 @@ def _v221_tag_value(meteoros,prefix):
                 return None
     return None
 
+_V221_RAW_DOWNLOAD_LOCKS={}
+
 async def _v221_download_year(year):
-    """Download/cache the official Euskalmet annual raw-readings ZIP."""
+    """Download/cache the official Euskalmet annual raw-readings ZIP.
+
+    V22.10.5.16: todas las estaciones de una fecha comparten la misma descarga.
+    Antes cinco estaciones podían descargar simultáneamente el ZIP anual y las
+    cinco podían agotar el timeout histórico aunque el archivo fuera correcto.
+    """
+    year=int(year)
     target=V221_RAW_CACHE_DIR/f'{year}.zip'
-    # The annual archives are large. Keep a completed local copy.
     if target.exists() and target.stat().st_size > 1_000_000:
         return target
 
-    url=V221_RAW_BASE_URL.format(year=year)
-    tmp=target.with_suffix('.part')
+    lock=_V221_RAW_DOWNLOAD_LOCKS.get(year)
+    if lock is None:
+        lock=asyncio.Lock()
+        _V221_RAW_DOWNLOAD_LOCKS[year]=lock
+
+    async with lock:
+        # Otro request/estación puede haber terminado la descarga mientras
+        # esperábamos el lock.
+        if target.exists() and target.stat().st_size > 1_000_000:
+            return target
+
+        url=V221_RAW_BASE_URL.format(year=year)
+        tmp=target.with_suffix('.part')
 
     headers={
         'User-Agent':'Mozilla/5.0 (BASUGIX V22.1 experimental)',
@@ -4746,7 +4764,7 @@ async def _v221052_explicit_historical_day(day):
             # era demasiado corto y dejaba todas las estaciones en "Sin dato".
             met=await asyncio.wait_for(
                 v22105_weather_with_station_fallback(sid,day),
-                timeout=120.0,
+                timeout=300.0,
             )
             pf,pd,pc=prev_state(sid,day)
             res=calculate(
