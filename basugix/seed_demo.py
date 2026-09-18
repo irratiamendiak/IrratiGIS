@@ -111,7 +111,7 @@ def seed_historical_csv():
                 tt=str(row['hora_temperatura']).strip() or '12:00'; ht=str(row['hora_humedad']).strip() or '12:00'; wt=str(row['hora_viento']).strip() or '12:00'
                 # T/RH/viento: observación de mediodía. Lluvia: acumulado de 24 h cerrado a las 12:00.
                 w=(sid,ds,temp,rh,wind,rain,'Euskalmet histórico V22 mediodía',now,'12:00',None,None,100.0,'complete','real',tt,ht,wt,None,None,None,0,sid,0,0.0)
-                f=(sid,ds,ffmc,dmc,dc,isi,bui,fwi,v22_local_level(sid,fwi),round(ire,2),v22_local_level(sid,ire),direction,round(wf,4),round(sf,4),now,wind_cardinal(direction),season_name,'real','complete',None,None,100.0,0,tt,ht,wt)
+                f=(sid,ds,ffmc,dmc,dc,isi,bui,fwi,v22_local_level(sid,fwi),round(ire,2),v22_local_level(sid,ire),direction,round(wf,4),round(sf,4),now,(wind_cardinal(direction) if direction is not None else 'N/D'),season_name,'real','complete',None,None,100.0,0,tt,ht,wt)
                 batch.append((w,f))
                 if len(batch)>=500:
                     for x,y in batch:
