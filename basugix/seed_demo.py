@@ -122,14 +122,14 @@ def bootstrap_real():
     async def run():
         day = operational_day()
         print(f'BASUGIX real bootstrap operational day={day.isoformat()} TZ=Europe/Madrid', flush=True)
-        for sid in FIXED_STATION_IDS:
+        async def update_station(sid):
             if day < date.today() and historical_row_ready(sid, day):
                 print(
                     f'BASUGIX real bootstrap {sid} {day.isoformat()} '
                     'REUSE stored historical real data',
                     flush=True,
                 )
-                continue
+                return
 
             print(f'BASUGIX real bootstrap {sid} {day.isoformat()} START', flush=True)
             try:
@@ -137,6 +137,8 @@ def bootstrap_real():
                 print(f'BASUGIX real bootstrap {sid} {day.isoformat()} OK fwi={result.get("fwi")} ire={result.get("ire_gip")}', flush=True)
             except Exception as exc:
                 print(f'BASUGIX real bootstrap {sid} {day.isoformat()} ERROR {type(exc).__name__}: {exc}', flush=True)
+
+        await asyncio.gather(*(update_station(sid) for sid in FIXED_STATION_IDS))
 
     asyncio.run(run())
 
