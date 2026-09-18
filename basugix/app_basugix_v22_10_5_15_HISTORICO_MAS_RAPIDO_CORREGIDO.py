@@ -5876,23 +5876,42 @@ async def api_v221052_forecast3(offset:int=0):
         print(f"BASUGIX forecast request offset={offset} target={target.isoformat()} provider=Open-Meteo/ECMWF-IFS cache={cache_hit}",flush=True)
         thresholds=_v22_load_thresholds()
 
+        forecast_seed_today={}
+        if offset in (1,2) and madrid_now.hour>=12:
+            today_payload=_v221052_main_day_from_db(today)
+            if today_payload is None:
+                try:
+                    today_payload=await api_v22103_live(today.isoformat(),force=1,_skip_prev_sync=False)
+                except Exception as exc:
+                    today_payload=None
+                    print(f"BASUGIX forecast D0 seed error: {type(exc).__name__}: {exc}",flush=True)
+            if isinstance(today_payload,dict):
+                for st in today_payload.get('stations') or []:
+                    if st.get('ok') and st.get('ffmc') is not None and st.get('dmc') is not None and st.get('dc') is not None:
+                        forecast_seed_today[st.get('station_id')]={
+                            'day':today,
+                            'ffmc':float(st['ffmc']),'dmc':float(st['dmc']),'dc':float(st['dc'])
+                        }
+
         async def build_station(sid,raw):
             rows=_v221052_hourly_by_day(raw)
-            seed_day,pf,pd,pc=_v221052_latest_state_before(sid,today)
-            seed_ffmc,seed_dmc,seed_dc=pf,pd,pc
-
-            # Si el último estado SQLite está fuera de la ventana meteorológica
-            # disponible, no intentamos calcular días sin datos: conservamos ese
-            # estado y comenzamos en el primer día meteorológico disponible.
-            model_days=sorted({r['dt'].date() for r in rows})
-            if model_days:
-                first_model_day=model_days[0]
-                if seed_day is None:
-                    seed_day=first_model_day-timedelta(days=1)
-                    pf,pd,pc=INITIAL
-                    seed_ffmc,seed_dmc,seed_dc=pf,pd,pc
-                elif seed_day < first_model_day-timedelta(days=1):
-                    seed_day=first_model_day-timedelta(days=1)
+            if sid in forecast_seed_today:
+                seed=forecast_seed_today[sid]
+                seed_day=seed['day']
+                pf,pd,pc=seed['ffmc'],seed['dmc'],seed['dc']
+                seed_ffmc,seed_dmc,seed_dc=pf,pd,pc
+            else:
+                seed_day,pf,pd,pc=_v221052_latest_state_before(sid,today)
+                seed_ffmc,seed_dmc,seed_dc=pf,pd,pc
+                model_days=sorted({r['dt'].date() for r in rows})
+                if model_days:
+                    first_model_day=model_days[0]
+                    if seed_day is None:
+                        seed_day=first_model_day-timedelta(days=1)
+                        pf,pd,pc=INITIAL
+                        seed_ffmc,seed_dmc,seed_dc=pf,pd,pc
+                    elif seed_day < first_model_day-timedelta(days=1):
+                        seed_day=first_model_day-timedelta(days=1)
 
             cur=(seed_day+timedelta(days=1)) if seed_day else today
             last_met=None; last_res=None; last_wf=1.0; last_sf=1.0; last_season=None
