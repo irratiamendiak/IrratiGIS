@@ -13,7 +13,7 @@ import uvicorn
 from fwi import calculate, danger_level
 
 BASE_DIR=Path(__file__).parent
-load_dotenv(BASE_DIR/'.env', override=True)
+load_dotenv(BASE_DIR/'.env', override=False)
 DB_PATH=os.getenv('DATABASE_PATH',str(BASE_DIR/'fire_risk_v2.db'))
 PROVIDER=os.getenv('DATA_PROVIDER','demo').lower().strip(); BASE_URL=os.getenv('EUSKALMET_BASE_URL','https://api.euskadi.eus').rstrip('/')
 OBS_HOUR=int(os.getenv('FWI_OBSERVATION_HOUR','12'))
@@ -342,11 +342,9 @@ def _read_login_id(private_key_path):
     )
 
 def token():
-    """Generate and cache a fresh Euskalmet JWT automatically.
-
-    The private key may be supplied either as the legacy file path
-    (EUSKALMET_PRIVATE_KEY_PATH) or directly as a Render environment variable
-    (EUSKALMET_PRIVATE_KEY). The latter avoids requiring Render Secret Files.
+    """Genera el JWT Euskalmet usando SIEMPRE la clave privada de Render si existe.
+    Render Secret File: EUSKALMET_PRIVATE_KEY_PATH.
+    También admite EUSKALMET_PRIVATE_KEY como PEM en una variable de entorno.
     """
     now=int(time.time())
     cached=_JWT_CACHE.get("token")
@@ -354,30 +352,45 @@ def token():
     if cached and now < exp-120:
         return cached
 
-    private_key=os.getenv('EUSKALMET_PRIVATE_KEY','')
     configured=os.getenv('EUSKALMET_PRIVATE_KEY_PATH','').strip()
-    p=None
+    private_key=os.getenv('EUSKALMET_PRIVATE_KEY','').strip()
 
-    if private_key.strip():
-        # Render environment variables normally preserve newlines. Also accept
-        # a single-line value containing literal \\n for easier pasting.
-        private_key=private_key.strip()
-        if '\\n' in private_key:
-            private_key=private_key.replace('\\n','\\n')
-        private_key_bytes=private_key.encode('utf-8')
-        owner_claim,owner_value=_read_login_id(Path('/tmp/euskalmet_private_key.pem'))
-    else:
-        if not configured:
-            raise RuntimeError(
-                'Falta EUSKALMET_PRIVATE_KEY o EUSKALMET_PRIVATE_KEY_PATH en Render'
-            )
+    if configured:
         p=Path(configured)
         if not p.is_absolute():
             p=BASE_DIR/p
         if not p.exists():
-            raise RuntimeError(f'No existe la clave privada: {p}')
+            raise RuntimeError(f'No existe la clave privada configurada en EUSKALMET_PRIVATE_KEY_PATH: {p}')
         private_key_bytes=p.read_bytes()
         owner_claim,owner_value=_read_login_id(p)
+        source=f'file:{p}'
+    elif private_key:
+        # Aceptar PEM pegado con \n literal además de saltos de línea reales.
+        private_key=private_key.replace('\\n','\n').strip()
+        private_key_bytes=private_key.encode('utf-8')
+        tmp=BASE_DIR/'.render_private_key_runtime.pem'
+        tmp.write_bytes(private_key_bytes)
+        try:
+            owner_claim,owner_value=_read_login_id(tmp)
+        finally:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+        source='env:EUSKALMET_PRIVATE_KEY'
+    else:
+        raise RuntimeError('Falta EUSKALMET_PRIVATE_KEY_PATH o EUSKALMET_PRIVATE_KEY en Render')
+
+    # Validación criptográfica local: evita enviar un JWT imposible a Euskalmet.
+    try:
+        from cryptography.hazmat.primitives.serialization import load_pem_private_key
+        key_obj=load_pem_private_key(private_key_bytes,password=None)
+        if not hasattr(key_obj,'private_numbers'):
+            raise ValueError('La clave PEM no es una clave privada RSA')
+    except Exception as exc:
+        raise RuntimeError(
+            f'La clave privada Euskalmet no es un PEM RSA válido ({source}): {type(exc).__name__}: {exc}'
+        ) from exc
 
     exp=now+3600
     payload={
