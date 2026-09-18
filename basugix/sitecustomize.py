@@ -19,6 +19,8 @@ try:
                 return None
         return None
 
+    _original_station_weather_fast_or_live = m._v221052_station_weather_fast_or_live
+
     def _summary_value(item):
         fields = m._summary_fields(item)
         for key in ("mean", "_mean", "sum", "_sum", "total", "_total", "value", "_value"):
@@ -94,10 +96,20 @@ try:
         # El resumen diario contiene medias de cierre; BASUGIX necesita la observación
         # de las 12:00 y lluvia acumulada en las 24 h cerradas a las 12:00.
         try:
-            result = await asyncio.wait_for(
-                m.v2210_operational_weather(station, day),
-                timeout=75.0,
-            )
+            if day < date.today():
+                # Histórico: primero ZIP anual oficial (si existe) y después API
+                # histórica. Ambos caminos mantienen T/HR/viento al mediodía y
+                # lluvia acumulada cerrada a las 12:00.
+                result = await asyncio.wait_for(
+                    _original_station_weather_fast_or_live(station, day),
+                    timeout=75.0,
+                )
+            else:
+                # D0: observación operativa exacta de las 12:00 + lluvia 24 h.
+                result = await asyncio.wait_for(
+                    m.v2210_operational_weather(station, day),
+                    timeout=75.0,
+                )
             print(
                 f"BASUGIX V22.10 NOON OK station={station} day={day.isoformat()} "
                 f"T={result.get('temperature_time')} HR={result.get('humidity_time')} "
