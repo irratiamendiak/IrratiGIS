@@ -93,8 +93,10 @@ def bootstrap_real():
         print(f'BASUGIX real bootstrap operational day={day.isoformat()} TZ=Europe/Madrid', flush=True)
         # Sequential per station preserves FFMC/DMC/DC memory from D-1 to D0.
         for sid in FIXED_STATION_IDS:
+            print(f'BASUGIX real bootstrap {sid} {day.isoformat()} START', flush=True)
             try:
-                result = await update_day(sid, day)
+                # Never let one stalled upstream request block the remaining stations.
+                result = await asyncio.wait_for(update_day(sid, day), timeout=180)
                 print(f'BASUGIX real bootstrap {sid} {day.isoformat()} OK fwi={result.get("fwi")} ire={result.get("ire_gip")}', flush=True)
             except Exception as exc:
                 print(f'BASUGIX real bootstrap {sid} {day.isoformat()} ERROR {type(exc).__name__}: {exc}', flush=True)
