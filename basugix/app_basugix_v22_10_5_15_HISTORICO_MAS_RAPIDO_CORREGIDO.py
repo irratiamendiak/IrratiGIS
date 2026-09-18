@@ -342,10 +342,7 @@ def _read_login_id(private_key_path):
     )
 
 def token():
-    """Genera el JWT Euskalmet usando SIEMPRE la clave privada de Render si existe.
-    Render Secret File: EUSKALMET_PRIVATE_KEY_PATH.
-    También admite EUSKALMET_PRIVATE_KEY como PEM en una variable de entorno.
-    """
+    """Genera el JWT Euskalmet usando la clave privada configurada en Render."""
     now=int(time.time())
     cached=_JWT_CACHE.get("token")
     exp=int(_JWT_CACHE.get("exp") or 0)
@@ -361,50 +358,48 @@ def token():
             p=BASE_DIR/p
         if not p.exists():
             raise RuntimeError(f'No existe la clave privada configurada en EUSKALMET_PRIVATE_KEY_PATH: {p}')
-        # Render puede conservar el PEM con \\n literal o BOM/CRLF.\n        # Normalizamos el archivo antes de validarlo y firmar.\n        private_key_bytes=p.read_bytes()\n        if private_key_bytes.startswith(b'\\xef\\xbb\\xbf'):\n            private_key_bytes=private_key_bytes[3:]\n        if b'\\\\n' in private_key_bytes and b'\\n' not in private_key_bytes:\n            private_key_bytes=private_key_bytes.replace(b'\\\\n',b'\\n')\n        private_key_bytes=private_key_bytes.replace(b'\\r\\n',b'\\n').strip()+b'\\n'\n        # Algunos secretos exportados quedan envueltos accidentalmente entre comillas.\n        if private_key_bytes.startswith(b'\"') and private_key_bytes.rstrip().endswith(b'\"'):\n            private_key_bytes=private_key_bytes.strip()[1:-1].replace(b'\\\\n',b'\\n').strip()+b'\\n'\n        owner_claim,owner_value=_read_login_id(p)\n        source=f'file:{p}'
+        raw=p.read_bytes()
+        # Normalización tolerante: BOM, CRLF y saltos de línea literales.
+        if raw.startswith(b'\xef\xbb\xbf'):
+            raw=raw[3:]
+        try:
+            text=raw.decode('utf-8')
+        except UnicodeDecodeError:
+            text=raw.decode('latin-1')
+        text=text.replace('\\r\\n','\n').replace('\\n','\n').replace('\\r','\n').replace('\r\n','\n').replace('\r','\n').strip()
+        if len(text)>=2 and text[0]=='"' and text[-1]=='"':
+            text=text[1:-1].replace('\\n','\n').replace('\\r','\n').strip()
+        private_key_bytes=(text+'\n').encode('utf-8')
+        owner_claim,owner_value=_read_login_id(p)
+        source=f'file:{p}'
     elif private_key:
-        # Aceptar PEM pegado con \n literal además de saltos de línea reales.
-        private_key=private_key.replace('\\n','\n').strip()
-        private_key_bytes=private_key.encode('utf-8')
+        private_key=private_key.replace('\\r\\n','\n').replace('\\n','\n').replace('\\r','\n').strip()
+        private_key_bytes=(private_key+'\n').encode('utf-8')
         tmp=BASE_DIR/'.render_private_key_runtime.pem'
         tmp.write_bytes(private_key_bytes)
         try:
             owner_claim,owner_value=_read_login_id(tmp)
         finally:
-            try:
-                tmp.unlink()
-            except OSError:
-                pass
+            try: tmp.unlink()
+            except OSError: pass
         source='env:EUSKALMET_PRIVATE_KEY'
     else:
         raise RuntimeError('Falta EUSKALMET_PRIVATE_KEY_PATH o EUSKALMET_PRIVATE_KEY en Render')
 
-    # Validación criptográfica local: evita enviar un JWT imposible a Euskalmet.
     try:
         from cryptography.hazmat.primitives.serialization import load_pem_private_key
         key_obj=load_pem_private_key(private_key_bytes,password=None)
         if not hasattr(key_obj,'private_numbers'):
             raise ValueError('La clave PEM no es una clave privada RSA')
     except Exception as exc:
-        raise RuntimeError(
-            f'La clave privada Euskalmet no es un PEM RSA válido ({source}): {type(exc).__name__}: {exc}'
-        ) from exc
+        raise RuntimeError(f'La clave privada Euskalmet no es un PEM RSA válido ({source}): {type(exc).__name__}: {exc}') from exc
 
     exp=now+3600
-    payload={
-        'aud':'met01.apikey',
-        'iss':os.getenv('EUSKALMET_ISSUER','fire-risk-euskadi'),
-        'iat':now,
-        'exp':exp,
-        'version':'1.0.0',
-        owner_claim:owner_value,
-    }
-
+    payload={'aud':'met01.apikey','iss':os.getenv('EUSKALMET_ISSUER','fire-risk-euskadi'),'iat':now,'exp':exp,'version':'1.0.0',owner_claim:owner_value}
     signed=jwt.encode(payload,private_key_bytes,algorithm='RS256')
-    _JWT_CACHE["token"]=signed
-    _JWT_CACHE["exp"]=exp
+    _JWT_CACHE['token']=signed
+    _JWT_CACHE['exp']=exp
     return signed
-
 def decode_json_response(r, path):
     """Decode Euskalmet JSON robustly.
 
