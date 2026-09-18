@@ -4,12 +4,14 @@ import subprocess
 import sys
 from datetime import date, timedelta, datetime
 import sqlite3
+import csv
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from app_basugix_v22_10_5_15_HISTORICO_MAS_RAPIDO_CORREGIDO import (
-    DB_PATH, PROVIDER, V22_WRITE_ENABLED, init_db, FIXED_STATION_IDS, FIXED_STATIONS,
+    BASE_DIR, DB_PATH, PROVIDER, V22_WRITE_ENABLED, init_db, FIXED_STATION_IDS, FIXED_STATIONS,
     demo_weather, update_day, calculate, danger_level,
-    ire_gip_season, ire_gip_wind_factor, wind_cardinal,
+    ire_gip_season, ire_gip_wind_factor, wind_cardinal, v22_local_level,
 )
 
 MADRID = ZoneInfo('Europe/Madrid')
@@ -76,6 +78,55 @@ def seed_demo():
                   round(ire,2),danger_level(ire),round(direction,1),round(wf,4),round(sf,4),now,
                   wind_cardinal(direction),season_name,'demo','complete',144,0,100.0,0,'12:00','12:00','12:00'))
         c.commit()
+
+
+HISTORICAL_CSV = Path(os.getenv(
+    'HISTORICAL_CSV_PATH',
+    str(BASE_DIR / 'data' / 'Euskalmet_2010_2025_5estaciones_FWI_V22_MEDIODIA.csv')
+))
+
+
+def seed_historical_csv():
+    """Importa el histórico V22 de mediodía, preservando su semántica."""
+    if not HISTORICAL_CSV.exists():
+        print(f'BASUGIX historical CSV not found: {HISTORICAL_CSV}', flush=True)
+        return 0
+    now = datetime.now().isoformat(timespec='seconds')
+    rows = 0
+    batch = []
+    with HISTORICAL_CSV.open('r', encoding='utf-8-sig', newline='') as fh:
+        reader = csv.DictReader(fh, delimiter=';')
+        required = {'fecha','station_id','temperatura_12h_C','hora_temperatura','humedad_12h_pct','hora_humedad','viento_12h_kmh','hora_viento','lluvia_24h_mm','direccion_vectorial_diaria_deg','FFMC','DMC','DC','ISI','BUI','FWI'}
+        missing = sorted(required - set(reader.fieldnames or []))
+        if missing:
+            raise RuntimeError(f'CSV histórico sin columnas requeridas: {missing}')
+        with sqlite3.connect(str(DB_PATH), timeout=60.0) as c:
+            for row in reader:
+                sid = str(row['station_id']).strip().upper()
+                if sid not in FIXED_STATION_IDS: continue
+                ds = str(row['fecha']).strip()
+                temp=float(row['temperatura_12h_C']); rh=float(row['humedad_12h_pct']); wind=float(row['viento_12h_kmh']); rain=float(row['lluvia_24h_mm']); direction=float(row['direccion_vectorial_diaria_deg'])
+                ffmc=float(row['FFMC']); dmc=float(row['DMC']); dc=float(row['DC']); isi=float(row['ISI']); bui=float(row['BUI']); fwi=float(row['FWI'])
+                season_name,sf=ire_gip_season(date.fromisoformat(ds)); wf=ire_gip_wind_factor(direction,wind); ire=min(100.0,max(0.0,fwi*wf*sf))
+                tt=str(row['hora_temperatura']).strip() or '12:00'; ht=str(row['hora_humedad']).strip() or '12:00'; wt=str(row['hora_viento']).strip() or '12:00'
+                # T/RH/viento: observación de mediodía. Lluvia: acumulado de 24 h cerrado a las 12:00.
+                w=(sid,ds,temp,rh,wind,rain,'Euskalmet histórico V22 mediodía',now,'12:00',None,None,100.0,'complete','real',tt,ht,wt,None,None,None,0,sid,0,0.0)
+                f=(sid,ds,ffmc,dmc,dc,isi,bui,fwi,v22_local_level(sid,fwi),round(ire,2),v22_local_level(sid,ire),direction,round(wf,4),round(sf,4),now,wind_cardinal(direction),season_name,'real','complete',None,None,100.0,0,tt,ht,wt)
+                batch.append((w,f))
+                if len(batch)>=500:
+                    for x,y in batch:
+                        c.execute("INSERT OR REPLACE INTO weather_daily(station_id,day,temperature,humidity,wind_kmh,rain_mm,source,created_at,observation_time,rain_points_present,rain_points_missing,rain_coverage_pct,rain_quality,data_quality,temperature_time,humidity_time,wind_time,temperature_delta_min,humidity_delta_min,wind_delta_min,noon_fallback_used,meteo_source_station,station_fallback_used,station_fallback_distance_km) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",x)
+                        c.execute("INSERT OR REPLACE INTO fwi_daily(station_id,day,ffmc,dmc,dc,isi,bui,fwi,danger_level,ire_gip,ire_gip_level,wind_direction_deg,wind_factor,season_factor,created_at,wind_direction_cardinal,season_name,data_quality,rain_quality,rain_points_present,rain_points_missing,rain_coverage_pct,noon_fallback_used,temperature_time,humidity_time,wind_time) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",y)
+                    rows+=len(batch); batch=[]
+            for x,y in batch:
+                c.execute("INSERT OR REPLACE INTO weather_daily(station_id,day,temperature,humidity,wind_kmh,rain_mm,source,created_at,observation_time,rain_points_present,rain_points_missing,rain_coverage_pct,rain_quality,data_quality,temperature_time,humidity_time,wind_time,temperature_delta_min,humidity_delta_min,wind_delta_min,noon_fallback_used,meteo_source_station,station_fallback_used,station_fallback_distance_km) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",x)
+                c.execute("INSERT OR REPLACE INTO fwi_daily(station_id,day,ffmc,dmc,dc,isi,bui,fwi,danger_level,ire_gip,ire_gip_level,wind_direction_deg,wind_factor,season_factor,created_at,wind_direction_cardinal,season_name,data_quality,rain_quality,rain_points_present,rain_points_missing,rain_coverage_pct,noon_fallback_used,temperature_time,humidity_time,wind_time) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",y)
+            rows+=len(batch)
+            for sid,name in FIXED_STATIONS.items():
+                c.execute("INSERT OR IGNORE INTO stations(station_id,name,municipality,province,updated_at) VALUES(?,?,?,?,?)",(sid,name,'Gipuzkoa','Gipuzkoa',now))
+            c.commit()
+    print(f'BASUGIX historical CSV imported rows={rows} source={HISTORICAL_CSV} rain=24h_accumulated_until_12:00',flush=True)
+    return rows
 
 
 def historical_row_ready(sid, day):
@@ -148,6 +199,7 @@ if __name__ == '__main__':
     if PROVIDER == 'demo':
         seed_demo()
     elif V22_WRITE_ENABLED:
+        seed_historical_csv()
         subprocess.Popen(
             [sys.executable, '-c', 'from seed_demo import bootstrap_real; bootstrap_real()'],
             cwd=os.path.dirname(os.path.abspath(__file__)),
