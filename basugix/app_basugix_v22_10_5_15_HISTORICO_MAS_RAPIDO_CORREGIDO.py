@@ -1908,7 +1908,10 @@ async def v22_noon_weather(station,day):
         # Historical API first: it was the original project path and avoids
         # downloading/parsing a full annual ZIP on every Render cold start.
         try:
-            rec=await _v222_recent_api_weather(station,day)
+            rec=await asyncio.wait_for(
+                _v222_recent_api_weather(station,day),
+                timeout=float(os.getenv('EUSKALMET_HISTORICAL_API_TIMEOUT','30'))
+            )
             chosen='api'
         except Exception as api_exc:
             attempts.append({
