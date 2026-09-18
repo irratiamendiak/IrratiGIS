@@ -4742,9 +4742,11 @@ async def _v221052_explicit_historical_day(day):
             'day':day.isoformat(),'thresholds':thresholds.get(sid,{})
         }
         try:
+            # Histórico 2026 puede requerir leer el ZIP anual completo; 35 s
+            # era demasiado corto y dejaba todas las estaciones en "Sin dato".
             met=await asyncio.wait_for(
                 v22105_weather_with_station_fallback(sid,day),
-                timeout=35.0,
+                timeout=120.0,
             )
             pf,pd,pc=prev_state(sid,day)
             res=calculate(
@@ -4784,6 +4786,13 @@ async def _v221052_explicit_historical_day(day):
                 'seed':{'ffmc':pf,'dmc':pd,'dc':pc},
             })
         except Exception as exc:
+            # Registrar el fallo real por estación/fecha: la UI no debe ocultar
+            # la causa cuando el proveedor histórico o el ZIP anual no responde.
+            print(
+                f"BASUGIX historical error station={sid} day={day.isoformat()} "
+                f"type={type(exc).__name__} error={exc}",
+                flush=True,
+            )
             base.update({'ok':False,'error_type':type(exc).__name__,'error':str(exc),
                          'temperature':None,'humidity':None,'wind_kmh':None,'rain_mm':None,
                          'fwi':None,'ire_gip':None,'fwi_level':None,'ire_gip_level':None,
