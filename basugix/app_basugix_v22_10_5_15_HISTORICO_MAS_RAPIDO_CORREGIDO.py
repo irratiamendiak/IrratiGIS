@@ -365,23 +365,27 @@ def token():
         text=text.strip()
         if len(text)>=2 and text[0]=='"' and text[-1]=='"':
             text=text[1:-1].strip()
-        text=text.replace('\\r\\n','\\n').replace('\\n','\\n').replace('\\r','\\n').replace('\\r\\n','\\n').replace('\\r','\\n')
+        # Render Secret Files normally contain real CR/LF characters, but some
+        # exports store them escaped as literal backslash sequences. Normalize
+        # both representations to real newline characters.
+        text=text.replace('\\r\\n','\n').replace('\\n','\n').replace('\\r','\n')
+        text=text.replace('\r\n','\n').replace('\r','\n')
         # Rebuild the PEM envelope and base64 body with canonical 64-char lines.
         m=re.search(r'-----BEGIN ([A-Z0-9 ]+?)-----',text,re.I)
         if not m:
-            return (text+'\\n').encode('utf-8')
+            return (text+'\n').encode('utf-8')
         label=m.group(1).upper()
         tail=text[m.end():]
         e=re.search(r'-----END '+re.escape(label)+r'-----',tail,re.I)
         if not e:
-            return (text+'\\n').encode('utf-8')
-        body=re.sub(r'\\s+','',tail[:e.start()])
+            return (text+'\n').encode('utf-8')
+        body=re.sub(r'\s+','',tail[:e.start()])
         prefix=f'-----BEGIN {label}-----'
         suffix=f'-----END {label}-----'
         if not body:
-            return (prefix+'\\n'+suffix+'\\n').encode('ascii')
-        wrapped='\\n'.join(body[i:i+64] for i in range(0,len(body),64))
-        return (prefix+'\\n'+wrapped+'\\n'+suffix+'\\n').encode('ascii')
+            return (prefix+'\n'+suffix+'\n').encode('ascii')
+        wrapped='\n'.join(body[i:i+64] for i in range(0,len(body),64))
+        return (prefix+'\n'+wrapped+'\n'+suffix+'\n').encode('ascii')
 
     if configured:
         p=Path(configured)
