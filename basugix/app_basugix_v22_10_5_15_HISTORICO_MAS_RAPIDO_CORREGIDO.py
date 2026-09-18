@@ -2597,6 +2597,7 @@ def prev_state(station,day):
 # Dirección del viento:
 #   se mantiene el origen diario ya utilizado por el proyecto.
 # ============================================================
+
 def _v2210_quality(points):
     try:
         present=int(points)
@@ -4196,7 +4197,6 @@ async def _gipuzkoa_boundary():
             return json.loads(GIPUZKOA_BOUNDARY_CACHE.read_text(encoding='utf-8'))
         except Exception:
             pass
-
     async with httpx.AsyncClient(timeout=45,follow_redirects=True) as client:
         r=await client.get(
             GIPUZKOA_BOUNDARY_URL,
@@ -4546,6 +4546,7 @@ async def api_v221052_latest_fast():
     madrid_now=datetime.now(ZoneInfo('Europe/Madrid'))
     today=madrid_now.date()
     desired=today if madrid_now.hour >= 12 else today-timedelta(days=1)
+
     # Primero SQLite; después caché persistente de una consulta real reciente.
     payload=_v221052_main_day_from_db(desired)
     if payload is None:
@@ -9096,3 +9097,883 @@ async def debug_v221052_archive_structure(year:int,station:str):
                         'outer_zip_count':len(zip_names),'outer_zip_sample':zip_names[:80],
                         'error_type':type(exc).__name__,'error':str(exc),'writes_to_database':False}
             raw=outer.read(inner_name)
+        with zipfile.ZipFile(io.BytesIO(raw)) as inner:
+            inner_names=inner.namelist()
+            xml_names=[n for n in inner_names if n.lower().endswith('.xml')]
+            xml_preview=[]
+            for xml_name in xml_names[:3]:
+                try:
+                    root=ET.fromstring(inner.read(xml_name))
+                    tags=[]
+                    attrs=[]
+                    for e in list(root.iter())[:120]:
+                        t=_v221052_local_tag(e)
+                        if t and t not in tags: tags.append(t)
+                        if e.attrib and len(attrs)<20: attrs.append({str(k):str(v) for k,v in e.attrib.items()})
+                    xml_preview.append({'xml':xml_name,'root_tag':_v221052_local_tag(root),'tags':tags[:50],'attrs':attrs[:20]})
+                except Exception as exc:
+                    xml_preview.append({'xml':xml_name,'error':f'{type(exc).__name__}: {exc}'})
+        idx=await _v221052_station_year_availability(station,int(year))
+        key=(str(archive),station,int(year))
+        meta=_V221052_ARCHIVE_AVAIL_CACHE.get((key,'meta'),{})
+        return {'ok':True,'writes_to_database':False,'year':year,'station':station,
+                'archive':str(archive),'inner_zip':inner_name,'outer_zip_count':len(zip_names),
+                'inner_entry_count':len(inner_names),'inner_entries_sample':inner_names[:50],
+                'xml_count':len(xml_names),'xml_preview':xml_preview,'parser_meta':meta,
+                'indexed_days':len(idx),'indexed_sample':list(idx.items())[:10]}
+    except Exception as exc:
+        return {'ok':False,'writes_to_database':False,'year':year,'station':station,
+                'error_type':type(exc).__name__,'error':str(exc)}
+
+@app.get('/debug/v221052/hour-sample/{year}/{station}')
+async def debug_v221052_hour_sample(year:int,station:str):
+    """Show one real Hora node around noon, including descendant attributes/text."""
+    station=str(station).upper().strip()
+    try:
+        archive=await _v221_download_year(int(year))
+        with zipfile.ZipFile(archive) as outer:
+            inner_name=_v221_station_inner_zip(outer,station)
+            raw=outer.read(inner_name)
+        samples=[]
+        with zipfile.ZipFile(io.BytesIO(raw)) as inner:
+            for xml_name in [n for n in inner.namelist() if n.lower().endswith('.xml')]:
+                root=ET.fromstring(inner.read(xml_name))
+                for dia in [e for e in root.iter() if _v221052_local_tag(e) in ('dia','day')]:
+                    ds=_v221052_date_from_xml_day(xml_name,dia,int(year))
+                    for hora in [e for e in dia.iter() if e is not dia and _v221052_local_tag(e) in ('hora','hour')]:
+                        hm=_v221052_parse_time_text(_v221052_attr_ci(hora,'Hora','hour','time','hora_local','localtime'))
+                        if hm is None or not (11*60+30 <= hm[0]*60+hm[1] <= 12*60+30):
+                            continue
+                        descendants=[]
+                        for e in list(hora.iter())[:60]:
+                            descendants.append({
+                                'tag':_v221052_local_tag(e),
+                                'attrs':{str(k).split('}')[-1]:str(v) for k,v in getattr(e,'attrib',{}).items()},
+                                'text':(e.text or '').strip()[:160]
+                            })
+                        samples.append({
+                            'xml':xml_name,'day':ds,
+                            'hour':f'{hm[0]:02d}:{hm[1]:02d}',
+                            'temperature':_v221052_meteo_value_any(hora,('temaire','temperatura','temperature','temp')),
+                            'humidity':_v221052_meteo_value_any(hora,('humedad','humidity','hr')),
+                            'wind':_v221052_meteo_value_any(hora,('velmed','velocidadmedia','windspeed','wind')),
+                            'descendants':descendants
+                        })
+                        if len(samples)>=3:
+                            return {'ok':True,'writes_to_database':False,'year':year,'station':station,'inner_zip':inner_name,'samples':samples}
+        return {'ok':True,'writes_to_database':False,'year':year,'station':station,'inner_zip':inner_name,'samples':samples,'note':'No se encontraron nodos Hora entre 11:30 y 12:30'}
+    except Exception as exc:
+        return {'ok':False,'writes_to_database':False,'year':year,'station':station,'error_type':type(exc).__name__,'error':str(exc)}
+
+@app.get('/debug/v221052/find-substitutions-indexed/{start_iso}/{end_iso}')
+async def debug_v221052_find_substitutions_indexed(start_iso:str,end_iso:str,max_days:int=366,stop_after:int=5):
+    """Localiza sustituciones usando el archivo anual oficial como índice.
+
+    V22.10.5.12 COBERTURA ARCHIVO CORREGIDA:
+    - No confunde fechas todavía no publicadas en el ZIP anual con averías.
+    - Un hueco sólo se considera real si cae DENTRO de la cobertura temporal
+      realmente indexada para la estación objetivo.
+    - Las candidatas se evalúan con la misma regla y devuelven diagnóstico de
+      cobertura/variables para explicar por qué son o no utilizables.
+    - No hace llamadas API por estación/día y no escribe en la base de datos.
+    """
+    try:
+        start=date.fromisoformat(start_iso); end=date.fromisoformat(end_iso)
+    except Exception:
+        return {'ok':False,'error':'Fecha no válida. Usa YYYY-MM-DD.','writes_to_database':False}
+    if start>end: start,end=end,start
+    max_days=max(1,min(int(max_days),3660)); stop_after=max(1,min(int(stop_after),20))
+    effective_start=max(start,end-timedelta(days=max_days-1))
+    started=time.perf_counter()
+    years=list(range(effective_start.year,end.year+1))
+
+    target_indexes={}; index_errors=[]; archive_stations_by_year={}
+    index_cache={}; coverage_cache={}
+
+    def coverage_for(idx):
+        if not idx:
+            return {'min_day':None,'max_day':None,'indexed_days':0,'operational_days':0}
+        days=sorted(idx.keys())
+        return {
+            'min_day':days[0],
+            'max_day':days[-1],
+            'indexed_days':len(days),
+            'operational_days':sum(1 for f in idx.values() if f and f.get('operational')),
+        }
+
+    async def get_index(sid,year):
+        key=(str(sid).upper(),int(year))
+        if key not in index_cache:
+            idx=await _v221052_station_year_availability(key[0],key[1])
+            index_cache[key]=idx
+            coverage_cache[key]=coverage_for(idx)
+        return index_cache[key]
+
+    for year in years:
+        try:
+            archive_stations_by_year[year]=set(await _v221052_archive_station_ids(year))
+        except Exception as exc:
+            archive_stations_by_year[year]=set()
+            index_errors.append({'station':'*catalog*','year':year,'error_type':type(exc).__name__,'error':str(exc)})
+
+    # 1) Indexar las cinco estaciones objetivo una vez por año/estación.
+    for year in years:
+        for sid in FIXED_STATION_IDS:
+            try:
+                target_indexes[(sid,year)]=await get_index(sid,year)
+            except Exception as exc:
+                index_errors.append({'station':sid,'year':year,'error_type':type(exc).__name__,'error':str(exc)})
+
+    # 2) Detectar sólo huecos REALES dentro de la cobertura del archivo.
+    #    Una fecha posterior al último día publicado NO es una avería.
+    outage_candidates=[]
+    outside_archive_coverage_count=0
+    outside_archive_coverage_sample=[]
+    d=end
+    while d>=effective_start:
+        ds=d.isoformat()
+        for sid in FIXED_STATION_IDS:
+            idx=target_indexes.get((sid,d.year))
+            if idx is None:
+                continue
+            cov=coverage_cache.get((sid,d.year),coverage_for(idx))
+            min_day=cov.get('min_day'); max_day=cov.get('max_day')
+            if not min_day or not max_day or ds < min_day or ds > max_day:
+                outside_archive_coverage_count += 1
+                if len(outside_archive_coverage_sample)<20:
+                    outside_archive_coverage_sample.append({
+                        'target_station':sid,'target_name':FIXED_STATIONS[sid],'day':ds,
+                        'coverage_min':min_day,'coverage_max':max_day,
+                        'reason':'date_outside_annual_archive_coverage',
+                    })
+                continue
+            flags=idx.get(ds)
+            if not flags or not flags.get('operational'):
+                outage_candidates.append({
+                    'target_station':sid,'target_name':FIXED_STATIONS[sid],'day':ds,
+                    'own_flags':flags,
+                    'outage_reason':'missing_day_within_coverage' if flags is None else 'non_operational_day',
+                    'target_coverage':cov,
+                })
+        d-=timedelta(days=1)
+
+    # 3) Para huecos reales, buscar la estación más cercana operativa en ESA fecha.
+    substitutions=[]; unresolved=[]; candidate_cache={}
+    for outage in outage_candidates:
+        if len(substitutions)>=stop_after:
+            break
+        sid=outage['target_station']; ds=outage['day']; year=int(ds[:4])
+        try:
+            candidates=candidate_cache.get(sid)
+            if candidates is None:
+                candidates=await _v221051_backup_candidates(sid)
+                candidate_cache[sid]=candidates
+            attempts=[]; chosen=None
+            available_ids=archive_stations_by_year.get(year,set())
+            for cand in candidates:
+                csid=str(cand['station_id']).upper()
+                base_attempt={'station':csid,'distance_km':cand['distance_km']}
+                if available_ids and csid not in available_ids:
+                    attempts.append({**base_attempt,'skipped':True,'reason':'station_not_in_annual_archive'})
+                    continue
+                try:
+                    cidx=await get_index(csid,year)
+                    ccov=coverage_cache.get((csid,year),coverage_for(cidx))
+                    cmin=ccov.get('min_day'); cmax=ccov.get('max_day')
+                    if not cmin or not cmax or ds < cmin or ds > cmax:
+                        attempts.append({
+                            **base_attempt,'operational':False,'reason':'date_outside_candidate_archive_coverage',
+                            'coverage_min':cmin,'coverage_max':cmax,
+                        })
+                        continue
+                    cflags=cidx.get(ds)
+                    diag={
+                        **base_attempt,
+                        'day_found':cflags is not None,
+                        'temperature':bool(cflags and cflags.get('temperature')),
+                        'humidity':bool(cflags and cflags.get('humidity')),
+                        'wind_kmh':bool(cflags and cflags.get('wind_kmh')),
+                        'points_after_1130':(cflags or {}).get('points_after_1130',0),
+                        'operational':bool(cflags and cflags.get('operational')),
+                        'coverage_min':cmin,'coverage_max':cmax,
+                    }
+                    if diag['operational']:
+                        chosen=(cand,cflags,ccov)
+                        attempts.append(diag)
+                        break
+                    attempts.append(diag)
+                except Exception as exc:
+                    attempts.append({**base_attempt,'error':f'{type(exc).__name__}: {exc}'})
+            if chosen:
+                cand,cflags,ccov=chosen
+                substitutions.append({
+                    **outage,
+                    'substitution_used':True,
+                    'source_station':cand['station_id'],
+                    'source_station_name':cand.get('station_name') or cand['station_id'],
+                    'distance_km':cand['distance_km'],
+                    'source_flags':cflags,
+                    'source_coverage':ccov,
+                    'attempts_before_choice':attempts,
+                    'provenance':'índice del archivo anual oficial Euskalmet',
+                })
+            else:
+                unresolved.append({**outage,'attempts':attempts})
+        except Exception as exc:
+            unresolved.append({**outage,'error_type':type(exc).__name__,'error':str(exc)})
+
+    elapsed=round(time.perf_counter()-started,3)
+    target_coverage={
+        f'{sid}:{year}':coverage_cache.get((sid,year))
+        for year in years for sid in FIXED_STATION_IDS
+        if (sid,year) in coverage_cache
+    }
+    return {
+        'ok':True,
+        'version':'V22.10.5.12 RESPALDO EUSKALMET FINAL - FECHAS MENSUALES CORREGIDAS',
+        'writes_to_database':False,
+        'strategy':'ZIP anual oficial -> respetar cobertura publicada -> detectar huecos reales -> respaldo por índice',
+        'requested_start':start.isoformat(),'requested_end':end.isoformat(),
+        'effective_start':effective_start.isoformat(),'years':years,
+        'target_station_year_indexes':len(target_indexes),
+        'target_coverage':target_coverage,
+        'archive_station_counts':{str(y):len(archive_stations_by_year.get(y,set())) for y in years},
+        'index_error_count':len(index_errors),'index_errors':index_errors[:20],
+        'outside_archive_coverage_count':outside_archive_coverage_count,
+        'outside_archive_coverage_sample':outside_archive_coverage_sample,
+        'outage_candidate_count':len(outage_candidates),
+        'outage_candidates':outage_candidates[:100],
+        'substitution_count':len(substitutions),
+        'substitutions':substitutions[:stop_after],
+        'unresolved_count':len(unresolved),
+        'unresolved':unresolved[:20],
+        'calculation_seconds':elapsed,
+        'note':(
+            'Las fechas posteriores al último día realmente publicado en el ZIP anual no se consideran averías. '
+            'Una sustitución sólo se busca para huecos dentro de la cobertura temporal de la estación objetivo. '
+            'Cada intento de estación candidata incluye day_found, T/HR/viento, puntos posteriores a 11:30 y cobertura.'
+        ),
+    }
+
+
+# -----------------------------------------------------------------------------
+# V22.10.5.12 - BUSCADOR DE HUECOS REALES EN TODA LA RED DEL ARCHIVO ANUAL
+# Diagnóstico: localiza discontinuidades internas reales antes de probar respaldo.
+# No escribe en SQLite ni recalcula FWI.
+# -----------------------------------------------------------------------------
+
+async def _v221052_catalog_candidates_for_any_station(target_station, year, day_iso, index_getter, archive_ids, limit=8):
+    """Nearest archived stations with coordinates, evaluated on one indexed day."""
+    target_station=str(target_station).upper().strip()
+    catalog=await _v221051_station_catalog()
+    cmap={str(x.get('station_id','')).upper():x for x in catalog if x.get('station_id')}
+    target=cmap.get(target_station)
+    if not target:
+        return [], 'target_station_missing_from_catalog'
+    try:
+        tlat=float(target['lat']); tlon=float(target['lon'])
+    except Exception:
+        return [], 'target_station_without_coordinates'
+
+    ranked=[]
+    for sid in archive_ids:
+        sid=str(sid).upper()
+        if sid==target_station:
+            continue
+        st=cmap.get(sid)
+        if not st:
+            continue
+        try:
+            dist=_v22105_haversine_coords(tlat,tlon,float(st['lat']),float(st['lon']))
+        except Exception:
+            continue
+        ranked.append((float(dist),sid,st))
+    ranked.sort(key=lambda x:(x[0],x[1]))
+
+    attempts=[]
+    for dist,sid,st in ranked:
+        try:
+            idx=await index_getter(sid,year)
+            flags=idx.get(day_iso)
+            row={
+                'station':sid,
+                'station_name':st.get('station_name') or st.get('name') or sid,
+                'distance_km':round(dist,2),
+                'day_found':flags is not None,
+                'temperature':bool(flags and flags.get('temperature')),
+                'humidity':bool(flags and flags.get('humidity')),
+                'wind_kmh':bool(flags and flags.get('wind_kmh')),
+                'points_after_1130':(flags or {}).get('points_after_1130',0),
+                'operational':bool(flags and flags.get('operational')),
+            }
+            attempts.append(row)
+            if len([x for x in attempts if x.get('operational')])>=limit:
+                break
+            if len(attempts)>=max(limit*4,20):
+                break
+        except Exception as exc:
+            attempts.append({'station':sid,'distance_km':round(dist,2),'operational':False,
+                             'error':f'{type(exc).__name__}: {exc}'})
+            if len(attempts)>=max(limit*4,20):
+                break
+    operational=[x for x in attempts if x.get('operational')][:limit]
+    return operational, None
+
+
+@app.get('/debug/v221052/find-real-archive-gaps/{year}')
+async def debug_v221052_find_real_archive_gaps(year:int, stop_after:int=10, max_stations:int=200, nearest:int=5):
+    """Find real internal meteorological gaps across all stations in an annual ZIP.
+
+    A candidate gap must be strictly inside the station's indexed coverage and is
+    classified using the previous/next day so archive boundaries are not confused
+    with outages. For each gap it reports missing variables and the nearest
+    operational alternatives on the same date.
+    """
+    year=int(year)
+    stop_after=max(1,min(int(stop_after),50))
+    max_stations=max(1,min(int(max_stations),500))
+    nearest=max(1,min(int(nearest),10))
+    started=time.perf_counter()
+
+    try:
+        archive_ids=list(await _v221052_archive_station_ids(year))[:max_stations]
+    except Exception as exc:
+        return {'ok':False,'writes_to_database':False,'year':year,
+                'error_type':type(exc).__name__,'error':str(exc)}
+
+    idx_cache={}
+    async def get_idx(sid,yr):
+        key=(str(sid).upper(),int(yr))
+        if key not in idx_cache:
+            idx_cache[key]=await _v221052_station_year_availability(key[0],key[1])
+        return idx_cache[key]
+
+    gaps=[]; station_errors=[]; scanned=0; fully_operational=0
+    for sid in archive_ids:
+        if len(gaps)>=stop_after:
+            break
+        scanned+=1
+        try:
+            idx=await get_idx(sid,year)
+        except Exception as exc:
+            station_errors.append({'station':sid,'error_type':type(exc).__name__,'error':str(exc)})
+            continue
+        if not idx:
+            continue
+        days=sorted(idx.keys())
+        if len(days)<3:
+            continue
+        first=date.fromisoformat(days[0]); last=date.fromisoformat(days[-1])
+        station_gap_found=False
+        d=first+timedelta(days=1)
+        while d<last and len(gaps)<stop_after:
+            ds=d.isoformat(); flags=idx.get(ds)
+            if flags and flags.get('operational'):
+                d+=timedelta(days=1); continue
+            prev_ds=(d-timedelta(days=1)).isoformat()
+            next_ds=(d+timedelta(days=1)).isoformat()
+            prev_flags=idx.get(prev_ds); next_flags=idx.get(next_ds)
+            prev_ok=bool(prev_flags and prev_flags.get('operational'))
+            next_ok=bool(next_flags and next_flags.get('operational'))
+            # Prefer genuine internal discontinuities surrounded by valid days.
+            # Keep non-isolated gaps too, but label them explicitly.
+            missing=[]
+            for k in ('temperature','humidity','wind_kmh'):
+                if not (flags and flags.get(k)):
+                    missing.append(k)
+            kind='isolated_internal_gap' if prev_ok and next_ok else 'internal_gap_run'
+            alternatives,alt_error=await _v221052_catalog_candidates_for_any_station(
+                sid,year,ds,get_idx,set(archive_ids),limit=nearest
+            )
+            gaps.append({
+                'station':sid,
+                'day':ds,
+                'gap_type':kind,
+                'day_found':flags is not None,
+                'previous_day_ok':prev_ok,
+                'next_day_ok':next_ok,
+                'missing_fields':missing,
+                'own_flags':flags,
+                'coverage_min':days[0],
+                'coverage_max':days[-1],
+                'nearest_operational_candidates':alternatives,
+                'candidate_error':alt_error,
+            })
+            station_gap_found=True
+            d+=timedelta(days=1)
+        if not station_gap_found and all(bool(v and v.get('operational')) for v in idx.values()):
+            fully_operational+=1
+
+    isolated=sum(1 for g in gaps if g['gap_type']=='isolated_internal_gap')
+    elapsed=round(time.perf_counter()-started,3)
+    return {
+        'ok':True,
+        'version':'V22.10.5.12 RESPALDO EUSKALMET FINAL - BUSCADOR HUECOS REALES',
+        'writes_to_database':False,
+        'year':year,
+        'archive_station_count':len(archive_ids),
+        'stations_scanned':scanned,
+        'fully_operational_stations_seen':fully_operational,
+        'stop_after':stop_after,
+        'gap_count':len(gaps),
+        'isolated_gap_count':isolated,
+        'gaps':gaps,
+        'station_error_count':len(station_errors),
+        'station_errors':station_errors[:20],
+        'calculation_seconds':elapsed,
+        'note':(
+            'Sólo considera huecos estrictamente dentro de la cobertura indexada de cada estación. '
+            'previous_day_ok/next_day_ok permiten distinguir una discontinuidad real de un tramo largo. '
+            'Las candidatas se buscan únicamente entre estaciones presentes en el ZIP anual y operativas ese mismo día.'
+        ),
+    }
+
+
+# -----------------------------------------------------------------------------
+# V22.10.5.12 - EPISODIOS DE AVERÍA + RESPALDO ESTABLE CON VARIABLES COMPLETAS
+# Agrupa huecos consecutivos y prioriza una misma estación de respaldo durante
+# todo el episodio. Una candidata sólo es válida si dispone de T, HR, viento y
+# lluvia suficiente para construir la ventana de precipitación de 24 h.
+# -----------------------------------------------------------------------------
+
+V221052_BACKUP_REQUIRED_FIELDS=('temperature','humidity','wind_kmh','rain_24h_ready')
+
+
+def _v221052_backup_day_diagnostic(idx, day_iso):
+    flags=idx.get(day_iso)
+    if flags is None:
+        return {
+            'day_found':False,'temperature':False,'humidity':False,'wind_kmh':False,
+            'rain_mm':False,'rain_24h_ready':False,'backup_eligible':False,
+            'missing_required_fields':['day_not_found']
+        }
+    missing=[]
+    for key in ('temperature','humidity','wind_kmh'):
+        if not flags.get(key): missing.append(key)
+    if not flags.get('rain_mm'): missing.append('rain_mm_current_day')
+    if not flags.get('rain_24h_ready'): missing.append('rain_24h_window')
+    return {
+        'day_found':True,
+        'temperature':bool(flags.get('temperature')),
+        'humidity':bool(flags.get('humidity')),
+        'wind_kmh':bool(flags.get('wind_kmh')),
+        'rain_mm':bool(flags.get('rain_mm')),
+        'rain_points':int(flags.get('rain_points') or 0),
+        'rain_24h_ready':bool(flags.get('rain_24h_ready')),
+        'points_after_1130':int(flags.get('points_after_1130') or 0),
+        'operational':bool(flags.get('operational')),
+        'backup_eligible':bool(flags.get('backup_eligible')),
+        'missing_required_fields':missing,
+    }
+
+
+async def _v221052_rank_episode_backups(target_station, year, episode_days, index_getter, archive_ids, limit=5):
+    """Rank candidates by continuity across the whole outage episode.
+
+    Preferred candidate = nearest station with all required variables on every day.
+    If none covers the whole run, rank by number/percentage of eligible days, then distance.
+    """
+    target_station=str(target_station).upper().strip()
+    catalog=await _v221051_station_catalog()
+    cmap={str(x.get('station_id','')).upper():x for x in catalog if x.get('station_id')}
+    target=cmap.get(target_station)
+    if not target:
+        return [], 'target_station_missing_from_catalog'
+    try:
+        tlat=float(target['lat']); tlon=float(target['lon'])
+    except Exception:
+        return [], 'target_station_without_coordinates'
+
+    ranked_geo=[]
+    for sid in archive_ids:
+        sid=str(sid).upper()
+        if sid==target_station: continue
+        st=cmap.get(sid)
+        if not st: continue
+        try:
+            dist=_v22105_haversine_coords(tlat,tlon,float(st['lat']),float(st['lon']))
+        except Exception:
+            continue
+        ranked_geo.append((float(dist),sid,st))
+    ranked_geo.sort(key=lambda x:(x[0],x[1]))
+    evaluated=[]
+    for dist,sid,st in ranked_geo:
+        try:
+            idx=await index_getter(sid,year)
+        except Exception as exc:
+            evaluated.append({'station':sid,'station_name':st.get('station_name') or st.get('name') or sid,
+                              'distance_km':round(dist,2),'eligible_days':0,'coverage_pct':0.0,
+                              'full_episode_coverage':False,'error':f'{type(exc).__name__}: {exc}'})
+            continue
+        day_details=[]
+        eligible=0
+        for ds in episode_days:
+            diag=_v221052_backup_day_diagnostic(idx,ds)
+            diag['day']=ds
+            day_details.append(diag)
+            if diag.get('backup_eligible'): eligible+=1
+        total=len(episode_days)
+        coverage=round(100.0*eligible/total,1) if total else 0.0
+        evaluated.append({
+            'station':sid,
+            'station_name':st.get('station_name') or st.get('name') or sid,
+            'distance_km':round(dist,2),
+            'eligible_days':eligible,
+            'episode_days':total,
+            'coverage_pct':coverage,
+            'full_episode_coverage':bool(total and eligible==total),
+            'required_variables':['temperature','humidity','wind_kmh','rain_mm_24h'],
+            'day_details':day_details,
+        })
+
+    # Primero cobertura completa; después mayor cobertura parcial; luego proximidad.
+    evaluated.sort(key=lambda r:(not r.get('full_episode_coverage'),-int(r.get('eligible_days') or 0),float(r.get('distance_km') or 1e9),r.get('station','')))
+    return evaluated[:max(limit,1)], None
+
+
+@app.get('/debug/v221052/find-real-outage-episodes/{year}')
+async def debug_v221052_find_real_outage_episodes(year:int, stop_after:int=10, max_stations:int=200, nearest:int=5):
+    """Agrupa huecos consecutivos y busca una estación de respaldo estable.
+
+    Una estación de respaldo sólo se considera apta si dispone, ese día, de:
+    temperatura, humedad, viento y precipitación suficiente para construir lluvia 24 h.
+    La dirección del viento se mantiene como dato deseable pero no bloqueante, igual que en
+    el cálculo operativo actual, que puede continuar con direction=None.
+    """
+    year=int(year)
+    stop_after=max(1,min(int(stop_after),50))
+    max_stations=max(1,min(int(max_stations),500))
+    nearest=max(1,min(int(nearest),10))
+    started=time.perf_counter()
+
+    try:
+        archive_ids=list(await _v221052_archive_station_ids(year))[:max_stations]
+    except Exception as exc:
+        return {'ok':False,'writes_to_database':False,'year':year,
+                'error_type':type(exc).__name__,'error':str(exc)}
+
+    idx_cache={}
+    async def get_idx(sid,yr):
+        key=(str(sid).upper(),int(yr))
+        if key not in idx_cache:
+            idx_cache[key]=await _v221052_station_year_availability(key[0],key[1])
+        return idx_cache[key]
+
+    episodes=[]; station_errors=[]; stations_scanned=0
+    for sid in archive_ids:
+        if len(episodes)>=stop_after: break
+        stations_scanned+=1
+        try:
+            idx=await get_idx(sid,year)
+        except Exception as exc:
+            station_errors.append({'station':sid,'error_type':type(exc).__name__,'error':str(exc)})
+            continue
+        if not idx: continue
+        days=sorted(idx.keys())
+        if len(days)<3: continue
+        first=date.fromisoformat(days[0]); last=date.fromisoformat(days[-1])
+
+        # Hueco objetivo: falta T/HR/viento. La lluvia se usa para filtrar sustitutas,
+        # porque una estación puede medir T/HR/viento pero no disponer de pluviómetro.
+        gap_days=[]
+        d=first+timedelta(days=1)
+        while d<last:
+            ds=d.isoformat(); f=idx.get(ds)
+            if not (f and f.get('operational')):
+                gap_days.append(ds)
+            d+=timedelta(days=1)
+        if not gap_days: continue
+
+        # Agrupar fechas consecutivas en episodios.
+        runs=[]; current=[]; prev=None
+        for ds in gap_days:
+            dd=date.fromisoformat(ds)
+            if prev is None or dd==prev+timedelta(days=1):
+                current.append(ds)
+            else:
+                if current: runs.append(current)
+                current=[ds]
+            prev=dd
+        if current: runs.append(current)
+
+        for run in runs:
+            if len(episodes)>=stop_after: break
+            start_ds,end_ds=run[0],run[-1]
+            prev_ds=(date.fromisoformat(start_ds)-timedelta(days=1)).isoformat()
+            next_ds=(date.fromisoformat(end_ds)+timedelta(days=1)).isoformat()
+            prev_ok=bool(idx.get(prev_ds) and idx[prev_ds].get('operational'))
+            next_ok=bool(idx.get(next_ds) and idx[next_ds].get('operational'))
+
+            missing_union=set()
+            own_day_details=[]
+            for ds in run:
+                f=idx.get(ds)
+                missing=[k for k in ('temperature','humidity','wind_kmh') if not (f and f.get(k))]
+                missing_union.update(missing)
+                own_day_details.append({'day':ds,'day_found':f is not None,'missing_fields':missing,'own_flags':f})
+
+            backups,err=await _v221052_rank_episode_backups(sid,year,run,get_idx,set(archive_ids),limit=nearest)
+            stable=next((b for b in backups if b.get('full_episode_coverage')),None)
+            episodes.append({
+                'station':sid,
+                'start_day':start_ds,
+                'end_day':end_ds,
+                'duration_days':len(run),
+                'previous_day_ok':prev_ok,
+                'next_day_ok':next_ok,
+                'episode_type':'isolated_gap' if len(run)==1 and prev_ok and next_ok else 'continuous_outage_run',
+                'missing_fields':sorted(missing_union),
+                'required_backup_variables':['temperature','humidity','wind_kmh','rain_mm_24h'],
+                'own_day_details':own_day_details,
+                'preferred_stable_backup':stable,
+                'backup_candidates':backups,
+                'candidate_error':err,
+                'fallback_policy':(
+                    'Mantener la misma sustituta durante todo el episodio si cubre todas las variables requeridas. '
+                    'Si falla un día concreto, usar la siguiente candidata elegible de ese día.'
+                ),
+            })
+
+    elapsed=round(time.perf_counter()-started,3)
+    stable_count=sum(1 for e in episodes if e.get('preferred_stable_backup'))
+    return {
+        'ok':True,
+        'version':'V22.10.5.12 RESPALDO EUSKALMET FINAL - SUSTITUCIÓN ESTACIÓN COMPLETA + AVISO WEB',
+        'writes_to_database':False,
+        'year':year,
+        'archive_station_count':len(archive_ids),
+        'stations_scanned':stations_scanned,
+        'episode_count':len(episodes),
+        'episodes_with_stable_backup':stable_count,
+        'stop_after':stop_after,
+        'required_backup_variables':['temperature','humidity','wind_kmh','rain_mm_24h'],
+        'wind_direction_required':False,
+        'episodes':episodes,
+        'station_error_count':len(station_errors),
+        'station_errors':station_errors[:20],
+        'calculation_seconds':elapsed,
+        'note':(
+            'No basta con que una estación tenga T/HR/viento: para ser sustituta se exige también '
+            'precipitación utilizable en la ventana de 24 h. Los huecos consecutivos se agrupan en episodios '
+            'y se prioriza una sustituta estable para todo el tramo.'
+        ),
+    }
+
+
+@app.get('/debug/v221052/history-db-performance')
+async def debug_v221052_history_db_performance():
+    """Mide cobertura y velocidad de lectura SQL de las cinco estaciones."""
+    result=[]
+    with con() as c:
+        for sid in FIXED_STATION_IDS:
+            t0=time.perf_counter()
+            row=c.execute(
+                """SELECT MIN(day) min_day,MAX(day) max_day,COUNT(*) n,
+                          SUM(CASE WHEN station_fallback_used=1 THEN 1 ELSE 0 END) fallback_days
+                   FROM weather_daily WHERE station_id=?""",(sid,)
+            ).fetchone()
+            ms=round((time.perf_counter()-t0)*1000,2)
+            result.append({'station_id':sid,'name':FIXED_STATIONS[sid],**dict(row),'query_ms':ms})
+    return {'ok':True,'version':'V22.10.5.12 HISTÓRICO DB RÁPIDO','stations':result,'writes_to_database':False}
+
+# ============================================================
+# V22.10.5.12 - CONSTRUCTOR HISTÓRICO 2010-2025
+# - usa el motor local rápido de ZIP anual
+# - sustitución de estación completa, nunca mezcla variables
+# - propaga FFMC/DMC/DC cronológicamente
+# - escritura por lotes/transacción SQLite
+# - trabajo en segundo plano + estado consultable
+# ============================================================
+V22_HISTORY_WRITE_ENABLED=os.getenv('V22_HISTORY_WRITE_ENABLED','0').strip().lower() in ('1','true','yes','on')
+_V22_HISTORY_JOB={
+    'running':False,'started_at':None,'finished_at':None,'station':None,'day':None,
+    'rows_written':0,'failures':[],'start_year':None,'end_year':None,'message':'sin iniciar'
+}
+
+def _v221052_history_seed(station, start_day):
+    with con() as c:
+        row=c.execute(
+            "SELECT day,ffmc,dmc,dc FROM fwi_daily WHERE station_id=? AND day<? ORDER BY day DESC LIMIT 1",
+            (station,start_day.isoformat())
+        ).fetchone()
+    if row:
+        return float(row['ffmc']),float(row['dmc']),float(row['dc']),row['day']
+    return float(INITIAL[0]),float(INITIAL[1]),float(INITIAL[2]),None
+
+def _v221052_history_write_batch(weather_rows, fwi_rows):
+    if not weather_rows: return
+    with con() as c:
+        c.executemany("""
+        INSERT INTO weather_daily(
+          station_id,day,temperature,humidity,wind_kmh,rain_mm,source,created_at,
+          observation_time,rain_points_present,rain_points_missing,rain_coverage_pct,
+          rain_quality,data_quality,temperature_time,humidity_time,wind_time,
+          temperature_delta_min,humidity_delta_min,wind_delta_min,noon_fallback_used,
+          meteo_source_station,station_fallback_used,station_fallback_distance_km
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(station_id,day) DO UPDATE SET
+          temperature=excluded.temperature,humidity=excluded.humidity,wind_kmh=excluded.wind_kmh,
+          rain_mm=excluded.rain_mm,source=excluded.source,created_at=excluded.created_at,
+          observation_time=excluded.observation_time,rain_points_present=excluded.rain_points_present,
+          rain_points_missing=excluded.rain_points_missing,rain_coverage_pct=excluded.rain_coverage_pct,
+          rain_quality=excluded.rain_quality,data_quality=excluded.data_quality,
+          temperature_time=excluded.temperature_time,humidity_time=excluded.humidity_time,
+          wind_time=excluded.wind_time,temperature_delta_min=excluded.temperature_delta_min,
+          humidity_delta_min=excluded.humidity_delta_min,wind_delta_min=excluded.wind_delta_min,
+          noon_fallback_used=excluded.noon_fallback_used,meteo_source_station=excluded.meteo_source_station,
+          station_fallback_used=excluded.station_fallback_used,
+          station_fallback_distance_km=excluded.station_fallback_distance_km
+        """, weather_rows)
+        c.executemany("""
+        INSERT INTO fwi_daily(
+          station_id,day,ffmc,dmc,dc,isi,bui,fwi,danger_level,ire_gip,ire_gip_level,
+          wind_direction_deg,wind_factor,season_factor,created_at,wind_direction_cardinal,
+          season_name,data_quality,rain_quality,rain_points_present,rain_points_missing,
+          rain_coverage_pct,noon_fallback_used,temperature_time,humidity_time,wind_time
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(station_id,day) DO UPDATE SET
+          ffmc=excluded.ffmc,dmc=excluded.dmc,dc=excluded.dc,isi=excluded.isi,bui=excluded.bui,
+          fwi=excluded.fwi,danger_level=excluded.danger_level,ire_gip=excluded.ire_gip,
+          ire_gip_level=excluded.ire_gip_level,wind_direction_deg=excluded.wind_direction_deg,
+          wind_factor=excluded.wind_factor,season_factor=excluded.season_factor,
+          created_at=excluded.created_at,wind_direction_cardinal=excluded.wind_direction_cardinal,
+          season_name=excluded.season_name,data_quality=excluded.data_quality,
+          rain_quality=excluded.rain_quality,rain_points_present=excluded.rain_points_present,
+          rain_points_missing=excluded.rain_points_missing,rain_coverage_pct=excluded.rain_coverage_pct,
+          noon_fallback_used=excluded.noon_fallback_used,temperature_time=excluded.temperature_time,
+          humidity_time=excluded.humidity_time,wind_time=excluded.wind_time
+        """, fwi_rows)
+        c.commit()
+
+async def _v221052_build_history_job(start_year:int,end_year:int,replace:bool=False):
+    global _V22_HISTORY_JOB
+    _V22_HISTORY_JOB.update({
+        'running':True,'started_at':datetime.now().isoformat(timespec='seconds'),'finished_at':None,
+        'station':None,'day':None,'rows_written':0,'failures':[],
+        'start_year':start_year,'end_year':end_year,'message':'construyendo histórico'
+    })
+    try:
+        start_day=date(start_year,1,1); end_day=date(end_year,12,31)
+        for sid in FIXED_STATION_IDS:
+            pf,pd,pc,seed_day=_v221052_history_seed(sid,start_day)
+            weather_batch=[]; fwi_batch=[]
+            cur=start_day
+            while cur<=end_day:
+                _V22_HISTORY_JOB['station']=sid; _V22_HISTORY_JOB['day']=cur.isoformat()
+                # Reanudación: si ya existe el día y no se fuerza reemplazo, usamos su estado
+                # como memoria y evitamos recalcularlo.
+                if not replace:
+                    with con() as c:
+                        existing=c.execute(
+                            "SELECT ffmc,dmc,dc FROM fwi_daily WHERE station_id=? AND day=?",
+                            (sid,cur.isoformat())
+                        ).fetchone()
+                    if existing:
+                        pf,pd,pc=float(existing['ffmc']),float(existing['dmc']),float(existing['dc'])
+                        cur+=timedelta(days=1); continue
+                try:
+                    met=await v22105_weather_with_station_fallback(sid,cur)
+                    vals=(float(met['temperature']),float(met['humidity']),float(met['wind_kmh']),float(met['rain_mm']))
+                    direction=met.get('wind_direction_deg')
+                    res=calculate(*vals,month=cur.month,prev_ffmc=pf,prev_dmc=pd,prev_dc=pc)
+                    season_name,sf=ire_gip_season(cur)
+                    wf=ire_gip_wind_factor(direction,vals[2])
+                    ire=min(100.0,max(0.0,float(res.fwi)*wf*sf))
+                    now=datetime.now().isoformat(timespec='seconds')
+                    weather_batch.append((
+                        sid,cur.isoformat(),*vals,met.get('source'),now,met.get('observation_time','12:00'),
+                        met.get('rain_points_present'),met.get('rain_points_missing'),met.get('rain_coverage_pct'),
+                        met.get('rain_quality'),met.get('data_quality'),met.get('temperature_time'),
+                        met.get('humidity_time'),met.get('wind_time'),met.get('temperature_delta_min'),
+                        met.get('humidity_delta_min'),met.get('wind_delta_min'),1 if met.get('noon_fallback_used') else 0,
+                        met.get('meteo_source_station',sid),1 if met.get('station_fallback_used') else 0,
+                        met.get('station_fallback_distance_km',0.0)
+                    ))
+                    fwi_batch.append((
+                        sid,cur.isoformat(),res.ffmc,res.dmc,res.dc,res.isi,res.bui,res.fwi,
+                        v22_local_level(sid,res.fwi),round(ire,2),v22_local_level(sid,ire),
+                        round(direction,1) if direction is not None else None,round(wf,3),round(sf,3),now,
+                        wind_cardinal(direction),season_name,met.get('data_quality'),met.get('rain_quality'),
+                        met.get('rain_points_present'),met.get('rain_points_missing'),met.get('rain_coverage_pct'),
+                        1 if met.get('noon_fallback_used') else 0,met.get('temperature_time'),
+                        met.get('humidity_time'),met.get('wind_time')
+                    ))
+                    pf,pd,pc=float(res.ffmc),float(res.dmc),float(res.dc)
+                    if len(weather_batch)>=100:
+                        await asyncio.to_thread(_v221052_history_write_batch,weather_batch,fwi_batch)
+                        _V22_HISTORY_JOB['rows_written']+=len(weather_batch)
+                        weather_batch=[]; fwi_batch=[]
+                except Exception as exc:
+                    # No inventamos estado FFMC/DMC/DC. Un hueco no resoluble corta esta estación
+                    # para preservar la continuidad matemática; queda registrado para diagnóstico.
+                    _V22_HISTORY_JOB['failures'].append({
+                        'station':sid,'day':cur.isoformat(),'error_type':type(exc).__name__,'error':str(exc)
+                    })
+                    if weather_batch:
+                        await asyncio.to_thread(_v221052_history_write_batch,weather_batch,fwi_batch)
+                        _V22_HISTORY_JOB['rows_written']+=len(weather_batch)
+                    weather_batch=[]; fwi_batch=[]
+                    break
+                cur+=timedelta(days=1)
+            if weather_batch:
+                await asyncio.to_thread(_v221052_history_write_batch,weather_batch,fwi_batch)
+                _V22_HISTORY_JOB['rows_written']+=len(weather_batch)
+        _V22_HISTORY_JOB['message']='histórico finalizado' if not _V22_HISTORY_JOB['failures'] else 'finalizado con incidencias'
+    except Exception as exc:
+        _V22_HISTORY_JOB['failures'].append({'fatal':True,'error_type':type(exc).__name__,'error':str(exc)})
+        _V22_HISTORY_JOB['message']='error fatal'
+    finally:
+        _V22_HISTORY_JOB['running']=False
+        _V22_HISTORY_JOB['finished_at']=datetime.now().isoformat(timespec='seconds')
+
+@app.get('/admin/v221052/history-build/start')
+async def admin_v221052_history_build_start(start_year:int=2010,end_year:int=2025,replace:bool=False):
+    if not V22_HISTORY_WRITE_ENABLED:
+        return {
+            'ok':False,'error':'Escritura histórica desactivada',
+            'how_to_enable':'Define V22_HISTORY_WRITE_ENABLED=1 y reinicia Uvicorn.',
+            'writes_to_database':False
+        }
+    if _V22_HISTORY_JOB.get('running'):
+        return {'ok':False,'error':'Ya hay una construcción histórica en curso','status':dict(_V22_HISTORY_JOB)}
+    if start_year<2000 or end_year>date.today().year or end_year<start_year:
+        return {'ok':False,'error':'Rango de años no válido'}
+    asyncio.create_task(_v221052_build_history_job(start_year,end_year,replace))
+    return {
+        'ok':True,'started':True,'period':[start_year,end_year],'replace':replace,
+        'status_url':'/admin/v221052/history-build/status',
+        'note':'El proceso continúa en segundo plano. La navegación web puede seguir usándose.'
+    }
+
+@app.get('/admin/v221052/history-build/status')
+async def admin_v221052_history_build_status():
+    return {'ok':True,**dict(_V22_HISTORY_JOB),'writes_to_database':bool(V22_HISTORY_WRITE_ENABLED)}
+
+@app.get('/admin/v221052/history-build/coverage')
+async def admin_v221052_history_build_coverage():
+    with con() as c:
+        rows=c.execute("""
+          SELECT f.station_id, MIN(f.day) AS min_day, MAX(f.day) AS max_day,
+                 COUNT(*) AS fwi_days,
+                 SUM(CASE WHEN w.station_fallback_used=1 THEN 1 ELSE 0 END) AS fallback_days
+          FROM fwi_daily f LEFT JOIN weather_daily w
+            ON w.station_id=f.station_id AND w.day=f.day
+          WHERE f.station_id IN ('C023','C017','C058','C026','C028')
+          GROUP BY f.station_id ORDER BY f.station_id
+        """).fetchall()
+    return {'ok':True,'coverage':[dict(r) for r in rows]}
+
+
+# ============================================================
+# BASUGIX V22.10.5.12 — ARRANQUE DIRECTO CON "py archivo.py"
+# ============================================================
+if __name__ == "__main__":
+    print("IRE-GIP / BASUGIX — servidor iniciándose...")
+    print("Abre: http://127.0.0.1:8000")
+    print("Pulsa Ctrl+C para detener el servidor.")
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=8000,
+        log_level="info",
+    )
