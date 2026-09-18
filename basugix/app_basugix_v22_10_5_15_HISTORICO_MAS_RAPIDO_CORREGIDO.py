@@ -307,12 +307,20 @@ async def discover_daily_mapping(station,day,station_payload):
 
 _JWT_CACHE={"token":None,"exp":0}
 
-def _read_login_id(private_key_path):
-    """Resolve Euskalmet API owner identity automatically."""
+def _read_login_id(private_key_path, derived_login_id=None):
+    """Resolve Euskalmet API owner identity automatically.
+
+    Euskalmet accepts either email or loginId. Prefer an explicitly configured
+    loginId, then the fingerprint derived from the loaded public key, and only
+    then fall back to email. This avoids relying on the account email matching
+    the API-key owner when the key itself already identifies the owner.
+    """
     login=os.getenv('EUSKALMET_LOGIN_ID','').strip()
     email=os.getenv('EUSKALMET_EMAIL','').strip()
     if login:
         return 'loginId', login
+    if derived_login_id:
+        return 'loginId', str(derived_login_id).strip()
     if email:
         return 'email', email
 
@@ -394,17 +402,13 @@ def token():
         if not p.exists():
             raise RuntimeError(f'No existe la clave privada configurada en EUSKALMET_PRIVATE_KEY_PATH: {p}')
         private_key_bytes=normalize_pem(p.read_bytes())
-        owner_claim,owner_value=_read_login_id(p)
+        owner_path=p
         source=f'file:{p}'
     elif private_key:
         private_key_bytes=normalize_pem(private_key)
         tmp=BASE_DIR/'.render_private_key_runtime.pem'
         tmp.write_bytes(private_key_bytes)
-        try:
-            owner_claim,owner_value=_read_login_id(tmp)
-        finally:
-            try: tmp.unlink()
-            except OSError: pass
+        owner_path=tmp
         source='env:EUSKALMET_PRIVATE_KEY'
     else:
         raise RuntimeError('Falta EUSKALMET_PRIVATE_KEY_PATH o EUSKALMET_PRIVATE_KEY en Render')
@@ -439,6 +443,38 @@ def token():
             raise ValueError('La clave no es una clave privada RSA; ' + ' | '.join(parse_errors))
     except Exception as exc:
         raise RuntimeError(f'La clave privada Euskalmet no es una clave privada RSA utilizable ({source}): {type(exc).__name__}: {exc}') from exc
+
+    # Euskalmet documenta loginId como la huella Keccak-256 de la clave pública.
+    # La calculamos sobre el DER SubjectPublicKeyInfo de la clave ya cargada.
+    # No registramos la huella completa en logs.
+    derived_login_id=None
+    try:
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        public_der_for_login=key_obj.public_key().public_bytes(
+            Encoding.DER, PublicFormat.SubjectPublicKeyInfo
+        )
+        import subprocess
+        proc=subprocess.run(
+            ['openssl','dgst','-keccak-256'],
+            input=public_der_for_login,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        digest=proc.stdout.decode('ascii','strict').strip()
+        if '=' in digest:
+            digest=digest.rsplit('=',1)[1].strip()
+        if re.fullmatch(r'[0-9a-fA-F]{64}', digest):
+            derived_login_id=digest.lower()
+    except Exception as exc:
+        print(f"EUSKALMET AUTH LOGINID DIAG unavailable={type(exc).__name__}",flush=True)
+
+    owner_claim,owner_value=_read_login_id(owner_path, derived_login_id=derived_login_id)
+    if source.startswith('env:EUSKALMET_PRIVATE_KEY'):
+        try:
+            owner_path.unlink()
+        except OSError:
+            pass
 
     # Diagnóstico seguro: sólo metadatos no secretos de la clave pública derivada.
     try:
