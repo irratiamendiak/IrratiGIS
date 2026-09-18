@@ -352,29 +352,48 @@ def token():
     configured=os.getenv('EUSKALMET_PRIVATE_KEY_PATH','').strip()
     private_key=os.getenv('EUSKALMET_PRIVATE_KEY','').strip()
 
+    def normalize_pem(raw):
+        if isinstance(raw, bytes):
+            if raw.startswith(b'\xef\xbb\xbf'):
+                raw=raw[3:]
+            try:
+                text=raw.decode('utf-8')
+            except UnicodeDecodeError:
+                text=raw.decode('latin-1')
+        else:
+            text=str(raw)
+        text=text.strip()
+        if len(text)>=2 and text[0]=='"' and text[-1]=='"':
+            text=text[1:-1].strip()
+        text=text.replace('\\r\\n','\\n').replace('\\n','\\n').replace('\\r','\\n').replace('\\r\\n','\\n').replace('\\r','\\n')
+        # Rebuild the PEM envelope and base64 body with canonical 64-char lines.
+        m=re.search(r'-----BEGIN ([A-Z0-9 ]+?)-----',text,re.I)
+        if not m:
+            return (text+'\\n').encode('utf-8')
+        label=m.group(1).upper()
+        tail=text[m.end():]
+        e=re.search(r'-----END '+re.escape(label)+r'-----',tail,re.I)
+        if not e:
+            return (text+'\\n').encode('utf-8')
+        body=re.sub(r'\\s+','',tail[:e.start()])
+        prefix=f'-----BEGIN {label}-----'
+        suffix=f'-----END {label}-----'
+        if not body:
+            return (prefix+'\\n'+suffix+'\\n').encode('ascii')
+        wrapped='\\n'.join(body[i:i+64] for i in range(0,len(body),64))
+        return (prefix+'\\n'+wrapped+'\\n'+suffix+'\\n').encode('ascii')
+
     if configured:
         p=Path(configured)
         if not p.is_absolute():
             p=BASE_DIR/p
         if not p.exists():
             raise RuntimeError(f'No existe la clave privada configurada en EUSKALMET_PRIVATE_KEY_PATH: {p}')
-        raw=p.read_bytes()
-        # Normalización tolerante: BOM, CRLF y saltos de línea literales.
-        if raw.startswith(b'\xef\xbb\xbf'):
-            raw=raw[3:]
-        try:
-            text=raw.decode('utf-8')
-        except UnicodeDecodeError:
-            text=raw.decode('latin-1')
-        text=text.replace('\\r\\n','\n').replace('\\n','\n').replace('\\r','\n').replace('\r\n','\n').replace('\r','\n').strip()
-        if len(text)>=2 and text[0]=='"' and text[-1]=='"':
-            text=text[1:-1].replace('\\n','\n').replace('\\r','\n').strip()
-        private_key_bytes=(text+'\n').encode('utf-8')
+        private_key_bytes=normalize_pem(p.read_bytes())
         owner_claim,owner_value=_read_login_id(p)
         source=f'file:{p}'
     elif private_key:
-        private_key=private_key.replace('\\r\\n','\n').replace('\\n','\n').replace('\\r','\n').strip()
-        private_key_bytes=(private_key+'\n').encode('utf-8')
+        private_key_bytes=normalize_pem(private_key)
         tmp=BASE_DIR/'.render_private_key_runtime.pem'
         tmp.write_bytes(private_key_bytes)
         try:
