@@ -1893,25 +1893,19 @@ async def _v222_archive_weather(station,day):
     }
 
 async def v22_noon_weather(station,day):
-    """V22.5 hybrid acquisition.
+    """V22.5 hybrid acquisition with deterministic historical source selection.
 
-    Priority:
-      1) authenticated Euskalmet API raw readings (recent/operational days)
-      2) official annual raw XML archive (historical fallback)
+    Completed historical days use the official Euskalmet annual raw XML first.
+    This avoids the much slower recursive day->hour->minute API traversal for
+    yesterday/older operational days. Current-day operation continues to use
+    the authenticated API, with the annual archive as fallback.
 
     The FWI methodology is identical in both branches:
       nearest T/RH/wind observation to 12:00 + previous 24 h precipitation.
     """
     attempts=[]
 
-    try:
-        rec=await _v222_recent_api_weather(station,day)
-        chosen='api'
-    except Exception as api_exc:
-        attempts.append({
-            'source':'api',
-            'error':f'{type(api_exc).__name__}: {api_exc}'
-        })
+    if day < date.today():
         try:
             rec=await _v222_archive_weather(station,day)
             chosen='annual_xml'
@@ -1920,6 +1914,37 @@ async def v22_noon_weather(station,day):
                 'source':'annual_xml',
                 'error':f'{type(xml_exc).__name__}: {xml_exc}'
             })
+            try:
+                rec=await _v222_recent_api_weather(station,day)
+                chosen='api'
+            except Exception as api_exc:
+                attempts.append({
+                    'source':'api',
+                    'error':f'{type(api_exc).__name__}: {api_exc}'
+                })
+                raise RuntimeError(
+                    f'V22.5 no pudo obtener datos históricos para {station} '
+                    f'{day.isoformat()}. '
+                    f'Fallo XML: {attempts[0]["error"]} | '
+                    f'Fallo API: {attempts[1]["error"]}'
+                )
+    else:
+        try:
+            rec=await _v222_recent_api_weather(station,day)
+            chosen='api'
+        except Exception as api_exc:
+            attempts.append({
+                'source':'api',
+                'error':f'{type(api_exc).__name__}: {api_exc}'
+            })
+            try:
+                rec=await _v222_archive_weather(station,day)
+                chosen='annual_xml'
+            except Exception as xml_exc:
+                attempts.append({
+                    'source':'annual_xml',
+                    'error':f'{type(xml_exc).__name__}: {xml_exc}'
+                })
             try:
                 debug_dir=BASE_DIR/'v22_debug'
                 debug_dir.mkdir(exist_ok=True)
