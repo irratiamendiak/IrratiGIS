@@ -406,12 +406,35 @@ def token():
         raise RuntimeError('Falta EUSKALMET_PRIVATE_KEY_PATH o EUSKALMET_PRIVATE_KEY en Render')
 
     try:
-        from cryptography.hazmat.primitives.serialization import load_pem_private_key
-        key_obj=load_pem_private_key(private_key_bytes,password=None)
-        if not hasattr(key_obj,'private_numbers'):
-            raise ValueError('La clave PEM no es una clave privada RSA')
+        from cryptography.hazmat.primitives.serialization import (
+            load_pem_private_key, load_der_private_key, load_ssh_private_key
+        )
+        key_obj=None
+        parse_errors=[]
+        # 1) PEM canónico normalizado.
+        try:
+            key_obj=load_pem_private_key(private_key_bytes,password=None)
+        except Exception as exc:
+            parse_errors.append(f'PEM:{type(exc).__name__}:{exc}')
+        # 2) Algunos gestores almacenan la clave como Base64 DER sin envoltorio PEM.
+        if key_obj is None:
+            try:
+                compact=re.sub(rb'[^A-Za-z0-9+/=]',b'',private_key_bytes)
+                der=__import__('base64').b64decode(compact,validate=True)
+                key_obj=load_der_private_key(der,password=None)
+                private_key_bytes=der
+            except Exception as exc:
+                parse_errors.append(f'DER:{type(exc).__name__}:{exc}')
+        # 3) Render puede contener una clave OpenSSH aunque el fichero se llame .pem.
+        if key_obj is None:
+            try:
+                key_obj=load_ssh_private_key(private_key_bytes,password=None)
+            except Exception as exc:
+                parse_errors.append(f'SSH:{type(exc).__name__}:{exc}')
+        if key_obj is None or not hasattr(key_obj,'private_numbers'):
+            raise ValueError('La clave no es una clave privada RSA; ' + ' | '.join(parse_errors))
     except Exception as exc:
-        raise RuntimeError(f'La clave privada Euskalmet no es un PEM RSA válido ({source}): {type(exc).__name__}: {exc}') from exc
+        raise RuntimeError(f'La clave privada Euskalmet no es una clave privada RSA utilizable ({source}): {type(exc).__name__}: {exc}') from exc
 
     exp=now+3600
     payload={'aud':'met01.apikey','iss':os.getenv('EUSKALMET_ISSUER','fire-risk-euskadi'),'iat':now,'exp':exp,'version':'1.0.0',owner_claim:owner_value}
