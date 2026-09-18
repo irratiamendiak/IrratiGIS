@@ -193,11 +193,24 @@ def bootstrap_real():
                 return
 
             print(f'BASUGIX real bootstrap {sid} {day.isoformat()} START', flush=True)
-            try:
-                result = await asyncio.wait_for(update_day(sid, day), timeout=420)
-                print(f'BASUGIX real bootstrap {sid} {day.isoformat()} OK fwi={result.get("fwi")} ire={result.get("ire_gip")}', flush=True)
-            except Exception as exc:
-                print(f'BASUGIX real bootstrap {sid} {day.isoformat()} ERROR {type(exc).__name__}: {exc}', flush=True)
+            for attempt in (1,2):
+                try:
+                    result = await asyncio.wait_for(update_day(sid, day), timeout=420)
+                    print(f'BASUGIX real bootstrap {sid} {day.isoformat()} OK attempt={attempt} fwi={result.get("fwi")} ire={result.get("ire_gip")}', flush=True)
+                    return
+                except Exception as exc:
+                    msg=str(exc)
+                    is_429=('429' in msg or 'rate limit' in msg.lower() or 'retrying' in msg.lower())
+                    if attempt==1 and is_429:
+                        print(
+                            f'BASUGIX real bootstrap {sid} {day.isoformat()} RATE LIMIT; '
+                            'retrying after 120s without substituting station',
+                            flush=True,
+                        )
+                        await asyncio.sleep(120)
+                        continue
+                    print(f'BASUGIX real bootstrap {sid} {day.isoformat()} ERROR {type(exc).__name__}: {exc}', flush=True)
+                    return
 
         await asyncio.gather(*(update_station(sid) for sid in FIXED_STATION_IDS))
 
