@@ -96,7 +96,7 @@ def bootstrap_real():
             print(f'BASUGIX real bootstrap {sid} {day.isoformat()} START', flush=True)
             try:
                 # Never let one stalled upstream request block the remaining stations.
-                result = await asyncio.wait_for(update_day(sid, day), timeout=180)
+                result = await asyncio.wait_for(update_day(sid, day), timeout=90)
                 print(f'BASUGIX real bootstrap {sid} {day.isoformat()} OK fwi={result.get("fwi")} ire={result.get("ire_gip")}', flush=True)
             except Exception as exc:
                 print(f'BASUGIX real bootstrap {sid} {day.isoformat()} ERROR {type(exc).__name__}: {exc}', flush=True)
