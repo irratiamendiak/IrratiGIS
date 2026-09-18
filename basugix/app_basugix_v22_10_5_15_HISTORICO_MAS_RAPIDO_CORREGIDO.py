@@ -6509,6 +6509,8 @@ async function buildMap(){
 }
 
 let mapReady=false;
+let d0RetryTimer=null;
+let d0RetryCount=0;
 
 function madridTodayISO(){
  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
@@ -6562,6 +6564,18 @@ async function loadForDate(dayValue=null){
      throw new Error('La API no devolvió estaciones');
    }
 
+   // SEGURIDAD D0: después de las 12:00 nunca se permite pintar una fecha
+   // histórica aunque el backend entregue un fallback antiguo.
+   if(!dayValue){
+     const expected=madridOperationalISO();
+     const got=String(data.selected_day || data.stations.find(s=>s.day)?.day || '');
+     if(expected && got && got!==expected){
+       throw new Error('D0 requerido '+expected+'; la API devolvió '+got+'. Dato histórico rechazado.');
+     }
+     d0RetryCount=0;
+     if(d0RetryTimer){ clearTimeout(d0RetryTimer); d0RetryTimer=null; }
+   }
+
    // Renderizamos tarjetas inmediatamente, antes de esperar al mapa.
    cards();
 
@@ -6603,6 +6617,19 @@ async function loadForDate(dayValue=null){
  }catch(e){
    status.textContent='Error: '+e.message;
    console.error('V22.10.5.12 loadForDate',e);
+
+   // Nunca conservar/pintar 2025 como si fuera D0. Si Euskalmet está
+   // temporalmente limitado (p.ej. HTTP 429), reintentamos sin mostrar el
+   // último día histórico. Máximo 3 reintentos, separados 65 s.
+   if(!dayValue && d0RetryCount<3){
+     d0RetryCount++;
+     if(d0RetryTimer) clearTimeout(d0RetryTimer);
+     status.textContent='⚠ D0 aún no disponible · reintento '+d0RetryCount+'/3 en 65 s';
+     d0RetryTimer=setTimeout(()=>{
+       d0RetryTimer=null;
+       loadForDate(null);
+     },65000);
+   }
  }
 }
 
