@@ -4743,8 +4743,8 @@ async def _v221052_explicit_historical_day(day):
         }
         try:
             met=await asyncio.wait_for(
-                _v221052_station_weather_fast_or_live(sid,day),
-                timeout=25.0,
+                v22105_weather_with_station_fallback(sid,day),
+                timeout=35.0,
             )
             pf,pd,pc=prev_state(sid,day)
             res=calculate(
@@ -4764,14 +4764,18 @@ async def _v221052_explicit_historical_day(day):
                 'wind_time':met.get('wind_time'),'temperature_delta_min':met.get('temperature_delta_min'),
                 'humidity_delta_min':met.get('humidity_delta_min'),'wind_delta_min':met.get('wind_delta_min'),
                 'noon_fallback_used':met.get('noon_fallback_used'),'post_cut_fallback_used':met.get('post_cut_fallback_used'),
-                'temperature_mode':'historical_web_summary','humidity_mode':'historical_web_summary','wind_mode':'historical_web_summary',
+                'temperature_mode':'historical_noon_archive_api','humidity_mode':'historical_noon_archive_api','wind_mode':'historical_noon_archive_api',
                 'rain_points_present':met.get('rain_points_present'),'rain_points_missing':met.get('rain_points_missing'),
                 'rain_coverage_pct':met.get('rain_coverage_pct'),'rain_quality':met.get('rain_quality'),
                 'data_quality':met.get('data_quality'),'source':met.get('source'),
-                'meteo_source_station':sid,'meteo_source_station_name':FIXED_STATIONS[sid],
-                'station_fallback_used':False,'station_fallback_distance_km':0.0,
-                'station_fallback_attempts':[],'station_fallback_reason':None,
-                'station_fallback_policy':'estacion_completa','station_package_complete':True,
+                'meteo_source_station':met.get('meteo_source_station',sid),
+                'meteo_source_station_name':met.get('meteo_source_station_name',FIXED_STATIONS.get(sid,sid)),
+                'station_fallback_used':bool(met.get('station_fallback_used')),
+                'station_fallback_distance_km':met.get('station_fallback_distance_km',0.0),
+                'station_fallback_attempts':met.get('station_fallback_attempts',[]),
+                'station_fallback_reason':met.get('station_fallback_reason'),
+                'station_fallback_policy':met.get('station_fallback_policy','estacion_completa'),
+                'station_package_complete':bool(met.get('station_package_complete',True)),
                 'ffmc':round(float(res.ffmc),4),'dmc':round(float(res.dmc),4),'dc':round(float(res.dc),4),
                 'isi':round(float(res.isi),4),'bui':round(float(res.bui),4),'fwi':round(float(res.fwi),4),
                 'fwi_level':v22_local_level(sid,res.fwi),'ire_gip':round(float(ire),4),
@@ -4795,7 +4799,7 @@ async def _v221052_explicit_historical_day(day):
         'writes_to_database':False,'selected_day':day.isoformat(),'stations':out,
         'mode':'explicit_historical_web_summary','calculation_seconds':elapsed,
         'db_fast_path':False,'requested_day':day.isoformat(),
-        'note':'Fecha histórica explícita servida por summaryData de Euskalmet; no se usa el fallback de Último.',
+        'note':'Fecha histórica explícita: T/HR/viento de observación próxima a 12:00 y lluvia acumulada 24 h hasta 12:00; si la estación objetivo está incompleta, se usa una estación Euskalmet completa de respaldo.',
     }
 @app.get('/api/v22103/live')
 async def api_v22103_live(day:str|None=None, force:int=0, _skip_prev_sync:bool=False):
@@ -6530,6 +6534,7 @@ async function buildMap(){
 let mapReady=false;
 let d0RetryTimer=null;
 let d0RetryCount=0;
+let viewRequestSeq=0;
 
 function madridTodayISO(){
  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
@@ -6556,8 +6561,10 @@ const initialOperational=madridOperationalISO();
 if(initialOperational) document.getElementById('mapDate').value=initialOperational;
 
 async function loadForDate(dayValue=null){
+ const req=++viewRequestSeq;
  const status=document.getElementById('status');
- if(!data){ renderLoadingCards(); }
+ if(dayValue) document.getElementById('mapDate').value=dayValue;
+ renderLoadingCards();
  try{
    const url=dayValue
      ? '/api/v22103/live?day='+encodeURIComponent(dayValue)+'&_skip_prev_sync=1'
@@ -6569,17 +6576,17 @@ async function loadForDate(dayValue=null){
    try{
      resp=await fetch(url);
    }catch(fetchErr){
-     // Un reinicio breve de uvicorn --reload o un corte puntual no debe dejar la web vacía.
+     // Reintentamos la MISMA consulta. Una fecha histórica explícita nunca
+     // se convierte silenciosamente en otra fecha mediante main-day-latest.
      await new Promise(r=>setTimeout(r,700));
-     try{resp=await fetch(url);}catch(secondErr){
-       const lim=dayValue||new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-       resp=await fetch('/debug/v221052/main-day-latest?on_or_before='+encodeURIComponent(lim));
-     }
+     resp=await fetch(url);
    }
+   if(req!==viewRequestSeq) return;
    if(!resp.ok) throw new Error('HTTP '+resp.status+' al calcular estaciones');
-   data=await resp.json();
-   if(!data.ok) throw new Error(data.error||'Error de datos');
-   if(!Array.isArray(data.stations) || !data.stations.length){
+   const payload=await resp.json();
+   if(req!==viewRequestSeq) return;
+   if(!payload.ok) throw new Error(payload.error||'Error de datos');
+   if(!Array.isArray(payload.stations) || !payload.stations.length){
      throw new Error('La API no devolvió estaciones');
    }
 
@@ -6587,7 +6594,7 @@ async function loadForDate(dayValue=null){
    // histórica aunque el backend entregue un fallback antiguo.
    if(!dayValue){
      const expected=madridOperationalISO();
-     const got=String(data.selected_day || data.stations.find(s=>s.day)?.day || '');
+     const got=String(payload.selected_day || payload.stations.find(s=>s.day)?.day || '');
      if(expected && got && got!==expected){
        throw new Error('D0 requerido '+expected+'; la API devolvió '+got+'. Dato histórico rechazado.');
      }
@@ -6595,13 +6602,12 @@ async function loadForDate(dayValue=null){
      if(d0RetryTimer){ clearTimeout(d0RetryTimer); d0RetryTimer=null; }
    }
 
-   // Renderizamos tarjetas inmediatamente, antes de esperar al mapa.
+   // El último request es el único que puede tocar el estado global/UI.
+   data=payload;
    cards();
 
    const d=data.selected_day || (data.stations.find(s=>s.day)?.day) || '';
    if(d){
-     // Si latest-fast está usando el último día completo como respaldo, NO sobrescribimos
-     // el calendario: debe seguir mostrando hoy (D0 solicitado).
      const isFallback=!dayValue && data.live_fallback && data.requested_day;
      if(!isFallback) document.getElementById('mapDate').value=d;
      document.getElementById('dateLine').textContent=isFallback
@@ -6623,6 +6629,7 @@ async function loadForDate(dayValue=null){
      map=null;
    }
    await buildMap();
+   if(req!==viewRequestSeq) return;
    mapReady=true;
 
    const secs=data.calculation_seconds==null ? '' : ` · cálculo ${data.calculation_seconds}s`;
@@ -6631,9 +6638,10 @@ async function loadForDate(dayValue=null){
    status.textContent='✓ BASUGIX cargado · último dato real'+fallbackTxt+secs+cacheTxt;
    if(!dayValue && data.needs_live_refresh){
      status.textContent='✓ Último dato almacenado mostrado · sincronizando último dato real…';
-     refreshOperationalD0InBackground();
+     refreshOperationalD0InBackground(req);
    }
  }catch(e){
+   if(req!==viewRequestSeq) return;
    status.textContent='Error: '+e.message;
    console.error('V22.10.5.12 loadForDate',e);
 
@@ -6653,55 +6661,72 @@ async function loadForDate(dayValue=null){
 }
 
 
-async function refreshOperationalD0InBackground(){
-  // Sólo se ejecuta cuando, después de las 12:00, SQLite aún no contiene D0.
-  // La interfaz ya está visible con el último día completo: esta llamada NO la bloquea.
-  if(!data || !data.needs_live_refresh || !data.requested_day) return;
-  const desired=data.requested_day;
-  const status=document.getElementById('status');
-  const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),45000);
-  try{
-    const resp=await fetch('/api/v22103/live?day='+encodeURIComponent(desired),{signal:controller.signal});
-    if(!resp.ok) return;
-    const fresh=await resp.json();
-    if(!fresh.ok || fresh.selected_day!==desired || !Array.isArray(fresh.stations) || !fresh.stations.some(s=>s.ok!==false)) return;
-    data=fresh;
-    cards();
-    const firstValid=data.stations.find(s=>s.ok!==false)||data.stations[0];
-    select(selected && data.stations.some(s=>s.station_id===selected)?selected:firstValid.station_id);
-    document.getElementById('mapDate').value=desired;
-    document.getElementById('dateLine').textContent=`Mapa BASUGIX correspondiente al ${desired}`;
-    if(map){map.remove();map=null;}
-    await buildMap(); mapReady=true;
-    status.textContent='✓ BASUGIX actualizado · D0 real Euskalmet';
-  }catch(e){
-    // Timeout/corte: conservamos el último día SQLite ya mostrado.
-    console.warn('Actualización D0 en segundo plano no disponible',e);
-  }finally{clearTimeout(timer);}
-}
+async function refreshOperationalD0InBackground(parentReq){
+   // Sólo se ejecuta cuando, después de las 12:00, SQLite aún no contiene D0.
+   // Si el usuario cambia de fecha/predicción mientras llega la respuesta, esta
+   // actualización queda descartada y no puede pisar la vista más reciente.
+   if(parentReq!==viewRequestSeq || !data || !data.needs_live_refresh || !data.requested_day) return;
+   const req=parentReq;
+   const desired=data.requested_day;
+   const status=document.getElementById('status');
+   const controller=new AbortController();
+   const timer=setTimeout(()=>controller.abort(),45000);
+   try{
+     const resp=await fetch('/api/v22103/live?day='+encodeURIComponent(desired),{signal:controller.signal});
+     if(req!==viewRequestSeq) return;
+     if(!resp.ok) return;
+     const fresh=await resp.json();
+     if(req!==viewRequestSeq) return;
+     if(!fresh.ok || fresh.selected_day!==desired || !Array.isArray(fresh.stations) || !fresh.stations.some(s=>s.ok!==false)) return;
+     data=fresh;
+     cards();
+     const firstValid=data.stations.find(s=>s.ok!==false)||data.stations[0];
+     select(selected && data.stations.some(s=>s.station_id===selected)?selected:firstValid.station_id);
+     document.getElementById('mapDate').value=desired;
+     document.getElementById('dateLine').textContent=`Mapa BASUGIX correspondiente al ${desired}`;
+     if(map){map.remove();map=null;}
+     await buildMap();
+     if(req!==viewRequestSeq) return;
+     mapReady=true;
+     status.textContent='✓ BASUGIX actualizado · D0 real Euskalmet';
+   }catch(e){
+     // Timeout/corte: conservamos la vista que siga siendo la más reciente.
+     if(req===viewRequestSeq) console.warn('Actualización D0 en segundo plano no disponible',e);
+   }finally{clearTimeout(timer);}
+ }
 
 async function loadForecast(offset){
+ const req=++viewRequestSeq;
  const status=document.getElementById('status');
+ renderLoadingCards();
  try{
    const label=offset===0?'hoy':(offset===1?'mañana':'pasado mañana');
    status.textContent=`Cargando predicción ${label}…`;
    const resp=await fetch('/api/v221052/forecast3?offset='+encodeURIComponent(offset));
+   if(req!==viewRequestSeq) return;
    if(!resp.ok) throw new Error('HTTP '+resp.status+' al cargar predicción');
-   data=await resp.json();
-   if(!data.ok) throw new Error(data.error||'Error de predicción');
+   const payload=await resp.json();
+   if(req!==viewRequestSeq) return;
+   if(!payload.ok) throw new Error(payload.error||'Error de predicción');
+   data=payload;
    cards();
    const d=data.selected_day||'';
    if(d){document.getElementById('mapDate').value=d;document.getElementById('dateLine').textContent=`Predicción BASUGIX · ${label} · ${d}`;}
    const firstValid=data.stations.find(s=>s.ok!==false)||data.stations[0];
    select(selected && data.stations.some(s=>s.station_id===selected)?selected:firstValid.station_id);
    if(map){map.remove();map=null;}
-   await buildMap(); mapReady=true;
+   await buildMap();
+   if(req!==viewRequestSeq) return;
+   mapReady=true;
    const secs=data.calculation_seconds==null?'':` · cálculo ${data.calculation_seconds}s`;
    const cacheTxt=data.cache?.hit?' · caché':'';
    status.textContent=offset===0?`🟠 D0 híbrido · Euskalmet en vivo + ECMWF/Open-Meteo${secs}${cacheTxt}`:`🔮 Predicción ${label} · ECMWF/Open-Meteo${secs}${cacheTxt}`;
- }catch(e){status.textContent='Error predicción: '+e.message;console.error(e);}
-}
+ }catch(e){
+   if(req!==viewRequestSeq) return;
+   status.textContent='Error predicción: '+e.message;
+   console.error(e);
+ }
+ }
 
 function updateForecastButtonsByLocalTime(){
  const d0=document.getElementById('forecastD0');
