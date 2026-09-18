@@ -4563,6 +4563,25 @@ async def api_v221052_latest_fast():
         payload['live_fallback']=False
         return payload
 
+    # Si falta el día operativo, obtenerlo ahora de Euskalmet en vez de mostrar
+    # silenciosamente el último histórico (2010-2025). Esto es especialmente importante
+    # antes de las 12:00: el día correcto es D-1 y debe ser un dato real de 2026.
+    try:
+        live_payload=await asyncio.wait_for(
+            api_v22103_live(desired.isoformat(),force=1),
+            timeout=float(os.getenv('EUSKALMET_OPERATIONAL_LATEST_TIMEOUT','75'))
+        )
+        if live_payload and live_payload.get('ok') and any(x.get('ok') for x in (live_payload.get('stations') or [])):
+            live_payload=dict(live_payload)
+            live_payload['requested_day']=desired.isoformat()
+            live_payload['live_fallback']=False
+            live_payload['needs_live_refresh']=False
+            live_payload['mode']='euskalm​et_operational_latest_real'
+            return live_payload
+    except Exception as exc:
+        print('BASUGIX latest real fetch error:',type(exc).__name__,exc,flush=True)
+
+    # Sólo si Euskalmet falla de verdad, conservamos el último día completo como respaldo.
     payload=_v221052_latest_complete_db_payload(desired)
     if payload is None:
         return {
@@ -4572,11 +4591,11 @@ async def api_v221052_latest_fast():
             'writes_to_database':False,
         }
     payload=dict(payload)
-    payload['mode']='sqlite_immediate_fallback_pending_live_refresh'
+    payload['mode']='sqlite_immediate_fallback_after_live_failure'
     payload['requested_day']=desired.isoformat()
     payload['live_fallback']=True
-    payload['needs_live_refresh']=bool(madrid_now.hour >= 12)
-    payload['live_fallback_reason']='El D0 real aún no está precalculado en SQLite; se muestra el último día completo mientras se intenta actualizar D0 en segundo plano.'
+    payload['needs_live_refresh']=False
+    payload['live_fallback_reason']='Euskalmet no devolvió un día operativo utilizable; se muestra el último día completo disponible.' 
     return payload
 
 
@@ -6387,8 +6406,19 @@ function madridTodayISO(){
 
 // El calendario representa siempre el día operativo actual al entrar en la aplicación.
 // No debe retroceder al último día completo de SQLite cuando D0 aún no esté disponible.
-const initialToday=madridTodayISO();
-if(initialToday) document.getElementById('mapDate').value=initialToday;
+function madridOperationalISO(){
+ const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date());
+ const y=(parts.find(p=>p.type==='year')||{}).value;
+ const m=(parts.find(p=>p.type==='month')||{}).value;
+ const d=(parts.find(p=>p.type==='day')||{}).value;
+ const h=Number((parts.find(p=>p.type==='hour')||{}).value||0);
+ if(!(y&&m&&d)) return '';
+ const base=new Date(Date.UTC(Number(y),Number(m)-1,Number(d)));
+ if(h<12) base.setUTCDate(base.getUTCDate()-1);
+ return base.toISOString().slice(0,10);
+}
+const initialOperational=madridOperationalISO();
+if(initialOperational) document.getElementById('mapDate').value=initialOperational;
 
 async function loadForDate(dayValue=null){
  const status=document.getElementById('status');
