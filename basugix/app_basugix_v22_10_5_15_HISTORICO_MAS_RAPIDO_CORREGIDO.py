@@ -6255,7 +6255,7 @@ async function buildMap(){
  let municipios=null;
  try{
    const ctlM=new AbortController();
-   const timerM=setTimeout(()=>ctlM.abort(),3500);
+   const timerM=setTimeout(()=>ctlM.abort(),10000);
    try{
      const mr=await fetch('/api/map/municipios',{signal:ctlM.signal});
      if(mr.ok){
