@@ -3575,7 +3575,7 @@ async def update_day(station,day):
             (
                 station,day.isoformat(),*vals,met['source'],
                 datetime.now().isoformat(timespec='seconds'),
-                met['observation_time'],
+                met.get('observation_time','12:00'),
                 met['rain_points_present'],
                 met['rain_points_missing'],
                 met['rain_coverage_pct'],
