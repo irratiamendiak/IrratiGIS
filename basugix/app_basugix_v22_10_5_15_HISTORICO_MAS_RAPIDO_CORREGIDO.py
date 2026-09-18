@@ -4701,6 +4701,76 @@ async def _v221052_ensure_previous_operational_day(d):
         cur+=timedelta(days=1)
 
 
+async def _v221052_explicit_historical_day(day):
+    """Serve an explicit past date without the authenticated station endpoint.
+
+    Render uses the sitecustomize web-summary reader for historical days. This
+    path is deliberately separate from the operational/latest fallback so a
+    request for 2026-09-15 can never silently become 2026-09-17.
+    """
+    thresholds=_v22_load_thresholds()
+    async def one(sid):
+        base={
+            'station_id':sid,'station_name':FIXED_STATIONS[sid],
+            'lat':STATION_COORDS[sid]['lat'],'lon':STATION_COORDS[sid]['lon'],
+            'day':day.isoformat(),'thresholds':thresholds.get(sid,{})
+        }
+        try:
+            met=await asyncio.wait_for(
+                _v221052_station_weather_fast_or_live(sid,day),
+                timeout=25.0,
+            )
+            pf,pd,pc=prev_state(sid,day)
+            res=calculate(
+                met['temperature'],met['humidity'],met['wind_kmh'],met['rain_mm'],
+                month=day.month,prev_ffmc=pf,prev_dmc=pd,prev_dc=pc
+            )
+            season_name,sf=ire_gip_season(day)
+            wf=ire_gip_wind_factor(met.get('wind_direction_deg'),met['wind_kmh'])
+            ire=min(100.0,max(0.0,float(res.fwi)*wf*sf))
+            base.update({
+                'ok':True,
+                'temperature':met['temperature'],'humidity':met['humidity'],
+                'wind_kmh':met['wind_kmh'],'rain_mm':met['rain_mm'],
+                'wind_direction_deg':met.get('wind_direction_deg'),
+                'wind_direction_cardinal':wind_cardinal(met.get('wind_direction_deg')),
+                'temperature_time':met.get('temperature_time'),'humidity_time':met.get('humidity_time'),
+                'wind_time':met.get('wind_time'),'temperature_delta_min':met.get('temperature_delta_min'),
+                'humidity_delta_min':met.get('humidity_delta_min'),'wind_delta_min':met.get('wind_delta_min'),
+                'noon_fallback_used':met.get('noon_fallback_used'),'post_cut_fallback_used':met.get('post_cut_fallback_used'),
+                'temperature_mode':'historical_web_summary','humidity_mode':'historical_web_summary','wind_mode':'historical_web_summary',
+                'rain_points_present':met.get('rain_points_present'),'rain_points_missing':met.get('rain_points_missing'),
+                'rain_coverage_pct':met.get('rain_coverage_pct'),'rain_quality':met.get('rain_quality'),
+                'data_quality':met.get('data_quality'),'source':met.get('source'),
+                'meteo_source_station':sid,'meteo_source_station_name':FIXED_STATIONS[sid],
+                'station_fallback_used':False,'station_fallback_distance_km':0.0,
+                'station_fallback_attempts':[],'station_fallback_reason':None,
+                'station_fallback_policy':'estacion_completa','station_package_complete':True,
+                'ffmc':round(float(res.ffmc),4),'dmc':round(float(res.dmc),4),'dc':round(float(res.dc),4),
+                'isi':round(float(res.isi),4),'bui':round(float(res.bui),4),'fwi':round(float(res.fwi),4),
+                'fwi_level':v22_local_level(sid,res.fwi),'ire_gip':round(float(ire),4),
+                'ire_gip_level':v22_local_level(sid,ire),'wind_factor':round(float(wf),4),
+                'season_factor':round(float(sf),4),'season_name':season_name,
+                'seed':{'ffmc':pf,'dmc':pd,'dc':pc},
+            })
+        except Exception as exc:
+            base.update({'ok':False,'error_type':type(exc).__name__,'error':str(exc),
+                         'temperature':None,'humidity':None,'wind_kmh':None,'rain_mm':None,
+                         'fwi':None,'ire_gip':None,'fwi_level':None,'ire_gip_level':None,
+                         'data_quality':'Sin dato','station_fallback_used':False})
+        return base
+
+    started=time.perf_counter()
+    out=await asyncio.gather(*(one(sid) for sid in FIXED_STATION_IDS))
+    elapsed=round(time.perf_counter()-started,3)
+    return {
+        'ok':any(x.get('ok') for x in out),
+        'version':'V22.10.5.15 HISTÓRICO WEB SUMMARY',
+        'writes_to_database':False,'selected_day':day.isoformat(),'stations':out,
+        'mode':'explicit_historical_web_summary','calculation_seconds':elapsed,
+        'db_fast_path':False,'requested_day':day.isoformat(),
+        'note':'Fecha histórica explícita servida por summaryData de Euskalmet; no se usa el fallback de Último.',
+    }
 @app.get('/api/v22103/live')
 async def api_v22103_live(day:str|None=None, force:int=0, _skip_prev_sync:bool=False):
     """
@@ -4724,6 +4794,11 @@ async def api_v22103_live(day:str|None=None, force:int=0, _skip_prev_sync:bool=F
         madrid_now=datetime.now(ZoneInfo('Europe/Madrid'))
         madrid_today=madrid_now.date()
         d=madrid_today if madrid_now.hour >= 12 else madrid_today-timedelta(days=1)
+
+    # Una fecha histórica explícita usa exclusivamente el lector histórico de Render.
+    # Esto evita que una consulta, por ejemplo 2026-09-15, pueda caer al último día completo.
+    if day is not None and d < date.today():
+        return await _v221052_explicit_historical_day(d)
 
     # Para fechas operativas recientes garantizamos continuidad diaria antes de
     # calcular el FWI. Esto se ejecuta sólo cuando realmente falta el día previo.
