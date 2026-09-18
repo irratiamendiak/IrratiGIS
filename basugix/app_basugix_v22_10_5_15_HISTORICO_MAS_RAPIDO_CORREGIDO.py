@@ -3288,7 +3288,7 @@ async def _v221052_station_weather_fast_or_live(station,day):
     return await v2210_operational_weather(station,day)
 
 V221052_ALLOW_EXTERNAL_STATION_FALLBACK=os.getenv(
-    'V221052_ALLOW_EXTERNAL_STATION_FALLBACK','0'
+    'V221052_ALLOW_EXTERNAL_STATION_FALLBACK','1'
 ).strip().lower() in ('1','true','yes','on')
 
 async def v22105_weather_with_station_fallback(target_station,day):
