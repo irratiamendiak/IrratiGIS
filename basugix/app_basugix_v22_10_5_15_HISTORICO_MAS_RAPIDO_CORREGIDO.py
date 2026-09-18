@@ -872,35 +872,36 @@ async def _v221_download_year(year):
         _V221_RAW_DOWNLOAD_LOCKS[year]=lock
 
     async with lock:
-        # Otro request/estación puede haber terminado la descarga mientras
-        # esperábamos el lock.
+        # La exclusión debe cubrir TODA la descarga. Si el lock sólo cubre
+        # la comprobación inicial, las cinco estaciones vuelven a descargar
+        # simultáneamente el mismo ZIP y agotan el timeout histórico.
         if target.exists() and target.stat().st_size > 1_000_000:
             return target
 
         url=V221_RAW_BASE_URL.format(year=year)
         tmp=target.with_suffix('.part')
 
-    headers={
-        'User-Agent':'Mozilla/5.0 (BASUGIX V22.1 experimental)',
-        'Accept':'application/zip,application/octet-stream,*/*',
-    }
+        headers={
+            'User-Agent':'Mozilla/5.0 (BASUGIX V22.1 experimental)',
+            'Accept':'application/zip,application/octet-stream,*/*',
+        }
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(300.0,connect=30.0),follow_redirects=True) as client:
-        async with client.stream('GET',url,headers=headers) as r:
-            if r.status_code >= 400:
-                body=(await r.aread())[:500].decode('iso-8859-1',errors='replace')
-                raise RuntimeError(
-                    f'V22.1 raw archive HTTP {r.status_code} para {url}. Respuesta={body}'
-                )
-            with tmp.open('wb') as fh:
-                async for chunk in r.aiter_bytes(1024*1024):
-                    if chunk:
-                        fh.write(chunk)
+        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0,connect=30.0),follow_redirects=True) as client:
+            async with client.stream('GET',url,headers=headers) as r:
+                if r.status_code >= 400:
+                    body=(await r.aread())[:500].decode('iso-8859-1',errors='replace')
+                    raise RuntimeError(
+                        f'V22.1 raw archive HTTP {r.status_code} para {url}. Respuesta={body}'
+                    )
+                with tmp.open('wb') as fh:
+                    async for chunk in r.aiter_bytes(1024*1024):
+                        if chunk:
+                            fh.write(chunk)
 
-    if not tmp.exists() or tmp.stat().st_size < 1_000_000:
-        raise RuntimeError(f'V22.1 archivo anual incompleto: {tmp}')
-    tmp.replace(target)
-    return target
+        if not tmp.exists() or tmp.stat().st_size < 1_000_000:
+            raise RuntimeError(f'V22.1 archivo anual incompleto: {tmp}')
+        tmp.replace(target)
+        return target
 
 def _v221_station_inner_zip(outer_zip,station):
     """Resolve the inner ZIP for a station robustly.
