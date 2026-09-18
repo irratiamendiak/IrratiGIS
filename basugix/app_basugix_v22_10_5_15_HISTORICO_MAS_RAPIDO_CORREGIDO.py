@@ -1766,6 +1766,19 @@ async def _v222_mapping(station,day):
     hit=_V221052_MAPPING_CACHE.get(station)
     if hit and now-float(hit[0]) < _V221052_MAPPING_TTL:
         return dict(hit[1])
+
+    # Primero reutilizamos el sensor_map persistido. Esto evita que cada arranque
+    # tenga que consultar /stations/current + /sensors/* y disparar el rate limit
+    # de Euskalmet antes de poder leer las observaciones de las cinco estaciones.
+    cached_mapping={}
+    for var in TARGETS:
+        row=cached(station,var)
+        if row:
+            cached_mapping[var]=(str(row['sensor_id']),str(row['measure_type_id']),str(row['measure_id']))
+    if len(cached_mapping)==len(TARGETS):
+        _V221052_MAPPING_CACHE[station]=(now,dict(cached_mapping))
+        return cached_mapping
+
     detail=await station_payload_for_day(station,day)
     mapping=await discover_daily_mapping(station,day,detail)
     for var in TARGETS:
@@ -3274,6 +3287,10 @@ async def _v221052_station_weather_fast_or_live(station,day):
     # Sólo el día actual puede utilizar la ruta operativa en tiempo real.
     return await v2210_operational_weather(station,day)
 
+V221052_ALLOW_EXTERNAL_STATION_FALLBACK=os.getenv(
+    'V221052_ALLOW_EXTERNAL_STATION_FALLBACK','0'
+).strip().lower() in ('1','true','yes','on')
+
 async def v22105_weather_with_station_fallback(target_station,day):
     """Respaldo geográfico a nivel de ESTACIÓN COMPLETA.
 
@@ -3311,6 +3328,13 @@ async def v22105_weather_with_station_fallback(target_station,day):
     except Exception as exc:
         fallback_reason=f'{type(exc).__name__}: {exc}'
         errors.append({'station':target_station,'distance_km':0.0,'reason':'station_error','error':fallback_reason})
+
+    if not V221052_ALLOW_EXTERNAL_STATION_FALLBACK:
+        raise RuntimeError(
+            f'La estación objetivo {target_station} no tiene un paquete completo de '
+            f'observaciones de Euskalmet para {day.isoformat()}; no se sustituye por '
+            f'otra estación.'
+        )
 
     candidates=await _v221051_backup_candidates(target_station)
     for cand in candidates:
@@ -4569,15 +4593,18 @@ async def api_v221052_latest_fast():
     # Si D0 todavía no está precalculado, la portada debe responder inmediatamente.
     # El último día completo se muestra como respaldo explícito y el navegador intenta
     # actualizar D0 en segundo plano mediante refreshOperationalD0InBackground().
-    fallback_payload=_v221052_latest_complete_db_payload(desired)
-    if fallback_payload is not None:
-        fallback_payload=dict(fallback_payload)
-        fallback_payload['mode']='sqlite_immediate_fallback_pending_live_refresh'
-        fallback_payload['requested_day']=desired.isoformat()
-        fallback_payload['live_fallback']=True
-        fallback_payload['needs_live_refresh']=True
-        fallback_payload['live_fallback_reason']='D0 todavía no está precalculado; se muestra de inmediato el último día completo mientras se consulta Euskalmet en segundo plano.'
-        return fallback_payload
+    # Nunca presentar un día antiguo (p.ej. 2025-12-31) como si fuese D0.
+    # Para una fecha operativa solicitada, sólo son válidos los datos de esa fecha.
+    # El fallback SQLite se conserva exclusivamente para consultas históricas.
+    if desired < date.today():
+        fallback_payload=_v221052_latest_complete_db_payload(desired)
+        if fallback_payload is not None:
+            fallback_payload=dict(fallback_payload)
+            fallback_payload['mode']='sqlite_historical_fallback'
+            fallback_payload['requested_day']=desired.isoformat()
+            fallback_payload['live_fallback']=True
+            fallback_payload['needs_live_refresh']=True
+            return fallback_payload
 
     # Sólo si tampoco existe ningún día completo, intentamos Euskalmet en primer plano.
     try:
