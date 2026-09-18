@@ -105,7 +105,11 @@ def seed_historical_csv():
                 sid = str(row['station_id']).strip().upper()
                 if sid not in FIXED_STATION_IDS: continue
                 ds = str(row['fecha']).strip()
-                temp=float(row['temperatura_12h_C']); rh=float(row['humedad_12h_pct']); wind=float(row['viento_12h_kmh']); rain=float(row['lluvia_24h_mm']); direction=float(row['direccion_vectorial_diaria_deg'])
+                temp=float(row['temperatura_12h_C']); rh=float(row['humedad_12h_pct']); wind=float(row['viento_12h_kmh']); rain=float(row['lluvia_24h_mm'])
+                try:
+                    direction=float(str(row['direccion_vectorial_diaria_deg'] or '').strip())
+                except (TypeError, ValueError):
+                    direction=None
                 ffmc=float(row['FFMC']); dmc=float(row['DMC']); dc=float(row['DC']); isi=float(row['ISI']); bui=float(row['BUI']); fwi=float(row['FWI'])
                 season_name,sf=ire_gip_season(date.fromisoformat(ds)); wf=ire_gip_wind_factor(direction,wind); ire=min(100.0,max(0.0,fwi*wf*sf))
                 tt=str(row['hora_temperatura']).strip() or '12:00'; ht=str(row['hora_humedad']).strip() or '12:00'; wt=str(row['hora_viento']).strip() or '12:00'
