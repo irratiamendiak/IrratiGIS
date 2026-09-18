@@ -136,7 +136,7 @@ async def _euskalmet_http_client():
     if _HTTP_CLIENT is None or _HTTP_CLIENT.is_closed:
         async with _HTTP_CLIENT_LOCK:
             if _HTTP_CLIENT is None or _HTTP_CLIENT.is_closed:
-                _HTTP_CLIENT=httpx.AsyncClient(timeout=httpx.Timeout(30.0,connect=10.0),follow_redirects=True,limits=httpx.Limits(max_connections=40,max_keepalive_connections=20,keepalive_expiry=30.0))
+                _HTTP_CLIENT=httpx.AsyncClient(timeout=httpx.Timeout(12.0,connect=4.0),follow_redirects=True,limits=httpx.Limits(max_connections=40,max_keepalive_connections=20,keepalive_expiry=30.0))
     return _HTTP_CLIENT
 
 async def _forecast_http_client():
@@ -2896,7 +2896,7 @@ def _v221052_parse_xlsx(raw_bytes):
 
 
 async def _v221052_fetch_xlsx_url(url):
-    timeout=httpx.Timeout(30.0,connect=15.0)
+    timeout=httpx.Timeout(12.0,connect=4.0)
     headers={
         'Accept':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/octet-stream, */*',
         'User-Agent':'BASUGIX-V22.10.5.12/1.0'
