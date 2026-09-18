@@ -342,24 +342,42 @@ def _read_login_id(private_key_path):
     )
 
 def token():
-    """Generate and cache a fresh Euskalmet JWT automatically."""
+    """Generate and cache a fresh Euskalmet JWT automatically.
+
+    The private key may be supplied either as the legacy file path
+    (EUSKALMET_PRIVATE_KEY_PATH) or directly as a Render environment variable
+    (EUSKALMET_PRIVATE_KEY). The latter avoids requiring Render Secret Files.
+    """
     now=int(time.time())
     cached=_JWT_CACHE.get("token")
     exp=int(_JWT_CACHE.get("exp") or 0)
     if cached and now < exp-120:
         return cached
 
+    private_key=os.getenv('EUSKALMET_PRIVATE_KEY','')
     configured=os.getenv('EUSKALMET_PRIVATE_KEY_PATH','').strip()
-    if not configured:
-        raise RuntimeError('Falta EUSKALMET_PRIVATE_KEY_PATH en .env')
+    p=None
 
-    p=Path(configured)
-    if not p.is_absolute():
-        p=BASE_DIR/p
-    if not p.exists():
-        raise RuntimeError(f'No existe la clave privada: {p}')
-
-    owner_claim,owner_value=_read_login_id(p)
+    if private_key.strip():
+        # Render environment variables normally preserve newlines. Also accept
+        # a single-line value containing literal \\n for easier pasting.
+        private_key=private_key.strip()
+        if '\\n' in private_key:
+            private_key=private_key.replace('\\n','\\n')
+        private_key_bytes=private_key.encode('utf-8')
+        owner_claim,owner_value=_read_login_id(Path('/tmp/euskalmet_private_key.pem'))
+    else:
+        if not configured:
+            raise RuntimeError(
+                'Falta EUSKALMET_PRIVATE_KEY o EUSKALMET_PRIVATE_KEY_PATH en Render'
+            )
+        p=Path(configured)
+        if not p.is_absolute():
+            p=BASE_DIR/p
+        if not p.exists():
+            raise RuntimeError(f'No existe la clave privada: {p}')
+        private_key_bytes=p.read_bytes()
+        owner_claim,owner_value=_read_login_id(p)
 
     exp=now+3600
     payload={
@@ -371,7 +389,7 @@ def token():
         owner_claim:owner_value,
     }
 
-    signed=jwt.encode(payload,p.read_bytes(),algorithm='RS256')
+    signed=jwt.encode(payload,private_key_bytes,algorithm='RS256')
     _JWT_CACHE["token"]=signed
     _JWT_CACHE["exp"]=exp
     return signed
