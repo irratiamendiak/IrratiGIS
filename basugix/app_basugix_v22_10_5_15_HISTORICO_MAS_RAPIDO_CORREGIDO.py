@@ -3166,6 +3166,7 @@ def _v221052_station_package_status(met):
 # las observaciones de 10 minutos necesarias para mediodía y lluvia 24 h.
 V221052_FAST_ARCHIVE_ENABLED=os.getenv('V221052_FAST_ARCHIVE_ENABLED','1').strip().lower() in ('1','true','yes','on')
 _V221052_FAST_OBS_CACHE={}
+_V221052_FAST_PARSE_LOCKS={}
 
 def _v221052_fast_station_year_sync(archive_path,station,year):
     key=(str(archive_path),str(station).upper(),int(year))
@@ -3212,8 +3213,34 @@ def _v221052_fast_station_year_sync(archive_path,station,year):
     return out
 
 async def _v221052_fast_station_year(station,year):
-    archive=await _v221_download_year(int(year))
-    return await asyncio.to_thread(_v221052_fast_station_year_sync,archive,station,int(year))
+    """Carga el índice anual de una estación sin paralelizar cinco parses XML pesados.
+
+    V22.10.5.17: Render Free tiene CPU/memoria limitados. Cinco estaciones
+    leyendo/descomprimiendo XML de 2025 simultáneamente se estorbaban entre sí
+    y las cinco acababan alcanzando el timeout. La descarga ya está serializada;
+    ahora también serializamos el parseo por año. El resultado queda en
+    _V221052_FAST_OBS_CACHE, así que las siguientes consultas del mismo año son
+    inmediatas.
+    """
+    year=int(year)
+    archive=await _v221_download_year(year)
+    key=(str(archive),str(station).upper(),year)
+    cached=_V221052_FAST_OBS_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    lock=_V221052_FAST_PARSE_LOCKS.get(year)
+    if lock is None:
+        lock=asyncio.Lock()
+        _V221052_FAST_PARSE_LOCKS[year]=lock
+
+    async with lock:
+        cached=_V221052_FAST_OBS_CACHE.get(key)
+        if cached is not None:
+            return cached
+        return await asyncio.to_thread(
+            _v221052_fast_station_year_sync,archive,station,year
+        )
 
 def _v221052_fast_pick(rows,key,target=720,tolerance=30):
     candidates=[]
