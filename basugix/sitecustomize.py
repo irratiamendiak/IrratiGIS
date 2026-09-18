@@ -1,111 +1,29 @@
 import asyncio
 import math
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
-# BASUGIX Render hotfix: the authenticated api.euskadi.eus station endpoint
-# is timing out from Render. Historical days can be read from Euskalmet's
-# public web summaryData endpoint without that API dependency.
+# BASUGIX Render hotfix:
+# 1) meteorología real de D0 con T/HR/viento a las 12:00 + lluvia 24 h;
+# 2) desde las 12:00, "Último" DEBE ser hoy, nunca una fecha histórica;
+# 3) si Euskalmet falla, se devuelve error explícito, nunca se maquilla con 2025.
 
 try:
     import app_basugix_v22_10_5_15_HISTORICO_MAS_RAPIDO_CORREGIDO as m
-
-    def _num(v):
-        if isinstance(v, (int, float)):
-            return float(v)
-        if isinstance(v, str):
-            try:
-                return float(v.replace(",", "."))
-            except Exception:
-                return None
-        return None
+    from fastapi.routing import APIRoute
 
     _original_station_weather_fast_or_live = m._v221052_station_weather_fast_or_live
 
-    def _summary_value(item):
-        fields = m._summary_fields(item)
-        for key in ("mean", "_mean", "sum", "_sum", "total", "_total", "value", "_value"):
-            v = fields.get(key)
-            if isinstance(v, dict):
-                v = v.get("_value", v.get("value"))
-            n = _num(v)
-            if n is not None and math.isfinite(n):
-                return n
-        for v in fields.values():
-            n = _num(v)
-            if n is not None and math.isfinite(n):
-                return n
-        return None
-
-    def _measure_id(item):
-        return m._eid(item.get("_measureId", item.get("measureId")))
-
-    async def _historical_web_summary(station, day):
-        payload = await m.web_summary_payload(station, day)
-        items = m._summary_items(payload)
-        found = {}
-
-        for item in items:
-            mid = (_measure_id(item) or "").strip().lower()
-            value = _summary_value(item)
-            if value is None:
-                continue
-            if "temperature" in mid or "temperatura" in mid:
-                found.setdefault("temperature", value)
-            elif "humidity" in mid or "humedad" in mid or mid in ("relative_humidity", "relativehumidity"):
-                found.setdefault("humidity", value)
-            elif "precip" in mid or "rain" in mid or "lluv" in mid:
-                found.setdefault("rain_mm", value)
-
-        speed_kmh, direction = await m.web_summary_wind(station, day)
-        found["wind_kmh"] = speed_kmh
-        found["wind_direction_deg"] = direction
-
-        missing = [k for k in ("temperature", "humidity", "wind_kmh", "rain_mm") if found.get(k) is None]
-        if missing:
-            names = [_measure_id(x) for x in items]
-            raise RuntimeError(
-                f"Euskalmet web summary sin campos para {station} {day.isoformat()}: "
-                f"faltan {missing}; measures={names[:80]}"
-            )
-
-        return {
-            "temperature": round(float(found["temperature"]), 2),
-            "humidity": round(max(0.0, min(100.0, float(found["humidity"]))), 2),
-            "wind_kmh": round(max(0.0, float(found["wind_kmh"])), 2),
-            "rain_mm": round(max(0.0, float(found["rain_mm"])), 2),
-            "wind_direction_deg": round(float(found["wind_direction_deg"]), 1) if found.get("wind_direction_deg") is not None else None,
-            "temperature_time": "12:00",
-            "humidity_time": "12:00",
-            "wind_time": "12:00",
-            "temperature_delta_min": 0,
-            "humidity_delta_min": 0,
-            "wind_delta_min": 0,
-            "noon_fallback_used": False,
-            "post_cut_fallback_used": False,
-            "rain_points_present": 144,
-            "rain_points_missing": 0,
-            "rain_coverage_pct": 100.0,
-            "rain_quality": "Completo",
-            "data_quality": "Euskalmet web summaryData",
-            "observation_time": "12:00",
-            "source": "Euskalmet webmet00-summaryData.json",
-        }
-
-    async def _patched(station, day):
-        # Criterio definitivo BASUGIX: nunca usar el resumen diario para T/HR/viento.
-        # El resumen diario contiene medias de cierre; BASUGIX necesita la observación
-        # de las 12:00 y lluvia acumulada en las 24 h cerradas a las 12:00.
+    async def _patched_station_weather(station, day):
+        # Histórico: ZIP/API Euskalmet con observaciones cercanas a 12:00.
+        # D0: ruta operativa exacta 12:00 + lluvia 24 h observada.
         try:
             if day < date.today():
-                # Histórico: primero ZIP anual oficial (si existe) y después API
-                # histórica. Ambos caminos mantienen T/HR/viento al mediodía y
-                # lluvia acumulada cerrada a las 12:00.
                 result = await asyncio.wait_for(
                     _original_station_weather_fast_or_live(station, day),
                     timeout=75.0,
                 )
             else:
-                # D0: observación operativa exacta de las 12:00 + lluvia 24 h.
                 result = await asyncio.wait_for(
                     m.v2210_operational_weather(station, day),
                     timeout=75.0,
@@ -126,9 +44,110 @@ try:
             )
             raise
 
-    m._render_historical_web_summary = _historical_web_summary
-    m._v221052_station_weather_fast_or_live = _patched
-    print("BASUGIX Render historical web-summary hotfix loaded", flush=True)
+    m._v221052_station_weather_fast_or_live = _patched_station_weather
+
+    async def _latest_exact():
+        now = datetime.now(ZoneInfo("Europe/Madrid"))
+        today = now.date()
+        desired = today if now.hour >= 12 else today.replace() 
+        if now.hour < 12:
+            from datetime import timedelta
+            desired = today - timedelta(days=1)
+
+        # Si ya existe exactamente el día operativo, servirlo.
+        payload = m._v221052_main_day_from_db(desired)
+        if payload is not None:
+            payload = dict(payload)
+            payload["mode"] = "sqlite_exact_operational_day"
+            payload["requested_day"] = desired.isoformat()
+            payload["live_fallback"] = False
+            return payload
+
+        # Asegurar continuidad FWI cuando sea un día reciente.
+        try:
+            await m._v221052_ensure_previous_operational_day(desired)
+        except Exception as exc:
+            print(f"BASUGIX previous-day preparation warning: {type(exc).__name__}: {exc}", flush=True)
+
+        try:
+            live = await asyncio.wait_for(
+                m.api_v22103_live(desired.isoformat(), force=1, _skip_prev_sync=True),
+                timeout=float(__import__("os").getenv("EUSKALMET_OPERATIONAL_LATEST_TIMEOUT", "90")),
+            )
+        except Exception as exc:
+            return {
+                "ok": False,
+                "error": f"No se pudo obtener el día operativo {desired.isoformat()} de Euskalmet: {type(exc).__name__}: {exc}",
+                "requested_day": desired.isoformat(),
+                "selected_day": None,
+                "writes_to_database": False,
+            }
+
+        # CRÍTICO: api_v22103_live tiene compatibilidad histórica que puede devolver
+        # un día antiguo si todas las estaciones fallan. Para D0 eso está prohibido.
+        selected = str(live.get("selected_day") or "")
+        if selected != desired.isoformat():
+            return {
+                "ok": False,
+                "error": (
+                    f"Euskalmet no devolvió datos utilizables para {desired.isoformat()}. "
+                    f"Se rechazó correctamente el fallback a {selected or 'sin fecha'}."
+                ),
+                "requested_day": desired.isoformat(),
+                "selected_day": selected or None,
+                "writes_to_database": False,
+            }
+        live = dict(live)
+        live["requested_day"] = desired.isoformat()
+        live["live_fallback"] = False
+        live["mode"] = "euskalmet_exact_operational_day"
+        return live
+
+    async def _debug_latest_exact(on_or_before=None):
+        try:
+            lim = date.fromisoformat(on_or_before) if on_or_before else datetime.now(ZoneInfo("Europe/Madrid")).date()
+        except Exception:
+            return {"ok": False, "error": "Fecha no válida. Usa YYYY-MM-DD."}
+
+        payload = m._v221052_main_day_from_db(lim)
+        if payload is not None:
+            return payload
+
+        try:
+            live = await asyncio.wait_for(
+                m.api_v22103_live(lim.isoformat(), force=1, _skip_prev_sync=True),
+                timeout=90.0,
+            )
+        except Exception as exc:
+            return {"ok": False, "error": f"No hay datos para {lim.isoformat()}: {type(exc).__name__}: {exc}"}
+
+        if str(live.get("selected_day") or "") != lim.isoformat():
+            return {
+                "ok": False,
+                "error": f"No hay datos utilizables para {lim.isoformat()}; se rechazó cualquier fallback a otra fecha.",
+                "requested_day": lim.isoformat(),
+                "selected_day": live.get("selected_day"),
+            }
+        return live
+
+    def _insert_get_route(path, endpoint, name):
+        # El módulo principal ya registró estas rutas. Insertamos una ruta idéntica
+        # delante para que FastAPI use esta política estricta de fecha.
+        route = APIRoute(
+            path=path,
+            endpoint=endpoint,
+            methods=["GET"],
+            name=name,
+        )
+        m.app.router.routes.insert(0, route)
+
+    _insert_get_route("/api/v221052/latest-fast", _latest_exact, "basugix_latest_exact_operational")
+    _insert_get_route("/debug/v221052/main-day-latest", _debug_latest_exact, "basugix_debug_latest_exact")
+
+    print(
+        "BASUGIX Render hotfix loaded: D0 after 12:00 = TODAY; stale-date fallback disabled",
+        flush=True,
+    )
 
 except Exception as exc:
     print(
