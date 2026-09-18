@@ -307,6 +307,46 @@ async def discover_daily_mapping(station,day,station_payload):
 
 _JWT_CACHE={"token":None,"exp":0}
 
+def _keccak256(data):
+    """Pure-Python Keccak-256 (not SHA3-256), used by Euskalmet loginId."""
+    RC=(1,0x8082,0x800000000000808A,0x8000000080008000,0x808B,0x80000001,
+        0x8000000080008081,0x8000000000008009,0x8A,0x88,0x80008009,0x8000000A,
+        0x8000808B,0x800000000000008B,0x8000000000008089,0x8000000000008003,
+        0x8000000000008002,0x8000000000000080,0x800A,0x800000008000000A,
+        0x8000000080008081,0x8000000000008080,0x80000001,0x8000000080008008)
+    ROT=((0,36,3,41,18),(1,44,10,45,2),(62,6,43,15,61),
+         (28,55,25,21,56),(27,20,39,8,14))
+    MASK=(1<<64)-1
+    def rol(x,n):
+        return x if n==0 else ((x<<n)|(x>>(64-n)))&MASK
+    def permute(a):
+        for rc in RC:
+            col=[a[x]^a[x+5]^a[x+10]^a[x+15]^a[x+20] for x in range(5)]
+            d=[col[(x-1)%5]^rol(col[(x+1)%5],1) for x in range(5)]
+            for x in range(5):
+                for y in range(5): a[x+5*y]=(a[x+5*y]^d[x])&MASK
+            b=[0]*25
+            for x in range(5):
+                for y in range(5):
+                    b[y+5*((2*x+3*y)%5)]=rol(a[x+5*y],ROT[x][y])
+            for x in range(5):
+                for y in range(5):
+                    a[x+5*y]=b[x+5*y]^((~b[(x+1)%5+5*y])&b[(x+2)%5+5*y])
+            a[0]^=rc
+    rate=136
+    buf=bytearray(data)
+    buf.append(1)
+    while len(buf)%rate != rate-1: buf.append(0)
+    buf.append(0x80)
+    state=[0]*25
+    for off in range(0,len(buf),rate):
+        block=buf[off:off+rate]
+        for i in range(rate//8):
+            state[i]^=int.from_bytes(block[i*8:(i+1)*8],'little')
+        permute(state)
+    return b''.join(x.to_bytes(8,'little') for x in state)[:32].hex()
+
+
 def _read_login_id(private_key_path, derived_login_id=None):
     """Resolve Euskalmet API owner identity automatically.
 
@@ -446,26 +486,14 @@ def token():
 
     # Euskalmet documenta loginId como la huella Keccak-256 de la clave pública.
     # La calculamos sobre el DER SubjectPublicKeyInfo de la clave ya cargada.
-    # No registramos la huella completa en logs.
+    # No dependemos de la versión de OpenSSL instalada en Render.
     derived_login_id=None
     try:
         from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
         public_der_for_login=key_obj.public_key().public_bytes(
             Encoding.DER, PublicFormat.SubjectPublicKeyInfo
         )
-        import subprocess
-        proc=subprocess.run(
-            ['openssl','dgst','-keccak-256'],
-            input=public_der_for_login,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True,
-        )
-        digest=proc.stdout.decode('ascii','strict').strip()
-        if '=' in digest:
-            digest=digest.rsplit('=',1)[1].strip()
-        if re.fullmatch(r'[0-9a-fA-F]{64}', digest):
-            derived_login_id=digest.lower()
+        derived_login_id=_keccak256(public_der_for_login)
     except Exception as exc:
         print(f"EUSKALMET AUTH LOGINID DIAG unavailable={type(exc).__name__}",flush=True)
 
