@@ -440,6 +440,16 @@ def token():
     except Exception as exc:
         raise RuntimeError(f'La clave privada Euskalmet no es una clave privada RSA utilizable ({source}): {type(exc).__name__}: {exc}') from exc
 
+    # Diagnóstico seguro: sólo metadatos no secretos de la clave pública derivada.
+    try:
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        import hashlib
+        public_der=key_obj.public_key().public_bytes(Encoding.DER,PublicFormat.SubjectPublicKeyInfo)
+        public_sha256=hashlib.sha256(public_der).hexdigest()
+        print(f"EUSKALMET AUTH DIAG source={source} owner_claim={owner_claim} rsa_bits={getattr(key_obj,'key_size',None)} public_sha256={public_sha256}",flush=True)
+    except Exception as exc:
+        print(f"EUSKALMET AUTH DIAG unavailable={type(exc).__name__}",flush=True)
+
     exp=now+3600
     payload={'aud':'met01.apikey','iss':os.getenv('EUSKALMET_ISSUER','fire-risk-euskadi'),'iat':now,'exp':exp,'version':'1.0.0',owner_claim:owner_value}
     signed=jwt.encode(payload,private_key_bytes,algorithm='RS256')
