@@ -4568,7 +4568,7 @@ async def api_v221052_latest_fast():
     # antes de las 12:00: el día correcto es D-1 y debe ser un dato real de 2026.
     try:
         live_payload=await asyncio.wait_for(
-            api_v22103_live(desired.isoformat(),force=1),
+            api_v22103_live(desired.isoformat(),force=1,_skip_prev_sync=True),
             timeout=float(os.getenv('EUSKALMET_OPERATIONAL_LATEST_TIMEOUT','75'))
         )
         if live_payload and live_payload.get('ok') and any(x.get('ok') for x in (live_payload.get('stations') or [])):
@@ -6091,6 +6091,12 @@ function n(v,d=2){return v===null||v===undefined?'—':Number(v).toFixed(d)}
 function color(level){return C[level]||'#b7c0ba'}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 
+function renderLoadingCards(){
+ const root=document.getElementById('cards');
+ const names={C023:'Arrasate',C017:'Miramon',C058:'Bidania',C026:'Berastegi',C028:'Zegama'};
+ root.innerHTML=Object.entries(names).map(([sid,name])=>`<div class="card" data-sid="${sid}"><div class="ctop"><span class="sid">${sid}</span><span class="name">${name}</span></div><div><span class="ival" style="font-size:20px">Cargando…</span></div><div class="metrics"><div><b>—</b>°C</div><div><b>—</b>% HR</div><div><b>—</b>km/h</div><div><b>—</b>mm</div></div><div class="isirow"><span>ISI · Índice de propagación</span><b>—</b></div><div class="small" style="margin-top:8px">Obteniendo datos reales de Euskalmet para el 17/09/2026…</div></div>`).join('');
+}
+
 function cards(){
  const root=document.getElementById('cards');
  root.innerHTML=data.stations.map(s=>`
@@ -6425,9 +6431,10 @@ if(initialOperational) document.getElementById('mapDate').value=initialOperation
 
 async function loadForDate(dayValue=null){
  const status=document.getElementById('status');
+ if(!data){ renderLoadingCards(); }
  try{
    const url=dayValue
-     ? '/api/v22103/live?day='+encodeURIComponent(dayValue)
+     ? '/api/v22103/live?day='+encodeURIComponent(dayValue)+'&_skip_prev_sync=1'
      : '/api/v221052/latest-fast';
 
    status.textContent=dayValue?'Cargando fecha…':'Cargando último dato real desde SQLite…';
