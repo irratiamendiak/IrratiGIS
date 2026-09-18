@@ -90,28 +90,29 @@ try:
         }
 
     async def _patched(station, day):
-        if day < date.today():
-            try:
-                # Historical Render path: use only the public Euskalmet web
-                # summary. Never fall through to the authenticated API endpoint,
-                # because that endpoint is the source of the Render timeout.
-                result = await asyncio.wait_for(_historical_web_summary(station, day), timeout=20.0)
-                print(
-                    f"BASUGIX HISTORICAL WEB SUMMARY OK station={station} "
-                    f"day={day.isoformat()} source=Euskalmet webmet00-summaryData.json",
-                    flush=True,
-                )
-                return result
-            except Exception as exc:
-                print(
-                    f"BASUGIX HISTORICAL WEB SUMMARY ERROR station={station} "
-                    f"day={day.isoformat()} type={type(exc).__name__}: {exc}",
-                    flush=True,
-                )
-                raise RuntimeError(
-                    f"Euskalmet web summary no disponible para {station} {day.isoformat()}: {exc}"
-                ) from exc
-        return await m.v2210_operational_weather(station, day)
+        # Criterio definitivo BASUGIX: nunca usar el resumen diario para T/HR/viento.
+        # El resumen diario contiene medias de cierre; BASUGIX necesita la observación
+        # de las 12:00 y lluvia acumulada en las 24 h cerradas a las 12:00.
+        try:
+            result = await asyncio.wait_for(
+                m.v2210_operational_weather(station, day),
+                timeout=75.0,
+            )
+            print(
+                f"BASUGIX V22.10 NOON OK station={station} day={day.isoformat()} "
+                f"T={result.get('temperature_time')} HR={result.get('humidity_time')} "
+                f"wind={result.get('wind_time')} rain={result.get('rain_mm')} "
+                f"points={result.get('rain_points_present')}",
+                flush=True,
+            )
+            return result
+        except Exception as exc:
+            print(
+                f"BASUGIX V22.10 NOON ERROR station={station} day={day.isoformat()} "
+                f"type={type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            raise
 
     m._render_historical_web_summary = _historical_web_summary
     m._v221052_station_weather_fast_or_live = _patched
