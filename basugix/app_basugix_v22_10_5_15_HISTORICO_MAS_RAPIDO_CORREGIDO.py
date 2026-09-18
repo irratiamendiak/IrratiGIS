@@ -6330,8 +6330,18 @@ async function buildMap(){
    return best;
  }
 
- if(boundaryFeature){
+ // Límites municipales: capa cartográfica de referencia DEBAJO de la zonificación.
+ // Así las divisiones municipales siguen visibles a través del relleno BASUGIX.
+ if(municipios){
    try{
+     L.geoJSON(municipios,{
+       style:()=>({color:'#ffffff',weight:1.35,opacity:.95,fill:false,fillOpacity:0}),
+       interactive:false
+     }).addTo(map);
+   }catch(e){console.warn('No se pudieron dibujar los límites municipales',e);}
+ }
+
+ if(boundaryFeature){   try{
      const bbox=turf.bbox(boundaryFeature);
      const grid=turf.squareGrid(bbox,cellKm,{units:'kilometers'});
      const byStation={};
@@ -6387,17 +6397,7 @@ async function buildMap(){
    }catch(e){console.warn('No se pudo generar la zonificación continua; se mantienen estaciones y límite',e);}
  }
 
- // Límites municipales sólo como referencia visual. Se dibujan por encima de
- // la malla, sin relleno y sin capturar el ratón, para conservar el tooltip
- // territorial (que incluye el nombre del municipio).
- if(municipios){
-   try{
-     L.geoJSON(municipios,{
-       style:()=>({color:'#ffffff',weight:1.05,opacity:.92,fill:false,fillOpacity:0}),
-       interactive:false
-     }).addTo(map);
-   }catch(e){console.warn('No se pudieron dibujar los límites municipales',e);}
- }
+
 
  if(boundary) L.geoJSON(boundary,{style:{color:'#153d2d',weight:2.4,fill:false,interactive:false}}).addTo(map);
  for(const s of data.stations){
