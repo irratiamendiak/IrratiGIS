@@ -17,7 +17,6 @@ MADRID = ZoneInfo('Europe/Madrid')
 
 def operational_day():
     now = datetime.now(MADRID)
-    # Until 12:00 local time the operational day remains D-1.
     return now.date() if now.hour >= 12 else now.date() - timedelta(days=1)
 
 
@@ -79,6 +78,38 @@ def seed_demo():
         c.commit()
 
 
+def historical_row_ready(sid, day):
+    """Reuse a stored real historical day and avoid a redundant upstream download."""
+    ds = day.isoformat()
+    try:
+        with sqlite3.connect(str(DB_PATH), timeout=10.0) as c:
+            w = c.execute(
+                """SELECT source, temperature, humidity, wind_kmh, rain_mm,
+                          rain_coverage_pct
+                   FROM weather_daily WHERE station_id=? AND day=?""",
+                (sid, ds)
+            ).fetchone()
+            f = c.execute(
+                """SELECT fwi, ire_gip FROM fwi_daily
+                   WHERE station_id=? AND day=?""",
+                (sid, ds)
+            ).fetchone()
+        if not w or not f:
+            return False
+        source = str(w[0] or '').lower()
+        if 'demo' in source or 'open-meteo' in source:
+            return False
+        if any(v is None for v in w[1:5]):
+            return False
+        try:
+            coverage_ok = w[5] is None or float(w[5]) >= 90.0
+        except Exception:
+            coverage_ok = False
+        return coverage_ok and f[0] is not None and f[1] is not None
+    except Exception:
+        return False
+
+
 def bootstrap_real():
     """Populate only the currently published operational day."""
     init_db()
@@ -91,11 +122,17 @@ def bootstrap_real():
     async def run():
         day = operational_day()
         print(f'BASUGIX real bootstrap operational day={day.isoformat()} TZ=Europe/Madrid', flush=True)
-        # Sequential per station preserves FFMC/DMC/DC memory from D-1 to D0.
         for sid in FIXED_STATION_IDS:
+            if day < date.today() and historical_row_ready(sid, day):
+                print(
+                    f'BASUGIX real bootstrap {sid} {day.isoformat()} '
+                    'REUSE stored historical real data',
+                    flush=True,
+                )
+                continue
+
             print(f'BASUGIX real bootstrap {sid} {day.isoformat()} START', flush=True)
             try:
-                # Never let one stalled upstream request block the remaining stations.
                 result = await asyncio.wait_for(update_day(sid, day), timeout=420)
                 print(f'BASUGIX real bootstrap {sid} {day.isoformat()} OK fwi={result.get("fwi")} ire={result.get("ire_gip")}', flush=True)
             except Exception as exc:
@@ -109,8 +146,6 @@ if __name__ == '__main__':
     if PROVIDER == 'demo':
         seed_demo()
     elif V22_WRITE_ENABLED:
-        # The Render start command runs this script before uvicorn. Run the real
-        # bootstrap in a child process so the web server can bind its port at once.
         subprocess.Popen(
             [sys.executable, '-c', 'from seed_demo import bootstrap_real; bootstrap_real()'],
             cwd=os.path.dirname(os.path.abspath(__file__)),
