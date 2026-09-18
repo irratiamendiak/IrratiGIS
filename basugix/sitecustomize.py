@@ -1,3 +1,4 @@
+import asyncio
 import math
 from datetime import date
 
@@ -88,12 +89,13 @@ try:
             "source": "Euskalmet webmet00-summaryData.json",
         }
 
-    _original = m._v221052_station_weather_fast_or_live
-
     async def _patched(station, day):
         if day < date.today():
             try:
-                result = await _historical_web_summary(station, day)
+                # Historical Render path: use only the public Euskalmet web
+                # summary. Never fall through to the authenticated API endpoint,
+                # because that endpoint is the source of the Render timeout.
+                result = await asyncio.wait_for(_historical_web_summary(station, day), timeout=20.0)
                 print(
                     f"BASUGIX HISTORICAL WEB SUMMARY OK station={station} "
                     f"day={day.isoformat()} source=Euskalmet webmet00-summaryData.json",
@@ -103,12 +105,15 @@ try:
             except Exception as exc:
                 print(
                     f"BASUGIX HISTORICAL WEB SUMMARY ERROR station={station} "
-                    f"day={day.isoformat()} type={type(exc).__name__}: {exc}; "
-                    f"falling back to original path",
+                    f"day={day.isoformat()} type={type(exc).__name__}: {exc}",
                     flush=True,
                 )
-        return await _original(station, day)
+                raise RuntimeError(
+                    f"Euskalmet web summary no disponible para {station} {day.isoformat()}: {exc}"
+                ) from exc
+        return await m.v2210_operational_weather(station, day)
 
+    m._render_historical_web_summary = _historical_web_summary
     m._v221052_station_weather_fast_or_live = _patched
     print("BASUGIX Render historical web-summary hotfix loaded", flush=True)
 
