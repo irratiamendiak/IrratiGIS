@@ -699,7 +699,6 @@ def _append_daily_debug(path,var,payload,value):
             fh.write(json.dumps(record,ensure_ascii=False)+'\n')
     except Exception:        pass
 
-
 async def daily_reading(station,sensor,var,day,measure_type_id,measure_id):
     path=(f'/euskalmet/readings/summarized/byDay/forStation/{station}/{sensor}'
           f'/measures/{measure_type_id}/{measure_id}'
@@ -1398,7 +1397,6 @@ def _v224_keys(payload):
         if k not in seen:
             seen.add(k)            out.append(k)
     return out
-
 def _v224_time_from_key(key):
     """Extract HH:MM from Euskalmet reading resource keys.
 
@@ -2097,7 +2095,6 @@ def ire_gip_wind_debug(direction_deg, wind_kmh):
     A=0.12
     p=1.5    increment=A*(south**p)
     factor=1.0+increment
-
     return {
         'direction_deg':round(theta,1),
         'direction_cardinal':wind_cardinal(theta),
@@ -2798,7 +2795,6 @@ def _v221051_coords(d):
             c=_v221051_coords(v)
             if c: return c
     return None
-
 def _v221051_parse_catalog(payload):
     out={}
     for d in walk(payload):
@@ -3498,7 +3494,6 @@ async def update_day(station,day):
             "V22.10 está en modo seguro: escritura desactivada. "
             "Define V22_WRITE_ENABLED=1 sólo tras validar la candidata."
         )
-
     if PROVIDER=='euskalmet':
         met=await v22105_weather_with_station_fallback(station,day)
         vals=(met['temperature'],met['humidity'],met['wind_kmh'],met['rain_mm'])
@@ -4197,8 +4192,7 @@ async def _gipuzkoa_boundary():
             GIPUZKOA_BOUNDARY_URL,
             headers={'User-Agent':'BASUGIX V22.10.5.12 RESPALDO EUSKALMET FINAL'}
         )
-        r.raise_for_status()
-        payload=r.json()
+        r.raise_for_status()        payload=r.json()
     try:
         GIPUZKOA_BOUNDARY_CACHE.write_text(
             json.dumps(payload,ensure_ascii=False),
@@ -4561,43 +4555,24 @@ async def api_v221052_latest_fast():
         payload['live_fallback']=False
         return payload
 
-    # Si falta el día operativo, obtenerlo ahora de Euskalmet en vez de mostrar
-    # silenciosamente el último histórico (2010-2025). Esto es especialmente importante
-    # antes de las 12:00: el día correcto es D-1 y debe ser un dato real de 2026.
+    # Si D0 todavía no está precalculado, la portada debe responder inmediatamente.
+    # El último día completo se muestra como respaldo explícito y el navegador intenta
+    # actualizar D0 en segundo plano mediante refreshOperationalD0InBackground().
+    fallback_payload=_v221052_latest_complete_db_payload(desired)
+    if fallback_payload is not None:
+        fallback_payload=dict(fallback_payload)
+        fallback_payload['mode']='sqlite_immediate_fallback_pending_live_refresh'
+        fallback_payload['requested_day']=desired.isoformat()
+        fallback_payload['live_fallback']=True
+        fallback_payload['needs_live_refresh']=True
+        fallback_payload['live_fallback_reason']='D0 todavía no está precalculado; se muestra de inmediato el último día completo mientras se consulta Euskalmet en segundo plano.'
+        return fallback_payload
+
+    # Sólo si tampoco existe ningún día completo, intentamos Euskalmet en primer plano.
     try:
         live_payload=await asyncio.wait_for(
             api_v22103_live(desired.isoformat(),force=1,_skip_prev_sync=True),
-            timeout=float(os.getenv('EUSKALMET_OPERATIONAL_LATEST_TIMEOUT','75'))
-        )
-        if live_payload and live_payload.get('ok') and any(x.get('ok') for x in (live_payload.get('stations') or [])):
-            live_payload=dict(live_payload)
-            live_payload['requested_day']=desired.isoformat()
-            live_payload['live_fallback']=False
-            live_payload['needs_live_refresh']=False
-            live_payload['mode']='euskalm​et_operational_latest_real'
-            return live_payload
-    except Exception as exc:
-        print('BASUGIX latest real fetch error:',type(exc).__name__,exc,flush=True)
-
-    # No bloqueamos la portada esperando la adquisición lenta de D0.
-    # Si D0 aún no está en SQLite, devolvemos inmediatamente el último día completo
-    # y dejamos que el navegador haga la actualización real en segundo plano.
-    if payload is None:
-        payload=_v221052_latest_complete_db_payload(desired)
-        if payload is not None:
-            payload=dict(payload)
-            payload['mode']='sqlite_immediate_fallback_pending_live_refresh'
-            payload['requested_day']=desired.isoformat()
-            payload['live_fallback']=True
-            payload['needs_live_refresh']=True
-            payload['live_fallback_reason']='D0 todavía no está precalculado; se muestra de inmediato el último día completo mientras se consulta Euskalmet en segundo plano.'
-            return payload
-
-    # Sólo si tampoco existe un día completo, intentamos Euskalmet en primer plano.
-    try:
-        live_payload=await asyncio.wait_for(
-            api_v22103_live(desired.isoformat(),force=1,_skip_prev_sync=True),
-            timeout=float(os.getenv('EUSKALMET_OPERATIONAL_LATEST_TIMEOUT','75'))
+            timeout=float(os.getenv('EUSKALMET_OPERATIONAL_LATEST_TIMEOUT','45'))
         )
         if live_payload and live_payload.get('ok') and any(x.get('ok') for x in (live_payload.get('stations') or [])):
             live_payload=dict(live_payload)
@@ -4609,23 +4584,12 @@ async def api_v221052_latest_fast():
     except Exception as exc:
         print('BASUGIX latest real fetch error:',type(exc).__name__,exc,flush=True)
 
-    # Sólo si Euskalmet falla de verdad, conservamos el último día completo como respaldo.
-    payload=_v221052_latest_complete_db_payload(desired)
-    if payload is None:
-        return {
-            'ok':False,
-            'error':'No existe ningún día completo en SQLite hasta '+desired.isoformat(),
-            'requested_day':desired.isoformat(),
-            'writes_to_database':False,
-        }
-    payload=dict(payload)
-    payload['mode']='sqlite_immediate_fallback_after_live_failure'
-    payload['requested_day']=desired.isoformat()
-    payload['live_fallback']=True
-    payload['needs_live_refresh']=False
-    payload['live_fallback_reason']='Euskalmet no devolvió un día operativo utilizable; se muestra el último día completo disponible.' 
-    return payload
-
+    return {
+        'ok':False,
+        'error':'No existe ningún día completo en SQLite y Euskalmet no devolvió un día operativo utilizable.',
+        'requested_day':desired.isoformat(),
+        'writes_to_database':False,
+    }
 
 @app.get('/debug/v221052/main-day-db/{day_iso}')
 async def debug_v221052_main_day_db(day_iso:str):
@@ -4897,8 +4861,7 @@ async def api_v22103_live(day:str|None=None, force:int=0, _skip_prev_sync:bool=F
                 'rain_points_missing':met.get('rain_points_missing'),
                 'rain_coverage_pct':met.get('rain_coverage_pct'),
                 'rain_quality':met.get('rain_quality'),
-                'data_quality':met.get('data_quality'),
-                'source':met.get('source'),
+                'data_quality':met.get('data_quality'),                'source':met.get('source'),
                 'meteo_source_station':met.get('meteo_source_station'),
                 'meteo_source_station_name':met.get('meteo_source_station_name'),
                 'station_fallback_used':met.get('station_fallback_used'),
@@ -5597,7 +5560,6 @@ async def api_map_current(day:str|None=None):
 
             item['thresholds']=_v22_load_thresholds().get(sid,{})
             out.append(item)
-
     return {
         'ok':True,
         'version':'V22.10.5.12 RESPALDO EUSKALMET FINAL',
@@ -6195,7 +6157,7 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&l
 function renderLoadingCards(){
  const root=document.getElementById('cards');
  const names={C023:'Arrasate',C017:'Miramon',C058:'Bidania',C026:'Berastegi',C028:'Zegama'};
- root.innerHTML=Object.entries(names).map(([sid,name])=>`<div class="card" data-sid="${sid}"><div class="ctop"><span class="sid">${sid}</span><span class="name">${name}</span></div><div><span class="ival" style="font-size:20px">Cargando…</span></div><div class="metrics"><div><b>—</b>°C</div><div><b>—</b>% HR</div><div><b>—</b>km/h</div><div><b>—</b>mm</div></div><div class="isirow"><span>ISI · Índice de propagación</span><b>—</b></div><div class="small" style="margin-top:8px">Obteniendo datos reales de Euskalmet para el 17/09/2026…</div></div>`).join('');
+ root.innerHTML=Object.entries(names).map(([sid,name])=>`<div class="card" data-sid="${sid}"><div class="ctop"><span class="sid">${sid}</span><span class="name">${name}</span></div><div><span class="ival" style="font-size:20px">Cargando…</span></div><div class="metrics"><div><b>—</b>°C</div><div><b>—</b>% HR</div><div><b>—</b>km/h</div><div><b>—</b>mm</div></div><div class="isirow"><span>ISI · Índice de propagación</span><b>—</b></div><div class="small" style="margin-top:8px">Obteniendo datos reales de Euskalmet para la fecha seleccionada…</div></div>`).join('');
 }
 
 function cards(){
@@ -6297,8 +6259,7 @@ async function buildMap(){
  if(boundary){
    // Normalizamos FeatureCollection/Feature para las operaciones Turf.
    if(boundary.type==='FeatureCollection'){
-     try{boundaryFeature=turf.combine(boundary).features[0];}catch(e){boundaryFeature=boundary.features&&boundary.features[0];}
-   }else if(boundary.type==='Feature') boundaryFeature=boundary;
+     try{boundaryFeature=turf.combine(boundary).features[0];}catch(e){boundaryFeature=boundary.features&&boundary.features[0];}   }else if(boundary.type==='Feature') boundaryFeature=boundary;
    else boundaryFeature=turf.feature(boundary);
    const boundLayer=L.geoJSON(boundary,{style:{color:'#153d2d',weight:2.4,fill:false,interactive:false}}).addTo(map);
    try{map.fitBounds(boundLayer.getBounds(),{padding:[18,18]});}catch(e){}
@@ -6997,8 +6958,7 @@ async def debug_rain24_v2283(sid:str,yyyymmdd:str):
       - diferencia
       - resultado OK/REVISAR
     """
-    sid=sid.upper()
-    if sid not in FIXED_STATION_IDS:
+    sid=sid.upper()    if sid not in FIXED_STATION_IDS:
         return {'ok':False,'error':'Estación no válida'}
     if len(yyyymmdd)!=8 or not yyyymmdd.isdigit():
         return {'ok':False,'error':'Fecha YYYYMMDD'}
@@ -7698,7 +7658,6 @@ async def debug_v2293_chain(sid:str,date_from:str,date_to:str):
                        WHERE station_id=? AND day=?""",
                     (sid,cur.isoformat())
                 ).fetchone()
-
             swd=dict(sw) if sw else None
             sfd=dict(sf) if sf else None
 
@@ -8398,22 +8357,3 @@ def _v2296_quality(points):
     return {
         "rain_points": p,
         "rain_missing_points": missing,
-        "rain_coverage_pct": coverage,
-        "data_quality": label,
-    }
-
-
-def _v2296_partial_hours(details):
-    """Extrae horas con menos de 6 lecturas aceptadas."""
-    out = []
-    for item in (details or []):
-        if not isinstance(item, dict):
-            continue
-
-        n = item.get("accepted")
-        if n is None:
-            n = item.get("points_found")
-
-        try:
-            n_int = int(n)
-        except Exception:
