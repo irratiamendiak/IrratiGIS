@@ -3337,6 +3337,20 @@ V221052_ALLOW_EXTERNAL_STATION_FALLBACK=os.getenv(
     'V221052_ALLOW_EXTERNAL_STATION_FALLBACK','1'
 ).strip().lower() in ('1','true','yes','on')
 
+def _v221052_fast_station_year_cached(station,year):
+    """Indica si el índice anual pesado de una estación ya está en memoria.
+    
+    Se usa sólo para acelerar el fallback: si otra estación candidata ya fue
+    parseada durante la misma petición histórica, podemos reutilizarla sin
+    volver a abrir/descomprimir XML.
+    """
+    sid=str(station).upper()
+    yr=int(year)
+    return any(
+        len(k)>=3 and str(k[1]).upper()==sid and int(k[2])==yr
+        for k in _V221052_FAST_OBS_CACHE.keys()
+    )
+
 async def v22105_weather_with_station_fallback(target_station,day):
     """Respaldo geográfico a nivel de ESTACIÓN COMPLETA.
 
@@ -3383,7 +3397,22 @@ async def v22105_weather_with_station_fallback(target_station,day):
         )
 
     candidates=await _v221051_backup_candidates(target_station)
-    for cand in candidates:
+
+    # V22.10.5.18: primero probamos candidatas ya parseadas en memoria,
+    # manteniendo el orden por distancia. En una petición histórica las otras
+    # cuatro estaciones objetivo suelen estar ya disponibles; esto evita que un
+    # fallo de C028 dispare otro parseo XML pesado y vuelva a consumir minutos.
+    cached_candidates=[
+        cand for cand in candidates
+        if _v221052_fast_station_year_cached(cand['station_id'],day.year)
+    ]
+    uncached_candidates=[
+        cand for cand in candidates
+        if cand not in cached_candidates
+    ]
+    ordered_candidates=cached_candidates+uncached_candidates
+
+    for cand in ordered_candidates:
         sid=cand['station_id']
         try:
             met=await _v221052_station_weather_fast_or_live(sid,day)
@@ -4792,7 +4821,7 @@ async def _v221052_explicit_historical_day(day):
             # era demasiado corto y dejaba todas las estaciones en "Sin dato".
             met=await asyncio.wait_for(
                 v22105_weather_with_station_fallback(sid,day),
-                timeout=300.0,
+                timeout=90.0,
             )
             pf,pd,pc=prev_state(sid,day)
             res=calculate(
@@ -6359,7 +6388,7 @@ async function buildMap(){
  let municipios=null;
  try{
    const ctlM=new AbortController();
-   const timerM=setTimeout(()=>ctlM.abort(),10000);
+   const timerM=setTimeout(()=>ctlM.abort(),60000);
    try{
      const mr=await fetch('/api/map/municipios',{signal:ctlM.signal});
      if(mr.ok){
