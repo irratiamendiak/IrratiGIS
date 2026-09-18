@@ -5607,6 +5607,7 @@ async def _v221052_openmeteo_all_locations():
     if not isinstance(payload,list) or len(payload)!=len(FIXED_STATION_IDS):
         raise RuntimeError(f'Respuesta Open-Meteo inesperada: {type(payload).__name__}, ubicaciones={len(payload) if isinstance(payload,list) else "?"}')
     _V221052_FORECAST_CACHE.update({'ts':now,'payload':payload})
+    print(f"BASUGIX Open-Meteo OK http={r.status_code} locations={len(payload)} model=ECMWF-IFS cache=False",flush=True)
     return payload,False
 
 
@@ -5767,6 +5768,7 @@ async def api_v221052_forecast3(offset:int=0):
     started=time.perf_counter()
     try:
         raw_list,cache_hit=await _v221052_openmeteo_all_locations()
+        print(f"BASUGIX forecast request offset={offset} target={target.isoformat()} provider=Open-Meteo/ECMWF-IFS cache={cache_hit}",flush=True)
         thresholds=_v22_load_thresholds()
 
         async def build_station(sid,raw):
@@ -5897,6 +5899,7 @@ async def api_v221052_forecast3(offset:int=0):
         return {
             'ok':True,'version':'V22.10.5.14 · ISI EN PANELES + RAPIDEZ + D0 HÍBRIDO EUSKALMET + OPEN-METEO','writes_to_database':False,
             'selected_day':target.isoformat(),'stations':stations,'mode':'hybrid_forecast' if offset==0 else 'forecast',
+            'openmeteo_provider':'Open-Meteo / ECMWF IFS','openmeteo_cache_hit':bool(cache_hit),
             'forecast':True,'forecast_offset':offset,'forecast_model':'ECMWF IFS via Open-Meteo',
             'calculation_seconds':round(time.perf_counter()-started,3),'cache':{'hit':cache_hit},'errors':errors,
             'note':('D0 se recalcula en cada petición: FFMC/DMC/DC parten de D-1 real; lluvia usa Euskalmet 10-min hasta la última lectura disponible y Open-Meteo sólo para el tramo restante hasta las 12:00. '
