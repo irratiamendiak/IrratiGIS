@@ -2,6 +2,12 @@ import asyncio
 import os
 import subprocess
 import sys
+
+# Load Render historical Euskalmet web-summary hotfix before importing the app.
+try:
+    import sitecustomize  # noqa: F401
+except Exception as exc:
+    print(f'BASUGIX hotfix import warning: {type(exc).__name__}: {exc}', flush=True)
 from datetime import date, timedelta, datetime
 import sqlite3
 import csv
