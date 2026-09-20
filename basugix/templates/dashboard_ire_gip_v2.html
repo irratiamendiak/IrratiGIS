@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BASUGIX · Riesgo de incendio</title>
+<style>body{font:16px system-ui,sans-serif;max-width:1200px;margin:2rem auto;padding:0 1rem;color:#202733}h1{margin-bottom:.25rem}.meta{color:#596579}table{width:100%;border-collapse:collapse;margin-top:1rem}th,td{padding:.55rem;border-bottom:1px solid #ddd;text-align:left}th{background:#f3f5f7}.msg{padding:.8rem;background:#fff4ce;border-radius:.4rem}</style></head>
+<body><h1>BASUGIX · Riesgo de incendio</h1><p class="meta">Proveedor: {{ provider|e }} · Estaciones: {{ station_text|e }}</p>
+{% if msg %}<p class="msg">{{ msg|e }}</p>{% endif %}
+<table><thead><tr><th>Estación</th><th>Municipio</th><th>Fecha</th><th>Temperatura</th><th>Humedad</th><th>Viento</th><th>Lluvia</th><th>FWI</th><th>Nivel</th></tr></thead><tbody>
+{% for row in rows %}<tr><td>{{ row.name|default(row.station_id, true)|e }} ({{ row.station_id|e }})</td><td>{{ row.municipality|default('—', true)|e }}</td><td>{{ row.day|default('—', true)|e }}</td><td>{{ row.temperature|default('—', true)|e }}</td><td>{{ row.humidity|default('—', true)|e }}</td><td>{{ row.wind_kmh|default('—', true)|e }}</td><td>{{ row.rain_mm|default('—', true)|e }}</td><td>{{ row.fwi|default('—', true)|e }}</td><td>{{ row.danger_level|default('—', true)|e }}</td></tr>{% else %}<tr><td colspan="9">No hay datos disponibles.</td></tr>{% endfor %}</tbody></table>
+<p>Datos mostrados según la disponibilidad de la base de datos.</p></body></html>
