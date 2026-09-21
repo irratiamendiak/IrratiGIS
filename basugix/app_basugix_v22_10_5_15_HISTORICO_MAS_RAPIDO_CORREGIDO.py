@@ -358,29 +358,6 @@ def token():
         p=BASE_DIR/p
     if not p.exists():
         raise RuntimeError(f'No existe la clave privada: {p}')
-            # Diagnóstico temporal: registrar solo la huella de la clave pública.
-    try:
-        import hashlib
-        from cryptography.hazmat.primitives import serialization
-
-        private_key = serialization.load_pem_private_key(
-            p.read_bytes(),
-            password=None,
-        )
-        public_der = private_key.public_key().public_bytes(
-            encoding=serialization.Encoding.DER,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo,
-        )
-        fingerprint = hashlib.sha256(public_der).hexdigest()
-        print(
-            f"[EUSKALMET] Huella SHA-256 de la clave pública cargada: "
-            f"{fingerprint}"
-        )
-    except Exception as exc:
-        print(
-            f"[EUSKALMET] No se pudo calcular la huella de la clave: "
-            f"{type(exc).__name__}"
-        )
 
     owner_claim,owner_value=_read_login_id(p)
 
