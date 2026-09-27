@@ -1,6 +1,6 @@
 (()=>{
   "use strict";
-  const API="https://irratigis-api.pages.dev";
+    const API="https://irratigis-erreketak.kulixka-mendiak.workers.dev";
   const TOKEN_KEY="irratigis_session_token";
   const SESSION_TOKEN_KEY="irratigis_session_token_temp";
   const METEOSAT_EUROPE_BOUNDS=[[34,-25],[72,45]];
