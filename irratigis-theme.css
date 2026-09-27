@@ -1,0 +1,104 @@
+/* ===========================================================
+   IrratiGIS · tema visual (estilo panel-fwi)
+   Solo apariencia. No cambia ninguna lógica.
+   Para revertir: quita la línea <link ...irratigis-theme.css...>
+   =========================================================== */
+
+:root{
+  --bg:#f5f7f6;
+  --panel:#ffffff;
+  --ink:#14231b;
+  --muted:#6b7772;
+  --green:#1b6b46;
+  --green-2:#124e33;
+  --line:#e6eae7;
+  --blue:#175f8f;
+  --chip:#eef3f0;
+}
+
+body{ background:var(--bg); color:var(--ink); }
+
+/* ---- Cabecera: sin banner; título grande en oscuro sobre fondo claro ---- */
+header{
+  background:var(--bg);
+  color:var(--ink);
+  border-bottom:1px solid var(--line);
+}
+header .eyebrow{ color:var(--green); opacity:1; font-weight:800; letter-spacing:.14em; }
+header h1{ color:var(--ink); font-weight:800; letter-spacing:-.02em; }
+header p{ color:var(--muted); opacity:1; }
+
+/* ---- Paneles y tarjetas: blanco, borde fino, sombra sutil ---- */
+.panel{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:16px;
+  box-shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.03);
+}
+.card{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:14px;
+  box-shadow:0 1px 2px rgba(16,24,40,.04);
+}
+.card span{ color:var(--muted); }
+.card strong{ color:var(--ink); font-weight:800; letter-spacing:-.01em; }
+.card small{ color:var(--muted); }
+
+.details div,.coordbox,.coordresult{
+  background:#f7faf8; border:1px solid var(--line); border-radius:12px;
+}
+
+/* ---- Insignias tipo "nivel" (píldoras) ---- */
+.badge{ background:var(--chip); color:var(--green); border-radius:999px; font-weight:800; padding:5px 10px; }
+.badge.blue{ background:#e8f2f8; color:var(--blue); }
+
+/* ---- Botones ---- */
+button,.filebtn{ border-radius:10px; font-weight:750; transition:background .15s, border-color .15s, color .15s; }
+.filebtn{ background:var(--green); color:#fff; }
+.filebtn:hover{ background:var(--green-2); }
+button{ background:#fff; color:var(--ink); border:1px solid var(--line); }
+button:hover{ background:#f3f6f4; border-color:#d5ddd8; }
+.tracktools button.active,.coordactions button.active{ background:var(--green); color:#fff; border-color:var(--green); }
+
+/* ---- Mapa y controles ---- */
+#map{ border-radius:14px; border:1px solid var(--line); }
+.leaflet-control-layers,.b5m-control{ border-radius:12px !important; box-shadow:0 2px 12px rgba(16,24,40,.14) !important; }
+.leaflet-bar{ border-radius:10px !important; overflow:hidden; box-shadow:0 2px 12px rgba(16,24,40,.14) !important; }
+.b5m-toggle{ border-radius:10px !important; }
+
+/* ---- Pestañas de la app (píldoras, como FWI/Basugix del panel) ---- */
+#irratiAppTabs{
+  display:flex; flex-wrap:wrap; gap:8px;
+  grid-template-columns:none;
+  position:static;
+  background:transparent; border:0; box-shadow:none;
+  padding:0; margin:0 0 16px;
+}
+#irratiAppTabs .irrati-tab{
+  min-height:0; flex:0 0 auto;
+  border:1px solid var(--line);
+  background:#fff; color:var(--ink);
+  border-radius:999px; padding:9px 16px;
+  font-weight:800; box-shadow:none;
+}
+#irratiAppTabs .irrati-tab.active{
+  background:var(--green); color:#fff; border-color:var(--green); box-shadow:none;
+}
+
+/* ---- Intro de cada sección ---- */
+main .irrati-section-intro{
+  background:var(--panel); border:1px solid var(--line);
+  border-radius:16px; box-shadow:0 1px 2px rgba(16,24,40,.04);
+}
+main .irrati-section-kicker{ color:var(--green); }
+main .irrati-section-intro h2{ color:var(--ink); font-weight:800; letter-spacing:-.01em; }
+main .irrati-status-badge{ background:var(--chip); color:var(--green); }
+main .irrati-status-badge.blue{ background:#e8f2f8; color:var(--blue); }
+
+/* ---- Ventana de inicio de sesión ---- */
+#irratiLoginBackdrop input{ border-radius:10px; }
+#irratiLoginBackdrop button[id="irratiLogin"]{ border-radius:10px; }
+
+/* ---- Botón de cerrar sesión ---- */
+#irratiLogoutButton{ border:1px solid var(--line); border-radius:999px; }
