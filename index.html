@@ -811,9 +811,7 @@ async function loadControlledBurns(){
   try{
     const response = await fetch(`${api}/api/active`, {
       method:"GET",
-      headers:{
-        "Authorization":`Bearer ${token}`
-      }
+      headers:{ "Authorization":`Bearer ${token}` }
     });
 
     if(!response.ok){
@@ -825,24 +823,28 @@ async function loadControlledBurns(){
 
     controlledBurnLayer.clearLayers();
 
+    const flameIcon = L.divIcon({
+      className:"burn-flame-icon",
+      html:'<div style="font-size:22px;line-height:1;text-align:center;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45))">🔥</div>',
+      iconSize:[24,24],
+      iconAnchor:[12,12],
+      popupAnchor:[0,-10]
+    });
+
     fires.forEach((fire)=>{
       const lat = Number(fire.latitudea);
       const lon = Number(fire.longitudea);
 
       if(!Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
-      const marker = L.circleMarker([lat,lon],{
-        radius:8,
-        weight:2,
-        fillOpacity:.85
-      });
+      const marker = L.marker([lat,lon],{icon:flameIcon});
 
       marker.bindPopup(
-        `<strong>🔥 Baimendutako erreketak</strong><br><br>`+
-        `<strong>Baimena:</strong> ${escapeHtml(fire.baimena || "-")}<br>`+
-        `<strong>Udalerria:</strong> ${escapeHtml(fire.udalerria || "-")}<br>`+
-        `<strong>Hasiera-data:</strong> ${escapeHtml(fire.fechaInicio || "-")}<br>`+
-        `<strong>Egoera:</strong> ${escapeHtml(fire.egoera || "-")}<br>`+
+        `<strong>🔥 Baimendutako erreketa</strong><br><br>`+
+        `<strong>Titularra:</strong> ${escapeHtml(fire.titular || "—")}<br>`+
+        `<strong>Telefonoa:</strong> ${escapeHtml(fire.telefono || "—")}<br>`+
+        `<strong>Baimena:</strong> ${escapeHtml(fire.baimena || fire.numeroAutorizacion || "—")}<br>`+
+        `<strong>Materiala:</strong> ${escapeHtml(fire.tipoQuema || fire.descripcionMaterial || "—")}<br>`+
         `<strong>Koordenatuak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}`
       );
 
@@ -852,21 +854,15 @@ async function loadControlledBurns(){
     controlledBurnsLoaded = true;
 
     $("message").textContent =
-      `${fires.length} baimendutako erreketak kargatu dira.`;
+      `${fires.length} baimendutako erreketa kargatu dira.`;
 
   }catch(error){
-    console.error(
-      "Ezin izan dira baimendutako erreketak kargatu:",
-      error
-    );
-
-    $("message").textContent =
-      "Ezin izan dira baimendutako erreketak kargatu.";
-
+    console.error("Ezin izan dira baimendutako erreketak kargatu:", error);
+    $("message").textContent = "Ezin izan dira baimendutako erreketak kargatu.";
   }finally{
     controlledBurnsLoading = false;
   }
-}  
+}
 let waypoints=[];
 let waypointMode=false;
 let manualTrackPoints=[];
