@@ -74,6 +74,20 @@ function utmToLonLat(x, y, zone) {
   return [lon * 180 / Math.PI, lat * 180 / Math.PI];
 }
 __name(utmToLonLat, "utmToLonLat");
+function landcoverGroup(text) {
+  if (!text) return { group: "desconocido", clase: null };
+  const t = text.toLowerCase();
+  const has = (...ws) => ws.some((w) => t.includes(w));
+  if (has("sector secundario", "industrial", "industria")) return { group: "industrial", clase: "industrial" };
+  if (has("minas y canteras", "cantera", "mina", "extracc")) return { group: "cantera", clase: "minas y canteras" };
+  if (has("uso residencial", "residencial", "tejido urbano", "urbano", "edificaci")) return { group: "urbano", clase: "urbano/residencial" };
+  if (has("servicios comerciales", "comercial", "log\u00edst", "redes de transporte", "transporte", "utilidades", "servicios")) return { group: "urbano", clase: "servicios/infraestructura" };
+  if (has("forestal", "bosque", "arbolado", "matorral", "monte", "con\u00edfera", "frondosa")) return { group: "forestal", clase: "forestal" };
+  if (has("agricultura", "agr\u00edcola", "cultivo", "labor", "pastizal", "prado", "pasto", "herb\u00e1c", "vi\u00f1ed", "frutal", "olivar")) return { group: "agricola", clase: "agr\u00edcola/pasto" };
+  if (has("vegetaci", "natural", "sin uso econ\u00f3mico", "zonas terrestres")) return { group: "vegetacion", clase: "vegetaci\u00f3n/natural" };
+  return { group: "desconocido", clase: null };
+}
+__name(landcoverGroup, "landcoverGroup");
 function localParts(date = /* @__PURE__ */ new Date()) {
   const p = new Intl.DateTimeFormat("en-US", { timeZone: GFA_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date), o = {};
   for (const x of p) if (["year", "month", "day"].includes(x.type)) o[x.type] = x.value;
@@ -312,6 +326,24 @@ var worker_default = { async fetch(request, env) {
     if (!from && !to) return json({ ok: false, error: "Indica date o from/to" }, 400, origin);
     const start = from || to, end = to || from, rows = await env.DB.prepare(`SELECT observed_date,observed_at,burn_key,anyo,codigo,codigo_tipo,numero_autorizacion,titular,municipio,fecha_inicio,fecha_fin,estado,latitud,longitud,tipo_quema,superficie,codigo_sigpac,payload_json FROM burn_observations WHERE observed_date BETWEEN ? AND ? ORDER BY observed_date DESC, observed_at DESC, numero_autorizacion`).bind(start, end).all(), runs = await env.DB.prepare(`SELECT observed_date,observed_at,burn_count FROM burn_daily_runs WHERE observed_date BETWEEN ? AND ? ORDER BY observed_date DESC`).bind(start, end).all();
     return json({ ok: true, from: start, to: end, days: runs.results || [], fires: (rows.results || []).map((r) => ({ ...r, data: r.payload_json ? JSON.parse(r.payload_json) : null })) }, 200, origin);
+  }
+    if (url.pathname === "/api/landcover" && request.method === "GET") {
+    const lat = Number(url.searchParams.get("lat")), lon = Number(url.searchParams.get("lon"));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return json({ ok: false, error: "lat/lon requeridos" }, 400, origin);
+    const base = "https://servicios.idee.es/wms-inspire/ocupacion-suelo";
+    const dd = 0.0009, W = 101, H = 101, I = 50, J = 50;
+    const bbox = `${lat - dd},${lon - dd},${lat + dd},${lon + dd}`;
+    const gfi = /* @__PURE__ */ __name(async (layer, fmt) => {
+      const q = new URLSearchParams({ service: "WMS", version: "1.3.0", request: "GetFeatureInfo", layers: layer, query_layers: layer, styles: "", crs: "EPSG:4326", bbox, width: String(W), height: String(H), i: String(I), j: String(J), info_format: fmt, feature_count: "3" });
+      try { const r = await fetch(`${base}?${q.toString()}`, { cf: { cacheTtl: 86400, cacheEverything: true } }); if (!r.ok) return null; return await r.text(); } catch (_) { return null; }
+    }, "gfi");
+    try {
+      const txt = await gfi("LU.ExistingLandUse", "text/html") || await gfi("LU.ExistingLandUse", "text/plain") || await gfi("LC.LandCoverSurfaces", "text/html") || await gfi("LC.LandCoverSurfaces", "text/plain");
+      const g = landcoverGroup(txt);
+      return json({ ok: true, group: g.group, clase: g.clase, fuente: "IGN Ocupaci\u00f3n del Suelo", raw: (txt || "").replace(/\s+/g, " ").slice(0, 300) }, 200, origin);
+    } catch (error) {
+      return json({ ok: false, error: "GetFeatureInfo fall\u00f3", detail: String(error?.message || error) }, 502, origin);
+    }
   }
   return json({ ok: false, error: "Not found" }, 404, origin);
 }, async scheduled(controller, env) {
