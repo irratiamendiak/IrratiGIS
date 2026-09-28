@@ -1,6 +1,6 @@
 (()=>{
 "use strict";
-const API="https://irratigis-api.pages.dev",ZONE={west:-5,south:42.3,east:-.8,north:44},DAYS=5,INITIAL_DAYS=1;
+const API="https://irratigis-erreketak.kulixka-mendiak.workers.dev",ZONE={west:-5,south:42.3,east:-.8,north:44},DAYS=5,INITIAL_DAYS=1;
 let map=null,layer=null,enabled=false,loading=false,records=[],legend=null,statusEl=null,classifierPromise=null;
 const token=()=>window.IrratiGISAuth?.getToken?.()||"",getMap=()=>window.IrratiGISMap||null;
 const esc=v=>String(v??"").replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
