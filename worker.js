@@ -365,29 +365,30 @@ var worker_default = { async fetch(request, env) {
   if (url.pathname === "/api/parcel" && request.method === "GET") {
     const lat = Number(url.searchParams.get("lat")), lon = Number(url.searchParams.get("lon"));
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return json({ ok: false, error: "lat/lon requeridos" }, 400, origin);
-    const [x, y] = utm30Xy(lat, lon), d = 150;
-    const bbox4326 = `${lat - 0.0016},${lon - 0.0016},${lat + 0.0016},${lon + 0.0016}`;
-    const bbox25830 = `${x - d},${y - d},${x + d},${y + d}`;
-    const tries = [
-      { srs: "urn:ogc:def:crs:EPSG::4326", bbox: bbox4326 },
-      { srs: "urn:ogc:def:crs:EPSG::25830", bbox: bbox25830 },
-      { srs: "EPSG::25830", bbox: bbox25830 }
-    ];
-    const fetchWfs = /* @__PURE__ */ __name(async (t) => {
-      const q = new URLSearchParams({ service: "WFS", version: "2.0.0", request: "GetFeature", typenames: "cp:CadastralParcel", srsname: t.srs, bbox: `${t.bbox},${t.srs}`, count: "80" });
-      try { const r = await fetch(`https://ovc.catastro.meh.es/INSPIRE/wfsCP.aspx?${q.toString()}`, { cf: { cacheTtl: 86400, cacheEverything: true } }); return { status: r.status, txt: await r.text() }; } catch (e) { return { status: 0, txt: String(e?.message || e) }; }
-    }, "fetchWfs");
-    let res = null, usado = null;
-    for (const t of tries) { res = await fetchWfs(t); if (res.txt && /CadastralParcel|localId|nationalCadastral/i.test(res.txt)) { usado = t.srs; break; } }
-    const txt = res ? res.txt : "";
-    const refs = [];
-    const re = /(?:nationalCadastralReference|localId|cp:localId|gml:identifier)[^>]*>([^<]+)</gi;
-    let mm;
-    while ((mm = re.exec(txt)) !== null) refs.push(mm[1].trim());
-    let urbana = 0, rustica = 0;
-    for (const ref of refs) { const knd = parcelKind(ref.split(".").pop()); if (knd === "urbana") urbana++; else if (knd === "rustica") rustica++; }
+    const rc = /* @__PURE__ */ __name(async (la, lo) => {
+      const q = new URLSearchParams({ SRS: "EPSG:4326", Coordenada_X: String(lo), Coordenada_Y: String(la) });
+      try {
+        const r = await fetch(`https://ovc.catastro.meh.es/OVCServWeb/OVCWcfCallejero/COVCCoordenadas.svc/json/Consulta_RCCOOR?${q.toString()}`, { cf: { cacheTtl: 86400, cacheEverything: true } });
+        return { status: r.status, txt: await r.text() };
+      } catch (e) { return { status: 0, txt: String(e?.message || e) }; }
+    }, "rc");
+    // Consulta el punto y 4 puntos a ~120 m (N,S,E,O) para captar entorno industrial contiguo
+    const off = 0.0012;
+    const puntos = [[lat, lon], [lat + off, lon], [lat - off, lon], [lat, lon + off], [lat, lon - off]];
+    let urbana = 0, rustica = 0, muestras = [], primerRaw = "";
+    for (const [la, lo] of puntos) {
+      const res = await rc(la, lo);
+      if (!primerRaw) primerRaw = res.txt || "";
+      const m = (res.txt || "").match(/"pc1"\s*:\s*"([^"]*)"[\s\S]*?"pc2"\s*:\s*"([^"]*)"/i) || (res.txt || "").match(/<pc1>([^<]*)<\/pc1>\s*<pc2>([^<]*)<\/pc2>/i);
+      if (m) {
+        const ref = (m[1] + m[2]).trim();
+        const knd = parcelKind(ref);
+        if (knd === "urbana") urbana++; else if (knd === "rustica") rustica++;
+        if (muestras.length < 5) muestras.push(ref);
+      }
+    }
     const kind = urbana > 0 ? "urbana" : rustica > 0 ? "rustica" : null;
-    return json({ ok: true, kind, urbanas: urbana, rusticas: rustica, total: refs.length, srsUsado: usado, httpStatus: res?.status ?? null, muestra: refs.slice(0, 4), raw: (txt || "").replace(/\s+/g, " ").slice(0, 600) }, 200, origin);
+    return json({ ok: true, kind, urbanas: urbana, rusticas: rustica, muestra: muestras, fuente: "Catastro OVC (punto + entorno)", raw: primerRaw.replace(/\s+/g, " ").slice(0, 500) }, 200, origin);
   }
   return json({ ok: false, error: "Not found" }, 404, origin);
 }, async scheduled(controller, env) {
