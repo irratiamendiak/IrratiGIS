@@ -362,7 +362,7 @@ var worker_default = { async fetch(request, env) {
       return json({ ok: false, error: "GetFeatureInfo fall\u00f3", detail: String(error?.message || error) }, 502, origin);
     }
   }
-    if (url.pathname === "/api/parcel" && request.method === "GET") {
+  if (url.pathname === "/api/parcel" && request.method === "GET") {
     const lat = Number(url.searchParams.get("lat")), lon = Number(url.searchParams.get("lon"));
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return json({ ok: false, error: "lat/lon requeridos" }, 400, origin);
     const [x, y] = utm30Xy(lat, lon), d = 150;
@@ -388,7 +388,6 @@ var worker_default = { async fetch(request, env) {
     for (const ref of refs) { const knd = parcelKind(ref.split(".").pop()); if (knd === "urbana") urbana++; else if (knd === "rustica") rustica++; }
     const kind = urbana > 0 ? "urbana" : rustica > 0 ? "rustica" : null;
     return json({ ok: true, kind, urbanas: urbana, rusticas: rustica, total: refs.length, srsUsado: usado, httpStatus: res?.status ?? null, muestra: refs.slice(0, 4), raw: (txt || "").replace(/\s+/g, " ").slice(0, 600) }, 200, origin);
-  }
   }
   return json({ ok: false, error: "Not found" }, 404, origin);
 }, async scheduled(controller, env) {
