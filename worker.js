@@ -362,25 +362,33 @@ var worker_default = { async fetch(request, env) {
       return json({ ok: false, error: "GetFeatureInfo fall\u00f3", detail: String(error?.message || error) }, 502, origin);
     }
   }
-  if (url.pathname === "/api/parcel" && request.method === "GET") {
+    if (url.pathname === "/api/parcel" && request.method === "GET") {
     const lat = Number(url.searchParams.get("lat")), lon = Number(url.searchParams.get("lon"));
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return json({ ok: false, error: "lat/lon requeridos" }, 400, origin);
-    try {
-      const [x, y] = utm30Xy(lat, lon), d = 150;
-      const q = new URLSearchParams({ service: "WFS", version: "2.0.0", request: "GetFeature", typenames: "CP:CadastralParcel", srsname: "EPSG::25830", bbox: `${x - d},${y - d},${x + d},${y + d}`, count: "60" });
-      const r = await fetch(`https://ovc.catastro.meh.es/INSPIRE/wfsCP.aspx?${q.toString()}`, { cf: { cacheTtl: 86400, cacheEverything: true } });
-      const txt = await r.text();
-      const refs = [];
-      const re = /(?:nationalCadastralReference|localId)[^>]*>([^<]+)</gi;
-      let mm;
-      while ((mm = re.exec(txt)) !== null) refs.push(mm[1].trim());
-      let urbana = 0, rustica = 0;
-      for (const ref of refs) { const knd = parcelKind(ref); if (knd === "urbana") urbana++; else if (knd === "rustica") rustica++; }
-      const kind = urbana > 0 ? "urbana" : rustica > 0 ? "rustica" : null;
-      return json({ ok: true, kind: kind, urbanas: urbana, rusticas: rustica, total: refs.length, fuente: "Catastro INSPIRE (entorno 150 m)", muestra: refs.slice(0, 4) }, 200, origin);
-    } catch (error) {
-      return json({ ok: false, error: "Catastro WFS fall\u00f3", detail: String(error?.message || error) }, 502, origin);
-    }
+    const [x, y] = utm30Xy(lat, lon), d = 150;
+    const bbox4326 = `${lat - 0.0016},${lon - 0.0016},${lat + 0.0016},${lon + 0.0016}`;
+    const bbox25830 = `${x - d},${y - d},${x + d},${y + d}`;
+    const tries = [
+      { srs: "urn:ogc:def:crs:EPSG::4326", bbox: bbox4326 },
+      { srs: "urn:ogc:def:crs:EPSG::25830", bbox: bbox25830 },
+      { srs: "EPSG::25830", bbox: bbox25830 }
+    ];
+    const fetchWfs = /* @__PURE__ */ __name(async (t) => {
+      const q = new URLSearchParams({ service: "WFS", version: "2.0.0", request: "GetFeature", typenames: "cp:CadastralParcel", srsname: t.srs, bbox: `${t.bbox},${t.srs}`, count: "80" });
+      try { const r = await fetch(`https://ovc.catastro.meh.es/INSPIRE/wfsCP.aspx?${q.toString()}`, { cf: { cacheTtl: 86400, cacheEverything: true } }); return { status: r.status, txt: await r.text() }; } catch (e) { return { status: 0, txt: String(e?.message || e) }; }
+    }, "fetchWfs");
+    let res = null, usado = null;
+    for (const t of tries) { res = await fetchWfs(t); if (res.txt && /CadastralParcel|localId|nationalCadastral/i.test(res.txt)) { usado = t.srs; break; } }
+    const txt = res ? res.txt : "";
+    const refs = [];
+    const re = /(?:nationalCadastralReference|localId|cp:localId|gml:identifier)[^>]*>([^<]+)</gi;
+    let mm;
+    while ((mm = re.exec(txt)) !== null) refs.push(mm[1].trim());
+    let urbana = 0, rustica = 0;
+    for (const ref of refs) { const knd = parcelKind(ref.split(".").pop()); if (knd === "urbana") urbana++; else if (knd === "rustica") rustica++; }
+    const kind = urbana > 0 ? "urbana" : rustica > 0 ? "rustica" : null;
+    return json({ ok: true, kind, urbanas: urbana, rusticas: rustica, total: refs.length, srsUsado: usado, httpStatus: res?.status ?? null, muestra: refs.slice(0, 4), raw: (txt || "").replace(/\s+/g, " ").slice(0, 600) }, 200, origin);
+  }
   }
   return json({ ok: false, error: "Not found" }, 404, origin);
 }, async scheduled(controller, env) {
