@@ -1,6 +1,6 @@
 (()=>{
 "use strict";
-const VERSION="20260910-industrial1";
+const VERSION="20260928-veg-vs-industrial";
 const INDUSTRIAL_TAGS=["industrial","quarry","brownfield","works","kiln","plant","chimney","storage_tank","silo","power","generator","substation","landfill"];
 const FOREST_TAGS=["forest","wood","scrub","heath","fell"];
 const VEGETATION_TAGS=["forest","wood","scrub","heath","fell","farmland","farmyard","meadow","orchard","vineyard","grassland","grass","allotments","greenfield","plant_nursery","greenhouse_horticulture","animal_keeping"];
@@ -11,46 +11,41 @@ function num(v){const n=Number(v);return Number.isFinite(n)?n:null}
 function confidenceValue(v){if(v==null||v==="")return null;if(typeof v==="string"){const s=v.trim().toLowerCase();if(s==="high"||s==="h")return 90;if(["nominal","medium","med","n"].includes(s))return 65;if(s==="low"||s==="l")return 35}const n=num(v);return n==null?null:Math.max(0,Math.min(100,n))}
 function hasTag(ctx,tags){const values=Array.isArray(ctx?.tags)?ctx.tags.map(x=>String(x).toLowerCase()):[];return tags.some(t=>values.some(v=>v===t||v.endsWith(`=${t}`)||v.includes(`=${t},`)||v.includes(`,${t}`)))}
 function classify(firms,context={}){
- const frp=num(firms?.frp??firms?.properties?.frp),confidence=confidenceValue(firms?.confidence??firms?.confidence_pct??firms?.properties?.confidence??firms?.properties?.confidence_pct);
- const repeated=Math.max(0,Math.round(num(context.repeatedDetections)??0)),temporal=Math.max(0,Math.round(num(context.temporalRepeatedDetections)??0));
- const clusterFire=context.clusterFire===true,parcelUrban=context.parcelUrban===true,parcelRural=context.parcelRural===true;
- const industrialTag=hasTag(context,INDUSTRIAL_TAGS),explicitForest=hasTag(context,FOREST_TAGS),vegetation=hasTag(context,VEGETATION_TAGS);
- const urbanLanduse=hasTag(context,URBAN_TAGS);
- const nearestIndustrial=num(context.nearestIndustrialMeters),nearestForest=num(context.nearestForestMeters);
- const veryNearIndustrial=nearestIndustrial!=null&&nearestIndustrial<=100;
- const industrialEvidence=industrialTag&&veryNearIndustrial&&(parcelUrban||urbanLanduse);
- const urbanOsm=urbanLanduse||industrialEvidence;
- const localForest=context.localForest===true||explicitForest||(nearestForest!=null&&nearestForest<=150);
- const ruralNatural=!parcelUrban&&(parcelRural||vegetation||localForest||context.ruralNatural===true);
- const strong=(frp!=null&&frp>=20)||(confidence!=null&&confidence>=80);
- const clusteredWildland=clusterFire&&confidence!=null&&confidence>=50;
- let score=25,reasons=[];
- if(parcelUrban){score-=25;reasons.push("parcela catastral urbana")}
- if(parcelRural){score+=18;reasons.push("parcela catastral rústica")}
- if(localForest&&!parcelUrban){score+=35;reasons.push("entorno forestal/natural")}
- else if(vegetation&&!parcelUrban){score+=20;reasons.push("entorno de vegetación rural")}
- if(urbanOsm){score-=10;reasons.push("entorno urbano")}
- if(industrialEvidence){score-=25;reasons.push("actividad industrial inmediata en entorno urbano")}
- else if(nearestIndustrial!=null&&nearestIndustrial<=300){score-=5;reasons.push(`actividad industrial a ${Math.round(nearestIndustrial)} m`)}
- if(repeated>0){score+=Math.min(24,repeated*8);reasons.push(`${repeated} detección${repeated===1?"":"es"} próximas`)}
- if(temporal>0){score+=Math.min(18,temporal*6);reasons.push(`${temporal} detección${temporal===1?"":"es"} en momentos distintos`)}
- if(clusteredWildland){score+=20;reasons.push("cluster de detecciones compatible con frente de incendio")}
- if(frp!=null){score+=frp>=50?20:frp>=20?15:frp>=5?8:2;reasons.push(`FRP ${frp} MW`)}
- if(confidence!=null){score+=confidence>=80?15:confidence>=50?8:2;reasons.push(`confianza ${Math.round(confidence)}%`)}
- if(ruralNatural&&!parcelUrban&&!industrialEvidence){score+=10;reasons.push("entorno rural/natural compatible con incendio de vegetación")}
+ const frp=num(firms?.frp??firms?.properties?.frp);
+ const confidence=confidenceValue(firms?.confidence??firms?.confidence_pct??firms?.properties?.confidence??firms?.properties?.confidence_pct);
+ const repeated=Math.max(0,Math.round(num(context.repeatedDetections)??0));
+ const temporal=Math.max(0,Math.round(num(context.temporalRepeatedDetections)??0));
+ const clusterFire=context.clusterFire===true;
+ const parcelUrban=context.parcelUrban===true;
+ const parcelRural=context.parcelRural===true;
+ const nearestIndustrial=num(context.nearestIndustrialMeters);
+ const nearestForest=num(context.nearestForestMeters);
+ const nearestUrban=num(context.nearestUrbanMeters);
+ const industrialNear=nearestIndustrial!=null&&nearestIndustrial<=150;
+ const urbanNear=nearestUrban!=null&&nearestUrban<=120;
+ const forestNear=nearestForest!=null&&nearestForest<=250;
+ const vegetationFlag=!parcelUrban&&(context.vegetation===true||context.explicitForest===true||context.localForest===true||forestNear||parcelRural||hasTag(context,VEGETATION_TAGS));
+ const industrialFlag=industrialNear&&(context.industrial===true||hasTag(context,INDUSTRIAL_TAGS));
+ const urbanFlag=parcelUrban||(urbanNear&&(context.urban===true||hasTag(context,URBAN_TAGS)));
+ let score=45,reasons=[];
+ if(vegetationFlag){score+=25;reasons.push("entorno de vegetación (monte/cultivo/pasto)")}
+ if(forestNear){score+=8;reasons.push(`masa forestal a ≤${Math.round(nearestForest)} m`)}
+ if(parcelRural){score+=6;reasons.push("parcela catastral rústica")}
+ if(parcelUrban){score-=30;reasons.push("parcela catastral urbana")}
+ if(industrialFlag){score-=40;reasons.push(`industria a ≤${Math.round(nearestIndustrial)} m`)}
+ else if(nearestIndustrial!=null&&nearestIndustrial<=300){score-=8;reasons.push(`industria a ${Math.round(nearestIndustrial)} m`)}
+ if(urbanFlag&&!vegetationFlag){score-=12;reasons.push("entorno urbano")}
+ if(clusterFire||repeated>0){score+=12;reasons.push("varias detecciones próximas")}
+ if(temporal>0){score+=5;reasons.push("detecciones en momentos distintos")}
+ if(frp!=null){score+=frp>=50?12:frp>=20?8:frp>=5?4:0;reasons.push(`FRP ${frp} MW`)}
+ if(confidence!=null){score+=confidence>=80?8:confidence>=50?4:0;reasons.push(`confianza ${Math.round(confidence)}%`)}
  score=Math.max(0,Math.min(100,Math.round(score)));
- let category="thermal_anomaly";
- if(industrialEvidence) category="probable_industrial_source";
- else if(parcelUrban) category=(strong||clusterFire)?"possible_fire":"thermal_anomaly";
- else if(localForest) category="probable_forest_fire";
- else if(clusteredWildland) category="probable_forest_fire";
- else if((parcelRural||vegetation)&&(clusterFire||temporal>0||repeated>=2)) category="probable_forest_fire";
- else if(ruralNatural&&(strong||clusterFire||temporal>0||repeated>0||score>=40)) category="probable_forest_fire";
- else if(ruralNatural) category="possible_fire";
- else if(vegetation&&(clusterFire||strong||temporal>0)&&score>=45) category="probable_forest_fire";
- else if(strong||clusterFire||score>=40) category="possible_fire";
- const labels={probable_forest_fire:"🔥 Probable incendio forestal",possible_fire:"🟠 Posible incendio",thermal_anomaly:"♨️ Anomalía térmica",probable_industrial_source:"🏭 Probable fuente industrial"};
- return{category,label:labels[category],score,reasons,confidence,frp,nearestIndustrialMeters:nearestIndustrial,repeatedDetections:repeated,temporalRepeatedDetections:temporal,parcelUrban,parcelRural,parcelClassification:context.parcelClassification||null};
+ let category;
+ if(industrialFlag||(urbanFlag&&!vegetationFlag)) category="industrial_urban";
+ else if(vegetationFlag) category="vegetation_fire";
+ else category="thermal_anomaly";
+ const labels={vegetation_fire:"🔥 Fuego en vegetación",industrial_urban:"🏭 Fuente industrial/urbana",thermal_anomaly:"♨️ Anomalía térmica"};
+ return{category,label:labels[category],score,reasons,confidence,frp,nearestIndustrialMeters:nearestIndustrial,nearestForestMeters:nearestForest,repeatedDetections:repeated,temporalRepeatedDetections:temporal,parcelUrban,parcelRural,parcelClassification:context.parcelClassification||null};
 }
 function isNavarra(lat,lon){return lat>=42.4&&lat<=43.4&&lon>=-2.1&&lon<=-0.7}
 function isAraba(lat,lon){return lat>=42.45&&lat<=43.25&&lon>=-3.45&&lon<=-2.15}
