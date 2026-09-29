@@ -366,7 +366,7 @@ var worker_default = { async fetch(request, env) {
     const lat = Number(url.searchParams.get("lat")), lon = Number(url.searchParams.get("lon"));
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return json({ ok: false, error: "lat/lon requeridos" }, 400, origin);
     const rc = /* @__PURE__ */ __name(async (la, lo) => {
-      const q = new URLSearchParams({ SRS: "EPSG:4326", Coordenada_X: String(lo), Coordenada_Y: String(la) });
+      const q = new URLSearchParams({ SRS: "EPSG:4326", CoordX: String(lo), CoordY: String(la) });
       try {
         const r = await fetch(`https://ovc.catastro.meh.es/OVCServWeb/OVCWcfCallejero/COVCCoordenadas.svc/json/Consulta_RCCOOR?${q.toString()}`, { cf: { cacheTtl: 86400, cacheEverything: true } });
         return { status: r.status, txt: await r.text() };
