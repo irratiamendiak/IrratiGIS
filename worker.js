@@ -147,25 +147,54 @@ function mapQuema(item) {
   return { id: s.codigo ?? item?.codigo ?? null, anyo: s.anyo ?? item?.anyo ?? null, codigoTipo: s.tipo?.codigo ?? item?.tipo?.codigo ?? item?.codigoTipo ?? null, numeroAutorizacion, baimena: numeroAutorizacion, titular, nombre: nombre || null, apellidos: apellidos || null, telefono: telefonoQuema || telefonoPermiso || null, telefonoPermiso, telefonoQuema, telefonoMovil: d.telefonoMovil || null, telefonoFijo: d.telefonoFijo || null, latitud: latDeg, longitud: lonDeg, latitudea: latDeg, longitudea: lonDeg, direccion: s.direccion ?? item?.direccion ?? null, municipio, udalerria: municipio, tipoQuema, descripcionMaterial: tipoQuema, codigoMaterial: m.codigo || null, motivo: mot.descripcion || null, fechaInicio: s.fechaInicio ?? item?.fechaInicio ?? null, fechaFin: s.fechaFin ?? item?.fechaFin ?? null, fechaAutorizacion: d.autorizar?.fecha ?? d.fechaAutorizacion ?? null, estado, egoera: estado, superficie: d.superficie ?? null, codigoSigpac: d.codigoSigpac ?? null, accesos: d.accesos ?? null, parcela: { nombreParcela: d.descripcionRecinto ?? null, provincia: s.provincia ?? null, municipio, poligono: s.poligono ?? null, parcela: s.parcela ?? null, recinto: s.recinto ?? null } };
 }
 __name(mapQuema, "mapQuema");
-async function requestGfaList(user, query) {
-  const r = await fetch(`${GFA_BASE_URL}/quema/lista/completo/es`, { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json", "security-token": user.token, "security-user-id": String(user.id) }, body: JSON.stringify(query) }), text = await r.text();
-  console.log("GFA LIST HTTP:", r.status, "recordsText:", text.slice(0, 500));
-  if (!r.ok) throw new Error(`Consulta de quemas GFA HTTP ${r.status}: ${text.slice(0, 500)}`);
-  try {
-    const raw = JSON.parse(text);
-    return Array.isArray(raw) ? raw : [];
-  } catch (_) {
-    throw new Error(`GFA no devuelve JSON v\xE1lido: ${text.slice(0, 500)}`);
+async function fetchRetry(url, opts = {}, tries = 3, timeoutMs = 8e3) {
+  let last = null;
+  for (let i = 0; i < tries; i++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, { ...opts, signal: ctrl.signal });
+      clearTimeout(timer);
+      return r;
+    } catch (e) {
+      clearTimeout(timer);
+      last = e;
+    }
   }
+  throw last || new Error("fetchRetry agotado");
+}
+__name(fetchRetry, "fetchRetry");
+async function requestGfaList(user, query) {
+  let lastText = "";
+  for (let intento = 0; intento < 6; intento++) {
+    const r = await fetchRetry(`${GFA_BASE_URL}/quema/lista/completo/es`, { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json", "security-token": user.token, "security-user-id": String(user.id) }, body: JSON.stringify(query) }, 2, 9e3);
+    const text = await r.text();
+    lastText = text;
+    console.log("GFA LIST HTTP:", r.status, "intento", intento, "recordsText:", text.slice(0, 200));
+    if (r.ok) {
+      try {
+        const raw = JSON.parse(text);
+        return Array.isArray(raw) ? raw : [];
+      } catch (_) {
+      }
+    }
+    await new Promise((res) => setTimeout(res, 800));
+  }
+  throw new Error(`GFA no devuelve JSON v\xE1lido tras reintentos: ${lastText.slice(0, 300)}`);
 }
 __name(requestGfaList, "requestGfaList");
 async function requestGfaDetail(user, item) {
   const s = item?.solicitud || {}, anyo = s.anyo ?? item?.anyo, codigo = s.codigo ?? item?.codigo, tipo = s.tipo?.codigo ?? item?.tipo?.codigo ?? item?.codigoTipo;
   if (anyo == null || codigo == null || tipo == null) return item;
-  const r = await fetch(`${GFA_BASE_URL}/solicitud/${encodeURIComponent(anyo)}/${encodeURIComponent(codigo)}/${encodeURIComponent(tipo)}/es`, { headers: { "Accept": "application/json", "security-token": user.token, "security-user-id": String(user.id) } }), text = await r.text();
-  if (!r.ok) throw new Error(`Detalle quema ${codigo} HTTP ${r.status}: ${text.slice(0, 300)}`);
   try {
-    return JSON.parse(text) || item;
+    const r = await fetchRetry(`${GFA_BASE_URL}/solicitud/${encodeURIComponent(anyo)}/${encodeURIComponent(codigo)}/${encodeURIComponent(tipo)}/es`, { headers: { "Accept": "application/json", "security-token": user.token, "security-user-id": String(user.id) } }, 2, 6e3);
+    if (!r.ok) return item;
+    const text = await r.text();
+    try {
+      return JSON.parse(text) || item;
+    } catch (_) {
+      return item;
+    }
   } catch (_) {
     return item;
   }
@@ -174,13 +203,24 @@ __name(requestGfaDetail, "requestGfaDetail");
 async function getActiveBurns(env, targetDate = dateKey()) {
   const user = String(env.GFA_USER || "").trim(), password = String(env.GFA_PASSWORD || "");
   if (!user || !password) throw new Error("Credenciales GFA no configuradas");
-  const login = await fetch(`${GFA_BASE_URL}/login/es`, { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" }, body: JSON.stringify({ user, password }) });
-  if (!login.ok) {
-    const text = await login.text();
-    throw new Error(`Login GFA HTTP ${login.status}: ${text.slice(0, 300)}`);
+  let authorizedUser = null, loginErr = "";
+  for (let intento = 0; intento < 5; intento++) {
+    try {
+      const login = await fetchRetry(`${GFA_BASE_URL}/login/es`, { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" }, body: JSON.stringify({ user, password }) }, 2, 9e3);
+      const text = await login.text();
+      if (login.ok) {
+        try {
+          const j = JSON.parse(text);
+          if (j?.token && j?.id != null) { authorizedUser = j; break; }
+        } catch (_) {}
+      }
+      loginErr = `HTTP ${login.status}: ${text.slice(0, 120)}`;
+    } catch (e) {
+      loginErr = String(e?.message || e);
+    }
+    await new Promise((res) => setTimeout(res, 800));
   }
-  const authorizedUser = await login.json();
-  if (!authorizedUser?.token || authorizedUser?.id == null) throw new Error("Respuesta de login GFA sin token o id");
+  if (!authorizedUser) throw new Error(`Login GFA sin token tras reintentos (${loginErr})`);
   const municipalityIds = Array.isArray(authorizedUser.municipios) ? authorizedUser.municipios.map((m) => typeof m === "object" ? m.id : m).filter((v) => v != null) : [], baseQuery = { dni: null, idsEstado: ["a", "q"], poligono: null, parcela: null, recinto: null, anyo: null, codigo: null, fechaIncio: dayStart(targetDate), fechaFin: dayEnd(targetDate), tipoSolicitud: "Q", nombreCiudadano: null, transferidaPastos: null, transferidaMontesUtilidadPublica: null, transferidaEspaciosNaturales: null, nombreParcela: null, idsMunicipio: municipalityIds, numAut: null, idGuardaForestal: null };
   let list = await requestGfaList(authorizedUser, baseQuery), queryUsed = "estado+municipio+tipo";
   if (!list.length) {
