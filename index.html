@@ -803,11 +803,11 @@ const cadastralWms=L.tileLayer.wms("https://b5m.gipuzkoa.eus/inspire/wms/gipuzko
   version:"1.3.0", opacity:0.8, attribution:"Gipuzkoako Foru Aldundia · Katastro INSPIRE"
 });
 
-const drawings=L.featureGroup().addTo(map);
+const drawings=L.featureGroup();
 
 /* V2.11 fix: create this layer BEFORE using it in L.control.layers(). */
-const manualTrackLayer=L.featureGroup().addTo(map);
-const waypointLayer=L.featureGroup().addTo(map);
+const manualTrackLayer=L.featureGroup();
+const waypointLayer=L.featureGroup();
 // 🔥 Baimendutako erreketak
 const controlledBurnLayer = L.featureGroup();
 
@@ -1187,7 +1187,7 @@ document.addEventListener("keydown",e=>{
     setTimeout(()=>map.invalidateSize({animate:false}),80);
   }
 });
-cadastralWms.addTo(map);
+
 
 
 function escapeHtml(s){
