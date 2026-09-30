@@ -557,6 +557,25 @@ button,.filebtn,input,select{touch-action:manipulation}
       Track-a marrazteko, sakatu «Track-a marraztu» eta gero egin klik mapan.
     </p>
   </section>
+    <section class="panel">
+    <div class="maphead">
+      <div>
+        <h2>🔥 Erreketen historikoa</h2>
+        <div><span class="badge">Data zehatza</span> <span class="badge blue">Data-tartea</span></div>
+      </div>
+    </div>
+    <div class="coordbox" style="background:#fff">
+      <label for="histFrom">Datatik / Desde</label>
+      <input id="histFrom" type="date">
+      <label for="histTo">Datara / Hasta (hutsik = egun bakarra)</label>
+      <input id="histTo" type="date">
+      <div class="coordactions" style="margin-top:10px">
+        <button id="histQuery">Kontsultatu</button>
+        <button id="histClear">Garbitu</button>
+      </div>
+      <div id="histResult" class="coordresult" style="margin-top:10px">Aukeratu data bat eta sakatu «Kontsultatu».</div>
+    </div>
+  </section>
 
 
   <section class="panel">
@@ -2764,7 +2783,80 @@ window.addEventListener("orientationchange",()=>{
 if(window.visualViewport){
   window.visualViewport.addEventListener("resize",responsiveMapResize);
 }
+/* ===== Erreketen historikoa ===== */
+(function(){
+  const histLayer = L.featureGroup();
+  let histShown = false;
 
+  const flameIconHist = L.divIcon({
+    className:"burn-flame-icon",
+    html:'<div style="font-size:22px;line-height:1;text-align:center;filter:drop-shadow(0 1px 1px rgba(0,0,0,.55))">🔥</div>',
+    iconSize:[24,24], iconAnchor:[12,12], popupAnchor:[0,-10]
+  });
+
+  async function queryHistory(){
+    const from = $("histFrom").value;
+    const to = $("histTo").value || from;
+    if(!from){ $("histResult").textContent = "Aukeratu gutxienez data bat."; return; }
+
+    const token = window.IrratiGISAuth?.getToken?.();
+    const api = window.IrratiGISAuth?.API;
+    if(!token || !api){ $("histResult").textContent = "Saioa ez dago aktibo."; return; }
+
+    $("histResult").textContent = "Kontsultatzen…";
+    try{
+      const r = await fetch(`${api}/api/history?from=${from}&to=${to}`, { headers:{ Authorization:`Bearer ${token}` } });
+      const j = await r.json();
+      if(!r.ok){ throw new Error(j.error || `HTTP ${r.status}`); }
+      const fires = Array.isArray(j.fires) ? j.fires : [];
+
+      histLayer.clearLayers();
+      let pintadas = 0;
+      const bounds = [];
+      fires.forEach(row=>{
+        const f = row.data || row;
+        const lat = Number(f.latitudea ?? f.latitud);
+        const lon = Number(f.longitudea ?? f.longitud);
+        if(!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        const m = L.marker([lat,lon],{icon:flameIconHist});
+        m.bindPopup(
+          `<strong>🔥 Erreketa (historikoa)</strong><br><br>`+
+          `<strong>Data:</strong> ${escapeHtml(row.observed_date || "—")}<br>`+
+          `<strong>Kodea:</strong> ${escapeHtml(f.id || "—")}<br>`+
+          `<strong>Titularra:</strong> ${escapeHtml(f.titular || "—")}<br>`+
+          `<strong>Telefonoa:</strong> ${escapeHtml(f.telefono || "—")}<br>`+
+          `<strong>Materiala:</strong> ${escapeHtml(f.tipoQuema || f.descripcionMaterial || "—")}<br>`+
+          `<strong>Helbidea:</strong> ${escapeHtml(f.direccion || "—")}<br>`+
+          `<strong>Koordenatuak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}`
+        );
+        m.addTo(histLayer);
+        bounds.push([lat,lon]);
+        pintadas++;
+      });
+
+      if(!histShown){ histLayer.addTo(map); histShown = true; }
+
+      if(pintadas){
+        try{ map.fitBounds(L.latLngBounds(bounds).pad(0.2)); }catch(_){}
+        $("histResult").innerHTML = `<strong>${pintadas}</strong> erreketa aurkitu dira (${escapeHtml(from)}${to!==from?` → ${escapeHtml(to)}`:""}).`;
+      }else{
+        $("histResult").textContent = `Ez da erreketarik aurkitu (${from}${to!==from?` → ${to}`:""}).`;
+      }
+    }catch(e){
+      $("histResult").textContent = "Errorea: " + (e.message || e);
+    }
+  }
+
+  function clearHistory(){
+    histLayer.clearLayers();
+    if(histShown){ map.removeLayer(histLayer); histShown = false; }
+    $("histResult").textContent = "Aukeratu data bat eta sakatu «Kontsultatu».";
+  }
+
+  const qBtn = $("histQuery"), cBtn = $("histClear");
+  if(qBtn) qBtn.addEventListener("click", queryHistory);
+  if(cBtn) cBtn.addEventListener("click", clearHistory);
+})();
 })();
 </script>
 </body>
