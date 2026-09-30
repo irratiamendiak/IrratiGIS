@@ -840,12 +840,13 @@ async function loadControlledBurns(){
 
       const marker = L.marker([lat,lon],{icon:flameIcon});
 
-      marker.bindPopup(
+            marker.bindPopup(
         `<strong>🔥 Baimendutako erreketa</strong><br><br>`+
+        `<strong>Kodea:</strong> ${escapeHtml(fire.id || "—")}<br>`+
         `<strong>Titularra:</strong> ${escapeHtml(fire.titular || "—")}<br>`+
         `<strong>Telefonoa:</strong> ${escapeHtml(fire.telefono || "—")}<br>`+
-        `<strong>Baimena:</strong> ${escapeHtml(fire.baimena || fire.numeroAutorizacion || "—")}<br>`+
         `<strong>Materiala:</strong> ${escapeHtml(fire.tipoQuema || fire.descripcionMaterial || "—")}<br>`+
+        `<strong>Helbidea:</strong> ${escapeHtml(fire.direccion || "—")}<br>`+
         `<strong>Koordenatuak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}`
       );
 
