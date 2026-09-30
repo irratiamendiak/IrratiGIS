@@ -14,6 +14,11 @@
       return {x:Math.round(p[0]),y:Math.round(p[1])};
     }catch(_){return null;}
   }
+    function materialEu(v){
+    const t=String(v??"").trim().toLowerCase();
+    const map={"matorral":"Sastrakak","restos agrícolas":"Nekazal kondarrak","restos agricolas":"Nekazal kondarrak","restos forestales":"Baso kondarrak","vegetación herbácea":"Belarkara landaretza","vegetacion herbacea":"Belarkara landaretza"};
+    return map[t]||(v||"—");
+  }
   async function apiFetch(path,options={}){return fetch(`${API}${path}`,{...options,mode:"cors",credentials:"omit",cache:"no-store"});}
   function recoverMap(){
     if(window.IrratiGISMap||typeof L==="undefined")return window.IrratiGISMap||null;
