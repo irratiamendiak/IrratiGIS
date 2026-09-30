@@ -7,6 +7,13 @@
   function getToken(){return localStorage.getItem(TOKEN_KEY)||sessionStorage.getItem(SESSION_TOKEN_KEY)||"";}
   function saveToken(token,remember){localStorage.removeItem(TOKEN_KEY);sessionStorage.removeItem(SESSION_TOKEN_KEY);(remember?localStorage:sessionStorage).setItem(remember?TOKEN_KEY:SESSION_TOKEN_KEY,token);}
   function clearToken(){localStorage.removeItem(TOKEN_KEY);sessionStorage.removeItem(SESSION_TOKEN_KEY);}
+  function toUtm30(lat,lon){
+    try{
+      if(typeof proj4==="undefined")return null;
+      const p=proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[lon,lat]);
+      return {x:Math.round(p[0]),y:Math.round(p[1])};
+    }catch(_){return null;}
+  }
   async function apiFetch(path,options={}){return fetch(`${API}${path}`,{...options,mode:"cors",credentials:"omit",cache:"no-store"});}
   function recoverMap(){
     if(window.IrratiGISMap||typeof L==="undefined")return window.IrratiGISMap||null;
@@ -37,7 +44,7 @@
             if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
             const m=L.circleMarker([lat,lon],{radius:8,weight:2,fillOpacity:.85});
             const esc=s=>String(s??"").replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'\"':"&quot;","'":"&#039;"}[c]));
-            m.bindPopup(`<strong>🔥 Baimendutako erreketa</strong><br><br><strong>Baimena:</strong> ${esc(f.baimena||f.codigo||"-")}<br><strong>Udalerria:</strong> ${esc(f.udalerria||"-")}<br><strong>Egoera:</strong> ${esc(f.egoera||"-")}<br><strong>Koordenatuak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+            const u=toUtm30(lat,lon);m.bindPopup(`<strong>🔥 Baimendutako erreketa</strong><br><br><strong>Baimena:</strong> ${esc(f.baimena||f.codigo||"-")}<br><strong>Udalerria:</strong> ${esc(f.udalerria||"-")}<br><strong>Egoera:</strong> ${esc(f.egoera||"-")}<br><strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${u?`<br><strong>UTM (ETRS89 30N):</strong> X ${u.x} · Y ${u.y}`:""}`);
             m.addTo(controlled);
           });
           if(fires.length)map.fitBounds(controlled.getBounds().pad(.2),{maxZoom:15,animate:false});
@@ -120,12 +127,23 @@
         let n=0; const bounds=[];
         fires.forEach(row=>{
           const f=row.data||row;
-          const lat=Number(f.latitudea??f.latitud), lon=Number(f.longitudea??f.longitud);
-          if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+          let lat=Number(f.latitudea??f.latitud), lon=Number(f.longitudea??f.longitud);
+          // Si vienen en UTM (valores grandes), convertir a lat/lon con proj4 (ETRS89/30N)
+          if(Number.isFinite(lat)&&Number.isFinite(lon)&&(Math.abs(lat)>90||Math.abs(lon)>180)){
+            try{
+              const xUtm=Number(f.longitudea??f.longitud??f.x??lon);
+              const yUtm=Number(f.latitudea??f.latitud??f.y??lat);
+              if(typeof proj4!=="undefined"){
+                const g=proj4("+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs","+proj=longlat +datum=WGS84 +no_defs",[xUtm,yUtm]);
+                lon=g[0]; lat=g[1];
+              }
+            }catch(_){}
+          }
+          if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return;
           const rec={data:row.observed_date||"",kodea:f.id||"",titularra:f.titular||"",telefonoa:f.telefono||"",materiala:f.tipoQuema||f.descripcionMaterial||"",udalerria:f.municipio||f.udalerria||"",helbidea:f.direccion||"",lat:lat.toFixed(6),lon:lon.toFixed(6)};
           lastRows.push(rec);
           const m=L.marker([lat,lon],{icon:flame});
-          m.bindPopup(`<strong>🔥 Erreketa (historikoa)</strong><br><br><strong>Data:</strong> ${esc(rec.data||"—")}<br><strong>Kodea:</strong> ${esc(rec.kodea||"—")}<br><strong>Titularra:</strong> ${esc(rec.titularra||"—")}<br><strong>Telefonoa:</strong> ${esc(rec.telefonoa||"—")}<br><strong>Materiala:</strong> ${esc(rec.materiala||"—")}<br><strong>Helbidea:</strong> ${esc(rec.helbidea||"—")}<br><strong>Koordenatuak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+          const uH=toUtm30(lat,lon);m.bindPopup(`<strong>🔥 Erreketa (historikoa)</strong><br><br><strong>Data:</strong> ${esc(rec.data||"—")}<br><strong>Kodea:</strong> ${esc(rec.kodea||"—")}<br><strong>Titularra:</strong> ${esc(rec.titularra||"—")}<br><strong>Telefonoa:</strong> ${esc(rec.telefonoa||"—")}<br><strong>Materiala:</strong> ${esc(rec.materiala||"—")}<br><strong>Helbidea:</strong> ${esc(rec.helbidea||"—")}<br><strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uH?`<br><strong>UTM (ETRS89 30N):</strong> X ${uH.x} · Y ${uH.y}`:""}`);
           m.addTo(histLayer); bounds.push([lat,lon]); n++;
         });
         if(!shown){histLayer.addTo(map);shown=true;}
