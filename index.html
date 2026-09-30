@@ -858,14 +858,16 @@ async function loadControlledBurns(){
 
       const marker = L.marker([lat,lon],{icon:flameIcon});
 
-            marker.bindPopup(
+                  let uTxt = "";
+      try { if (typeof proj4 !== "undefined") { const pu = proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[lon,lat]); uTxt = `<br><strong>UTM (ETRS89 30N):</strong> X ${Math.round(pu[0])} · Y ${Math.round(pu[1])}`; } } catch(e){}
+      marker.bindPopup(
         `<strong>🔥 Baimendutako erreketa</strong><br><br>`+
         `<strong>Kodea:</strong> ${escapeHtml(fire.id || "—")}<br>`+
         `<strong>Titularra:</strong> ${escapeHtml(fire.titular || "—")}<br>`+
         `<strong>Telefonoa:</strong> ${escapeHtml(fire.telefono || "—")}<br>`+
         `<strong>Materiala:</strong> ${escapeHtml(fire.tipoQuema || fire.descripcionMaterial || "—")}<br>`+
         `<strong>Helbidea:</strong> ${escapeHtml(fire.direccion || "—")}<br>`+
-        `<strong>Koordenatuak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}`
+        `<strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uTxt}`
       );
 
       marker.addTo(controlledBurnLayer);
@@ -2812,11 +2814,16 @@ if(window.visualViewport){
       histLayer.clearLayers();
       let pintadas = 0;
       const bounds = [];
-      fires.forEach(row=>{
+            fires.forEach(row=>{
         const f = row.data || row;
-        const lat = Number(f.latitudea ?? f.latitud);
-        const lon = Number(f.longitudea ?? f.longitud);
-        if(!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        let lat = Number(f.latitudea ?? f.latitud);
+        let lon = Number(f.longitudea ?? f.longitud);
+        if(Number.isFinite(lat) && Number.isFinite(lon) && (Math.abs(lat)>90 || Math.abs(lon)>180)){
+          try{ if(typeof proj4!=="undefined"){ const g=proj4("+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs","+proj=longlat +datum=WGS84 +no_defs",[lon,lat]); lon=g[0]; lat=g[1]; } }catch(_){}
+        }
+        if(!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat)>90 || Math.abs(lon)>180) return;
+        let uTxtH = "";
+        try{ if(typeof proj4!=="undefined"){ const pu=proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[lon,lat]); uTxtH=`<br><strong>UTM (ETRS89 30N):</strong> X ${Math.round(pu[0])} · Y ${Math.round(pu[1])}`; } }catch(_){}
         const m = L.marker([lat,lon],{icon:flameIconHist});
         m.bindPopup(
           `<strong>🔥 Erreketa (historikoa)</strong><br><br>`+
@@ -2826,7 +2833,7 @@ if(window.visualViewport){
           `<strong>Telefonoa:</strong> ${escapeHtml(f.telefono || "—")}<br>`+
           `<strong>Materiala:</strong> ${escapeHtml(f.tipoQuema || f.descripcionMaterial || "—")}<br>`+
           `<strong>Helbidea:</strong> ${escapeHtml(f.direccion || "—")}<br>`+
-          `<strong>Koordenatuak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}`
+          `<strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uTxtH}`
         );
         m.addTo(histLayer);
         bounds.push([lat,lon]);
