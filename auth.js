@@ -14,7 +14,7 @@
       return {x:Math.round(p[0]),y:Math.round(p[1])};
     }catch(_){return null;}
   }
-    function materialEu(v){
+  function materialEu(v){
     const t=String(v??"").trim().toLowerCase();
     const map={"matorral":"Sastrakak","restos agrícolas":"Nekazal kondarrak","restos agricolas":"Nekazal kondarrak","restos forestales":"Baso kondarrak","vegetación herbácea":"Belarkara landaretza","vegetacion herbacea":"Belarkara landaretza"};
     return map[t]||(v||"—");
@@ -104,7 +104,7 @@
     const R=id=>document.getElementById(id);
 
     let lastRows=[], lastFrom="", lastTo="";
-    const COLS=[["data","Data"],["kodea","Kodea"],["titularra","Titularra"],["telefonoa","Telefonoa"],["materiala","Materiala"],["udalerria","Udalerria"],["helbidea","Helbidea"],["lat","Lat"],["lon","Lon"]];
+    const COLS=[["data","Data"],["kodea","Kodea"],["titularra","Titularra"],["telefonoa","Telefonoa"],["materiala","Erregaia"],["udalerria","Udalerria"],["helbidea","Helbidea"],["lat","Lat"],["lon","Lon"]];
     function renderTable(rows){
       const w=R("irratiHistTableWrap");
       if(!rows.length){w.innerHTML="";R("irratiHistExports").style.display="none";return;}
@@ -145,10 +145,10 @@
             }catch(_){}
           }
           if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return;
-          const rec={data:row.observed_date||"",kodea:f.id||"",titularra:f.titular||"",telefonoa:f.telefono||"",materiala:f.tipoQuema||f.descripcionMaterial||"",udalerria:f.municipio||f.udalerria||"",helbidea:f.direccion||"",lat:lat.toFixed(6),lon:lon.toFixed(6)};
+          const rec={data:row.observed_date||"",kodea:f.id||"",titularra:f.titular||"",telefonoa:f.telefono||"",materiala:materialEu(f.tipoQuema||f.descripcionMaterial),udalerria:f.municipio||f.udalerria||"",helbidea:f.direccion||"",lat:lat.toFixed(6),lon:lon.toFixed(6)};
           lastRows.push(rec);
           const m=L.marker([lat,lon],{icon:flame});
-          const uH=toUtm30(lat,lon);m.bindPopup(`<strong>🔥 Erreketa (historikoa)</strong><br><br><strong>Data:</strong> ${esc(rec.data||"—")}<br><strong>Kodea:</strong> ${esc(rec.kodea||"—")}<br><strong>Titularra:</strong> ${esc(rec.titularra||"—")}<br><strong>Telefonoa:</strong> ${esc(rec.telefonoa||"—")}<br><strong>Materiala:</strong> ${esc(rec.materiala||"—")}<br><strong>Helbidea:</strong> ${esc(rec.helbidea||"—")}<br><strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uH?`<br><strong>UTM (ETRS89 30N):</strong> X ${uH.x} · Y ${uH.y}`:""}`);
+          const uH=toUtm30(lat,lon);m.bindPopup(`<strong>🔥 Erreketa (historikoa)</strong><br><br><strong>Data:</strong> ${esc(rec.data||"—")}<br><strong>Kodea:</strong> ${esc(rec.kodea||"—")}<br><strong>Titularra:</strong> ${esc(rec.titularra||"—")}<br><strong>Telefonoa:</strong> ${esc(rec.telefonoa||"—")}<br><strong>Erregaia:</strong> ${esc(rec.materiala)}<br><strong>Helbidea:</strong> ${esc(rec.helbidea||"—")}<br><strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uH?`<br><strong>UTM (ETRS89 30N):</strong> X ${uH.x} · Y ${uH.y}`:""}`);
           m.addTo(histLayer); bounds.push([lat,lon]); n++;
         });
         if(!shown){histLayer.addTo(map);shown=true;}
