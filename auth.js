@@ -77,6 +77,11 @@
           <button id="irratiHistClear" style="border:0;border-radius:10px;padding:11px 14px;font-weight:750;cursor:pointer;background:#edf3ef;color:#234233">Garbitu</button>
         </div>
         <div id="irratiHistResult" style="margin-top:10px;padding:10px;border-radius:9px;background:#fff;border:1px solid var(--line);font-size:13px">Aukeratu data bat eta sakatu «Kontsultatu».</div>
+        <div id="irratiHistExports" style="display:none;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <button id="irratiHistCsv" style="border:0;border-radius:10px;padding:10px 13px;font-weight:750;cursor:pointer;background:#175f8f;color:#fff">Excel (CSV) esportatu</button>
+          <button id="irratiHistPdf" style="border:0;border-radius:10px;padding:10px 13px;font-weight:750;cursor:pointer;background:#8a5a1f;color:#fff">PDF esportatu</button>
+        </div>
+        <div id="irratiHistTableWrap" style="margin-top:10px;overflow-x:auto"></div>
       </div>`;
     burnView.appendChild(sec);
 
@@ -86,12 +91,26 @@
     const flame=L.divIcon({className:"burn-flame-icon",html:'<div style="font-size:22px;line-height:1;text-align:center;filter:drop-shadow(0 1px 1px rgba(0,0,0,.55))">🔥</div>',iconSize:[24,24],iconAnchor:[12,12],popupAnchor:[0,-10]});
     const R=id=>document.getElementById(id);
 
+    let lastRows=[], lastFrom="", lastTo="";
+    const COLS=[["data","Data"],["kodea","Kodea"],["titularra","Titularra"],["telefonoa","Telefonoa"],["materiala","Materiala"],["udalerria","Udalerria"],["helbidea","Helbidea"],["lat","Lat"],["lon","Lon"]];
+    function renderTable(rows){
+      const w=R("irratiHistTableWrap");
+      if(!rows.length){w.innerHTML="";R("irratiHistExports").style.display="none";return;}
+      let html='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>';
+      COLS.forEach(c=>html+=`<th style="text-align:left;padding:6px 8px;border-bottom:2px solid #cfdad3;white-space:nowrap">${esc(c[1])}</th>`);
+      html+="</tr></thead><tbody>";
+      rows.forEach(r=>{html+="<tr>";COLS.forEach(c=>html+=`<td style="padding:6px 8px;border-bottom:1px solid #e2e8e4;white-space:nowrap">${esc(r[c[0]])}</td>`);html+="</tr>";});
+      html+="</tbody></table>";
+      w.innerHTML=html;
+      R("irratiHistExports").style.display="flex";
+    }
     async function run(){
       const from=R("irratiHistFrom").value, to=R("irratiHistTo").value||from;
       if(!from){R("irratiHistResult").textContent="Aukeratu gutxienez data bat.";return;}
       const token=getToken();
       if(!token){R("irratiHistResult").textContent="Saioa ez dago aktibo.";return;}
       R("irratiHistResult").textContent="Kontsultatzen…";
+      lastRows=[]; lastFrom=from; lastTo=to;
       try{
         const r=await fetch(`${API}/api/history?from=${from}&to=${to}`,{headers:{Authorization:`Bearer ${token}`},cache:"no-store"});
         const j=await r.json();
@@ -103,15 +122,60 @@
           const f=row.data||row;
           const lat=Number(f.latitudea??f.latitud), lon=Number(f.longitudea??f.longitud);
           if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+          const rec={data:row.observed_date||"",kodea:f.id||"",titularra:f.titular||"",telefonoa:f.telefono||"",materiala:f.tipoQuema||f.descripcionMaterial||"",udalerria:f.municipio||f.udalerria||"",helbidea:f.direccion||"",lat:lat.toFixed(6),lon:lon.toFixed(6)};
+          lastRows.push(rec);
           const m=L.marker([lat,lon],{icon:flame});
-          m.bindPopup(`<strong>🔥 Erreketa (historikoa)</strong><br><br><strong>Data:</strong> ${esc(row.observed_date||"—")}<br><strong>Kodea:</strong> ${esc(f.id||"—")}<br><strong>Titularra:</strong> ${esc(f.titular||"—")}<br><strong>Telefonoa:</strong> ${esc(f.telefono||"—")}<br><strong>Materiala:</strong> ${esc(f.tipoQuema||f.descripcionMaterial||"—")}<br><strong>Helbidea:</strong> ${esc(f.direccion||"—")}<br><strong>Koordenatuak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+          m.bindPopup(`<strong>🔥 Erreketa (historikoa)</strong><br><br><strong>Data:</strong> ${esc(rec.data||"—")}<br><strong>Kodea:</strong> ${esc(rec.kodea||"—")}<br><strong>Titularra:</strong> ${esc(rec.titularra||"—")}<br><strong>Telefonoa:</strong> ${esc(rec.telefonoa||"—")}<br><strong>Materiala:</strong> ${esc(rec.materiala||"—")}<br><strong>Helbidea:</strong> ${esc(rec.helbidea||"—")}<br><strong>Koordenatuak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
           m.addTo(histLayer); bounds.push([lat,lon]); n++;
         });
         if(!shown){histLayer.addTo(map);shown=true;}
+        renderTable(lastRows);
         if(n){try{map.fitBounds(L.latLngBounds(bounds).pad(0.2));}catch(_){}R("irratiHistResult").innerHTML=`<strong>${n}</strong> erreketa aurkitu dira (${esc(from)}${to!==from?` → ${esc(to)}`:""}).`;}
         else{R("irratiHistResult").textContent=`Ez da erreketarik aurkitu (${from}${to!==from?` → ${to}`:""}).`;}
-      }catch(e){R("irratiHistResult").textContent="Errorea: "+(e.message||e);}
+      }catch(e){R("irratiHistResult").textContent="Errorea: "+(e.message||e);R("irratiHistExports").style.display="none";}
     }
+    function fname(ext){return `erreketak_${lastFrom}${lastTo!==lastFrom?"_"+lastTo:""}.${ext}`;}
+    function download(blob,name){const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);}
+    function exportCsv(){
+      if(!lastRows.length)return;
+      const q=v=>{const s=String(v??"");return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+      const head=COLS.map(c=>q(c[1])).join(";");
+      const body=lastRows.map(r=>COLS.map(c=>q(r[c[0]])).join(";")).join("\n");
+      const csv="\ufeff"+head+"\n"+body;
+      download(new Blob([csv],{type:"text/csv;charset=utf-8"}),fname("csv"));
+    }
+    function exportPdf(){
+      if(!lastRows.length)return;
+      if(!window.jspdf||!window.jspdf.jsPDF){R("irratiHistResult").textContent="PDF liburutegia ez dago kargatuta.";return;}
+      const {jsPDF}=window.jspdf;
+      const doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+      doc.setFillColor(24,78,52);doc.rect(0,0,297,16,"F");
+      doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(13);
+      doc.text("IrratiGIS · Erreketen historikoa",10,10);
+      doc.setTextColor(20,20,20);doc.setFontSize(9);
+      doc.text(`${lastFrom}${lastTo!==lastFrom?" - "+lastTo:""}  ·  ${lastRows.length} erreketa`,10,22);
+      const heads=COLS.map(c=>c[1]);
+      const widths=[20,20,34,22,26,26,60,22,22];
+      let x=10,y=30;
+      doc.setFont("helvetica","bold");doc.setFontSize(7.5);
+      heads.forEach((h,i)=>{doc.text(String(h),x,y);x+=widths[i];});
+      doc.setDrawColor(180);doc.line(10,y+1.5,287,y+1.5);
+      doc.setFont("helvetica","normal");
+      y+=6;
+      lastRows.forEach(r=>{
+        if(y>195){doc.addPage();y=20;}
+        x=10;
+        COLS.forEach((c,i)=>{
+          const t=doc.splitTextToSize(String(r[c[0]]??""),widths[i]-1);
+          doc.text(t.length?t[0]:"",x,y);
+          x+=widths[i];
+        });
+        y+=5.5;
+      });
+      doc.save(fname("pdf"));
+    }
+    R("irratiHistCsv").addEventListener("click",exportCsv);
+    R("irratiHistPdf").addEventListener("click",exportPdf);
     function clear(){histLayer.clearLayers();if(shown){map.removeLayer(histLayer);shown=false;}R("irratiHistResult").textContent="Aukeratu data bat eta sakatu «Kontsultatu».";}
     R("irratiHistQuery").addEventListener("click",run);
     R("irratiHistClear").addEventListener("click",clear);
