@@ -865,7 +865,7 @@ async function loadControlledBurns(){
         `<strong>Kodea:</strong> ${escapeHtml(fire.id || "—")}<br>`+
         `<strong>Titularra:</strong> ${escapeHtml(fire.titular || "—")}<br>`+
         `<strong>Telefonoa:</strong> ${escapeHtml(fire.telefono || "—")}<br>`+
-        `<strong>Erregaia:</strong> ${escapeHtml(fire.tipoQuema || fire.descripcionMaterial || "—")}<br>`+
+        `<strong>Erregaia:</strong> ${escapeHtml(materialEu(fire.tipoQuema || fire.descripcionMaterial))}<br>`+
         `<strong>Helbidea:</strong> ${escapeHtml(fire.direccion || "—")}<br>`+
         `<strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uTxt}`
       );
@@ -1194,6 +1194,11 @@ function escapeHtml(s){
   return String(s??"").replace(/[&<>"']/g,c=>({
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
   }[c]));
+}
+  function materialEu(v){
+  const t=String(v??"").trim().toLowerCase();
+  const map={"matorral":"Sastrakak","restos agrícolas":"Nekazal kondarrak","restos agricolas":"Nekazal kondarrak","restos forestales":"Baso kondarrak","vegetación herbácea":"Belarkara landaretza","vegetacion herbacea":"Belarkara landaretza"};
+  return map[t]||(v||"—");
 }
 
 function clearMapCreatedWaypoints(){
