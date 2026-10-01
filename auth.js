@@ -86,6 +86,10 @@
         <input id="irratiHistFrom" type="date" style="width:100%;border:1px solid #cfdad3;border-radius:9px;padding:10px;font:inherit;background:#fff">
         <label style="display:block;font-size:11px;font-weight:800;color:var(--muted);margin:10px 0 4px">Datara / Hasta (hutsik = egun bakarra)</label>
         <input id="irratiHistTo" type="date" style="width:100%;border:1px solid #cfdad3;border-radius:9px;padding:10px;font:inherit;background:#fff">
+        <label style="display:block;font-size:11px;font-weight:800;color:var(--muted);margin:10px 0 4px">Kodea (aukerakoa)</label>
+        <input id="irratiHistKode" type="text" inputmode="numeric" placeholder="adib. 26743715" style="width:100%;border:1px solid #cfdad3;border-radius:9px;padding:10px;font:inherit;background:#fff">
+        <label style="display:block;font-size:11px;font-weight:800;color:var(--muted);margin:10px 0 4px">Herria (aukerakoa)</label>
+        <select id="irratiHistHerria" style="width:100%;border:1px solid #cfdad3;border-radius:9px;padding:10px;font:inherit;background:#fff"><option value="">— Guztiak —</option></select>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
           <button id="irratiHistQuery" style="border:0;border-radius:10px;padding:11px 14px;font-weight:750;cursor:pointer;background:#176b43;color:#fff">Kontsultatu</button>
           <button id="irratiHistClear" style="border:0;border-radius:10px;padding:11px 14px;font-weight:750;cursor:pointer;background:#edf3ef;color:#234233">Garbitu</button>
@@ -98,6 +102,15 @@
         <div id="irratiHistTableWrap" style="margin-top:10px;overflow-x:auto"></div>
       </div>`;
     burnView.appendChild(sec);
+    // Rellenar desplegable de municipios ordenado por nombre
+    try{
+      const selH=document.getElementById("irratiHistHerria");
+      if(selH){
+        Object.entries(MUNI).sort((a,b)=>a[1].localeCompare(b[1],"eu")).forEach(([cod,nom])=>{
+          const o=document.createElement("option");o.value=cod;o.textContent=nom;selH.appendChild(o);
+        });
+      }
+    }catch(_){}
 
     const map=window.IrratiGISMap;
     const histLayer=L.featureGroup();
@@ -119,14 +132,20 @@
       R("irratiHistExports").style.display="flex";
     }
     async function run(){
+      const kode=(R("irratiHistKode").value||"").trim();
+      const herria=(R("irratiHistHerria").value||"").trim();
       const from=R("irratiHistFrom").value, to=R("irratiHistTo").value||from;
-      if(!from){R("irratiHistResult").textContent="Aukeratu gutxienez data bat.";return;}
+      // Si hay código, la búsqueda es por código (sin fecha). Si no, se exige fecha.
+      if(!kode && !from){R("irratiHistResult").textContent="Aukeratu data bat edo sartu kodea.";return;}
       const token=getToken();
       if(!token){R("irratiHistResult").textContent="Saioa ez dago aktibo.";return;}
       R("irratiHistResult").textContent="Kontsultatzen…";
-      lastRows=[]; lastFrom=from; lastTo=to;
+      lastRows=[]; lastFrom=from||""; lastTo=to||from||"";
       try{
-        const r=await fetch(`${API}/api/history?from=${from}&to=${to}`,{headers:{Authorization:`Bearer ${token}`},cache:"no-store"});
+        let apiUrl;
+        if(kode){ apiUrl=`${API}/api/history?codigo=${encodeURIComponent(kode)}`; }
+        else { apiUrl=`${API}/api/history?from=${from}&to=${to}`+(herria?`&municipio=${encodeURIComponent(herria)}`:""); }
+        const r=await fetch(apiUrl,{headers:{Authorization:`Bearer ${token}`},cache:"no-store"});
         const j=await r.json();
         if(!r.ok)throw new Error(j.error||`HTTP ${r.status}`);
         const fires=Array.isArray(j.fires)?j.fires:[];
@@ -150,13 +169,14 @@
           const rec={data:row.observed_date||"",kodea:f.id||"",titularra:f.titular||"",telefonoa:f.telefono||"",materiala:materialEu(f.tipoQuema||f.descripcionMaterial),udalerria:udalerriaIzena(f.municipio||f.udalerria),helbidea:f.direccion||"",lat:lat.toFixed(6),lon:lon.toFixed(6)};
           lastRows.push(rec);
           const m=L.marker([lat,lon],{icon:flame});
-          const uH=toUtm30(lat,lon);m.bindPopup(`<strong>🔥 Erreketa (historikoa)</strong><br><br><strong>Data:</strong> ${esc(rec.data||"—")}<br><strong>Kodea:</strong> ${esc(rec.kodea||"—")}<br><strong>Titularra:</strong> ${esc(rec.titularra||"—")}<br><strong>Telefonoa:</strong> ${esc(rec.telefonoa||"—")}<br><strong>Erregaia:</strong> ${esc(rec.materiala)}<br><strong>Udalerria:</strong> ${esc(rec.udalerria)}<br><strong>Helbidea:</strong> ${esc(rec.helbidea||"—")}<br><strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uH?`<br><strong>UTM (ETRS89 30N):</strong> X ${uH.x} · Y ${uH.y}`:""}`);
+          const uH=toUtm30(lat,lon);m.bindPopup(`<strong>🔥 Erreketa (historikoa)</strong><br><br><strong>Data:</strong> ${esc(rec.data||"—")}<br><strong>Kodea:</strong> ${esc(rec.kodea||"—")}<br><strong>Titularra:</strong> ${esc(rec.titularra||"—")}<br><strong>Telefonoa:</strong> ${esc(rec.telefonoa||"—")}<br><strong>Erregaia:</strong> ${esc(rec.materiala)}<br><strong>Helbidea:</strong> ${esc(rec.helbidea||"—")}<br><strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uH?`<br><strong>UTM (ETRS89 30N):</strong> X ${uH.x} · Y ${uH.y}`:""}`);
           m.addTo(histLayer); bounds.push([lat,lon]); n++;
         });
         if(!shown){histLayer.addTo(map);shown=true;}
         renderTable(lastRows);
-        if(n){try{map.fitBounds(L.latLngBounds(bounds).pad(0.2));}catch(_){}R("irratiHistResult").innerHTML=`<strong>${n}</strong> erreketa aurkitu dira (${esc(from)}${to!==from?` → ${esc(to)}`:""}).`;}
-        else{R("irratiHistResult").textContent=`Ez da erreketarik aurkitu (${from}${to!==from?` → ${to}`:""}).`;}
+        const criterio = kode ? `Kodea: ${esc(kode)}` : (`${esc(from)}${to!==from?` → ${esc(to)}`:""}`+(herria?` · ${esc(MUNI[herria]||herria)}`:""));
+        if(n){try{map.fitBounds(L.latLngBounds(bounds).pad(0.2));}catch(_){}R("irratiHistResult").innerHTML=`<strong>${n}</strong> erreketa aurkitu dira (${criterio}).`;}
+        else{R("irratiHistResult").textContent=`Ez da erreketarik aurkitu (${criterio}).`;}
       }catch(e){R("irratiHistResult").textContent="Errorea: "+(e.message||e);R("irratiHistExports").style.display="none";}
     }
     function fname(ext){return `erreketak_${lastFrom}${lastTo!==lastFrom?"_"+lastTo:""}.${ext}`;}
@@ -201,7 +221,7 @@
     }
     R("irratiHistCsv").addEventListener("click",exportCsv);
     R("irratiHistPdf").addEventListener("click",exportPdf);
-    function clear(){histLayer.clearLayers();if(shown){map.removeLayer(histLayer);shown=false;}R("irratiHistResult").textContent="Aukeratu data bat eta sakatu «Kontsultatu».";}
+    function clear(){histLayer.clearLayers();if(shown){map.removeLayer(histLayer);shown=false;}const k=R("irratiHistKode");if(k)k.value="";const h=R("irratiHistHerria");if(h)h.value="";R("irratiHistTableWrap").innerHTML="";R("irratiHistExports").style.display="none";R("irratiHistResult").textContent="Aukeratu data bat eta sakatu «Kontsultatu».";}
     R("irratiHistQuery").addEventListener("click",run);
     R("irratiHistClear").addEventListener("click",clear);
   }
