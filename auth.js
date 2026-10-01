@@ -19,6 +19,8 @@
     const map={"matorral":"Sastrakak","restos agrícolas":"Nekazal kondarrak","restos agricolas":"Nekazal kondarrak","restos forestales":"Baso kondarrak","vegetación herbácea":"Belarkara landaretza","vegetacion herbacea":"Belarkara landaretza"};
     return map[t]||(v||"—");
   }
+  const MUNI={"1":"Abaltzisketa","2":"Aduna","3":"Aizarnazabal","4":"Albiztur","5":"Alegia","6":"Alkiza","7":"Altzo","8":"Amezketa","9":"Andoain","10":"Anoeta","11":"Antzuola","12":"Arama","13":"Aretxabaleta","14":"Asteasu","15":"Ataun","16":"Aia","17":"Azkoitia","18":"Azpeitia","19":"Beasain","20":"Beizama","21":"Belauntza","22":"Berastegi","23":"Berrobi","24":"Bidegoian","25":"Zegama","26":"Zerain","27":"Zestoa","28":"Zizurkil","29":"Deba","30":"Eibar","31":"Elduain","32":"Elgoibar","33":"Elgeta","34":"Eskoriatza","35":"Ezkio-itsaso","36":"Hondarribia","37":"Gaintza","38":"Gabiria","39":"Getaria","40":"Hernani","41":"Hernialde","42":"Ibarra","43":"Idiazabal","44":"Ikaztegieta","45":"Irun","46":"Irura","47":"Itsasondo","48":"Larraul","49":"Lazkao","50":"Leaburu","51":"Legazpi","52":"Legorreta","53":"Lezo","54":"Lizartza","55":"Arrasate/Mondragón","56":"Mutriku","57":"Mutiloa","58":"Olaberria","59":"Oñati","60":"Orexa","61":"Orio","62":"Ormaiztegi","63":"Oiartzun","64":"Pasaia","65":"Soraluze/Placencia de las Armas","66":"Errezil","67":"Errenteria","68":"Leintz-Gatzaga","69":"Donostia-San Sebastián","70":"Segura","71":"Tolosa","72":"Urnieta","73":"Usurbil","74":"Bergara","75":"Villabona","76":"Ordizia","77":"Urretxu","78":"Zaldibia","79":"Zarautz","80":"Zumarraga","81":"Zumaia","82":"Mendaro","83":"Lasarte-Oria","84":"Astigarraga","85":"Baliarrain","86":"Orendain","87":"Altzaga","88":"Gaztelu","89":"Itsaso","98":"Alzania","99":"Sierra de Aralar"};
+  function udalerriaIzena(v){const k=String(v??"").trim();return MUNI[k]||(v||"—");}
   async function apiFetch(path,options={}){return fetch(`${API}${path}`,{...options,mode:"cors",credentials:"omit",cache:"no-store"});}
   function recoverMap(){
     if(window.IrratiGISMap||typeof L==="undefined")return window.IrratiGISMap||null;
@@ -145,10 +147,10 @@
             }catch(_){}
           }
           if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return;
-          const rec={data:row.observed_date||"",kodea:f.id||"",titularra:f.titular||"",telefonoa:f.telefono||"",materiala:materialEu(f.tipoQuema||f.descripcionMaterial),udalerria:f.municipio||f.udalerria||"",helbidea:f.direccion||"",lat:lat.toFixed(6),lon:lon.toFixed(6)};
+          const rec={data:row.observed_date||"",kodea:f.id||"",titularra:f.titular||"",telefonoa:f.telefono||"",materiala:materialEu(f.tipoQuema||f.descripcionMaterial),udalerria:udalerriaIzena(f.municipio||f.udalerria),helbidea:f.direccion||"",lat:lat.toFixed(6),lon:lon.toFixed(6)};
           lastRows.push(rec);
           const m=L.marker([lat,lon],{icon:flame});
-          const uH=toUtm30(lat,lon);m.bindPopup(`<strong>🔥 Erreketa (historikoa)</strong><br><br><strong>Data:</strong> ${esc(rec.data||"—")}<br><strong>Kodea:</strong> ${esc(rec.kodea||"—")}<br><strong>Titularra:</strong> ${esc(rec.titularra||"—")}<br><strong>Telefonoa:</strong> ${esc(rec.telefonoa||"—")}<br><strong>Erregaia:</strong> ${esc(rec.materiala)}<br><strong>Helbidea:</strong> ${esc(rec.helbidea||"—")}<br><strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uH?`<br><strong>UTM (ETRS89 30N):</strong> X ${uH.x} · Y ${uH.y}`:""}`);
+          const uH=toUtm30(lat,lon);m.bindPopup(`<strong>🔥 Erreketa (historikoa)</strong><br><br><strong>Data:</strong> ${esc(rec.data||"—")}<br><strong>Kodea:</strong> ${esc(rec.kodea||"—")}<br><strong>Titularra:</strong> ${esc(rec.titularra||"—")}<br><strong>Telefonoa:</strong> ${esc(rec.telefonoa||"—")}<br><strong>Erregaia:</strong> ${esc(rec.materiala)}<br><strong>Udalerria:</strong> ${esc(rec.udalerria)}<br><strong>Helbidea:</strong> ${esc(rec.helbidea||"—")}<br><strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uH?`<br><strong>UTM (ETRS89 30N):</strong> X ${uH.x} · Y ${uH.y}`:""}`);
           m.addTo(histLayer); bounds.push([lat,lon]); n++;
         });
         if(!shown){histLayer.addTo(map);shown=true;}
