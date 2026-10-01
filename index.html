@@ -866,7 +866,7 @@ async function loadControlledBurns(){
         `<strong>Titularra:</strong> ${escapeHtml(fire.titular || "—")}<br>`+
         `<strong>Telefonoa:</strong> ${escapeHtml(fire.telefono || "—")}<br>`+
         `<strong>Erregaia:</strong> ${escapeHtml(materialEu(fire.tipoQuema || fire.descripcionMaterial))}<br>`+
-        `<strong>Helbidea:</strong> ${escapeHtml(fire.direccion || "—")}<br>`+
+        `<strong>Herria:</strong> ${escapeHtml(udalerriaIzena(fire.municipio || fire.udalerria))}<br>`+
         `<strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uTxt}`
       );
 
