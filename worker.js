@@ -397,23 +397,28 @@ var worker_default = { async fetch(request, env) {
     const runs = await env.DB.prepare(`SELECT observed_date,observed_at,burn_count FROM burn_daily_runs WHERE observed_date BETWEEN ? AND ? ORDER BY observed_date DESC`).bind(start, end).all();
     return json({ ok: true, from: start, to: end, municipio: municipio || null, days: runs.results || [], fires: (rows.results || []).map((r) => ({ ...r, data: r.payload_json ? JSON.parse(r.payload_json) : null })) }, 200, origin);
   }
-  if (url.pathname === "/api/landcover" && request.method === "GET") {
-    const lat = Number(url.searchParams.get("lat")), lon = Number(url.searchParams.get("lon"));
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return json({ ok: false, error: "lat/lon requeridos" }, 400, origin);
-    const base = "https://servicios.idee.es/wms-inspire/ocupacion-suelo";
-    const dd = 0.0009, W = 101, H = 101, I = 50, J = 50;
-    const bbox = `${lat - dd},${lon - dd},${lat + dd},${lon + dd}`;
-    const gfi = /* @__PURE__ */ __name(async (layer, fmt) => {
-      const q = new URLSearchParams({ service: "WMS", version: "1.3.0", request: "GetFeatureInfo", layers: layer, query_layers: layer, styles: "", crs: "EPSG:4326", bbox, width: String(W), height: String(H), i: String(I), j: String(J), info_format: fmt, feature_count: "3" });
-      try { const r = await fetch(`${base}?${q.toString()}`, { cf: { cacheTtl: 86400, cacheEverything: true } }); if (!r.ok) return null; return await r.text(); } catch (_) { return null; }
-    }, "gfi");
-    try {
-      const txt = await gfi("LU.ExistingLandUse", "text/html") || await gfi("LU.ExistingLandUse", "text/plain") || await gfi("LC.LandCoverSurfaces", "text/html") || await gfi("LC.LandCoverSurfaces", "text/plain");
-      const g = landcoverGroup(txt);
-      return json({ ok: true, group: g.group, clase: g.clase, fuente: "IGN Ocupaci\u00f3n del Suelo", raw: (txt || "").replace(/\s+/g, " ").slice(0, 300) }, 200, origin);
-    } catch (error) {
-      return json({ ok: false, error: "GetFeatureInfo fall\u00f3", detail: String(error?.message || error) }, 502, origin);
+    if (url.pathname === "/api/history" && request.method === "GET") {
+    const payload = await authPayload(request, env);
+    if (!payload) return json({ ok: false, error: "Unauthorized" }, 401, origin);
+    if (!env.DB) return json({ ok: false, error: "D1 no configurada" }, 503, origin);
+    const date = url.searchParams.get("date"), from = url.searchParams.get("from") || date, to = url.searchParams.get("to") || date;
+    const codigo = (url.searchParams.get("codigo") || "").trim();
+    const municipio = (url.searchParams.get("municipio") || "").trim();
+    // Búsqueda por código: busca esa quema sin necesidad de fechas
+    if (codigo) {
+      const rows2 = await env.DB.prepare(`SELECT observed_date,observed_at,burn_key,anyo,codigo,codigo_tipo,numero_autorizacion,titular,municipio,fecha_inicio,fecha_fin,estado,latitud,longitud,tipo_quema,superficie,codigo_sigpac,payload_json FROM burn_observations WHERE CAST(codigo AS TEXT) = ? ORDER BY observed_date DESC`).bind(codigo).all();
+      return json({ ok: true, codigo, fires: (rows2.results || []).map((r) => ({ ...r, data: r.payload_json ? JSON.parse(r.payload_json) : null })) }, 200, origin);
     }
+    if (!from && !to) return json({ ok: false, error: "Indica date o from/to" }, 400, origin);
+    const start = from || to, end = to || from;
+    let sql = `SELECT observed_date,observed_at,burn_key,anyo,codigo,codigo_tipo,numero_autorizacion,titular,municipio,fecha_inicio,fecha_fin,estado,latitud,longitud,tipo_quema,superficie,codigo_sigpac,payload_json FROM burn_observations WHERE observed_date BETWEEN ? AND ?`;
+    const binds = [start, end];
+    if (municipio) { sql += ` AND CAST(municipio AS TEXT) = ?`; binds.push(municipio); }
+    sql += ` ORDER BY observed_date DESC, observed_at DESC, numero_autorizacion`;
+    const rows = await env.DB.prepare(sql).bind(...binds).all();
+    const runs = await env.DB.prepare(`SELECT observed_date,observed_at,burn_count FROM burn_daily_runs WHERE observed_date BETWEEN ? AND ? ORDER BY observed_date DESC`).bind(start, end).all();
+    return json({ ok: true, from: start, to: end, municipio: municipio || null, days: runs.results || [], fires: (rows.results || []).map((r) => ({ ...r, data: r.payload_json ? JSON.parse(r.payload_json) : null })) }, 200, origin);
+  
   }
   if (url.pathname === "/api/parcel" && request.method === "GET") {
     const lat = Number(url.searchParams.get("lat")), lon = Number(url.searchParams.get("lon"));
