@@ -1,7 +1,7 @@
 /* ============================================================
    IrratiGIS · gis-tools.js
    Fase 2: edición de geometrías con Leaflet-Geoman (Community)
-   Se carga desde index.html con: <script src="gis-tools.js?v=1" defer></script>
+   Se carga desde index.html con: <script src="gis-tools.js?v=2" defer></script>
    ============================================================ */
 (() => {
   "use strict";
@@ -29,11 +29,21 @@
     });
   }
 
+  function ensurePm(map){
+    if(map.pm) return true;
+    try{ if(L.PM && L.PM.Map){ map.pm = new L.PM.Map(map); } }catch(_){}
+    if(map.pm) return true;
+    try{ if(L.PM && typeof L.PM.reInitLayer==="function"){ L.PM.reInitLayer(map); } }catch(_){}
+    return !!map.pm;
+  }
+
   async function init(){
     const map = await waitForMap();
     loadCss(GEOMAN_CSS);
     try{ await loadScript(GEOMAN_JS); }catch(e){ console.error("Geoman:",e); return; }
-    if(!map.pm){ console.warn("Geoman no se inicializó"); return; }
+
+    for(let i=0;i<10 && !ensurePm(map);i++){ await new Promise(r=>setTimeout(r,200)); }
+    if(!map.pm){ console.warn("Geoman: no se pudo enganchar al mapa (map.pm ausente)"); return; }
 
     try{ map.pm.setLang("eu"); }catch(_){ try{ map.pm.setLang("es"); }catch(__){} }
 
@@ -56,17 +66,11 @@
       rotateMode: false
     };
 
-    function showToolbar(){
-      try{ map.pm.addControls(toolbarOpts); }catch(_){}
-    }
-    function hideToolbar(){
-      try{ map.pm.removeControls(); }catch(_){}
-    }
+    function showToolbar(){ try{ map.pm.addControls(toolbarOpts); }catch(_){} }
+    function hideToolbar(){ try{ map.pm.removeControls(); }catch(_){} }
 
     map.on("pm:create", (e) => {
-      try{
-        if(e.layer){ e.layer.addTo(editLayer); }
-      }catch(_){}
+      try{ if(e.layer){ e.layer.addTo(editLayer); } }catch(_){}
     });
 
     function updateToolbarVisibility(){
@@ -75,15 +79,17 @@
       if(active) showToolbar(); else hideToolbar();
     }
 
-    const obs = new MutationObserver(updateToolbarVisibility);
     const tracksView = document.getElementById("irratiTracksView");
-    if(tracksView){ obs.observe(tracksView,{attributes:true,attributeFilter:["class"]}); }
+    if(tracksView){
+      const obs = new MutationObserver(updateToolbarVisibility);
+      obs.observe(tracksView,{attributes:true,attributeFilter:["class"]});
+    }
     setTimeout(updateToolbarVisibility, 500);
     document.querySelectorAll(".irrati-tab").forEach(b=>{
-      b.addEventListener("click", ()=> setTimeout(updateToolbarVisibility, 100));
+      b.addEventListener("click", ()=> setTimeout(updateToolbarVisibility, 150));
     });
 
-    console.log("IrratiGIS GIS tresnak: Geoman listo.");
+    console.log("IrratiGIS GIS tresnak: Geoman listo. map.pm =", !!map.pm);
   }
 
   if(document.readyState==="loading"){
