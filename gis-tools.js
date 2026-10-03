@@ -1,6 +1,8 @@
 /* ============================================================
-   IrratiGIS · gis-tools.js  (v20)
-   Edición de vértices del GPX/KML cargado, botones abajo.
+   IrratiGIS · gis-tools.js  (v22)
+   Edición de vértices (GPX/KML) + conversor de coordenadas
+   compacto flotante (con campos propios, sin tocar el original).
+   Carga en index.html: <script src="gis-tools.js?v=22" defer></script>
    ============================================================ */
 (() => {
   "use strict";
@@ -8,7 +10,7 @@
     return new Promise(resolve=>{
       const t=setInterval(()=>{
         if(window.IrratiGISMap && typeof L!=="undefined" && window.drawings &&
-           window.redrawRings && window.getCurrentRings && document.querySelector(".icon-tools")){
+           window.redrawRings && window.getCurrentRings && document.querySelector(".icon-tools") && document.getElementById("utmE")){
           clearInterval(t); resolve();
         }
       },300);
@@ -121,13 +123,111 @@
     btnAdd =mk("editAdd","➕·","Puntua gehitu",()=>toggle(MODES.ADD));
     btnDel =mk("editDel","✖️·","Puntua ezabatu",()=>toggle(MODES.DEL));
   }
+
+  // ---- Conversor de coordenadas compacto (panel flotante propio) ----
+  let coordPanel=null, coordBtn=null;
+  function buildCoordPanel(){
+    if(document.getElementById("coordFloatBtn")) return;
+    const bar=document.querySelector(".icon-tools");
+    const mapEl=document.getElementById("map");
+    if(!bar || !mapEl) return;
+
+    // Botón icono
+    coordBtn=document.createElement("button");
+    coordBtn.id="coordFloatBtn"; coordBtn.type="button"; coordBtn.title="Koordenatu bihurgailua"; coordBtn.innerHTML="📐";
+    coordBtn.addEventListener("click",togglePanel);
+    bar.appendChild(coordBtn);
+
+    // Panel flotante con campos PROPIOS (no toca el conversor original)
+    coordPanel=document.createElement("div");
+    coordPanel.id="coordFloatPanel";
+    coordPanel.style.cssText="position:absolute;right:8px;top:70px;z-index:1200;width:min(280px,82vw);background:#fff;border:1px solid #dce5df;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:12px;display:none;font:13px system-ui;color:#16231c";
+    coordPanel.innerHTML=
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+      '<strong style="font-size:14px;color:#176b43">📐 Koordenatuak</strong>'+
+      '<button type="button" id="cfClose" style="border:0;background:#eef3ef;border-radius:7px;padding:4px 8px;cursor:pointer;font-weight:800">✕</button></div>'+
+      '<label style="display:block;font-size:10px;font-weight:800;color:#65736b;margin:6px 0 3px">UTM X · Y</label>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'+
+        '<input id="cfX" type="number" step="0.01" placeholder="X" style="width:100%;border:1px solid #cfdad3;border-radius:8px;padding:7px;font:inherit">'+
+        '<input id="cfY" type="number" step="0.01" placeholder="Y" style="width:100%;border:1px solid #cfdad3;border-radius:8px;padding:7px;font:inherit"></div>'+
+      '<label style="display:block;font-size:10px;font-weight:800;color:#65736b;margin:8px 0 3px">Zona · Datuma</label>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'+
+        '<select id="cfZone" style="width:100%;border:1px solid #cfdad3;border-radius:8px;padding:7px;font:inherit"></select>'+
+        '<select id="cfDatum" style="width:100%;border:1px solid #cfdad3;border-radius:8px;padding:7px;font:inherit"><option value="ETRS89">ETRS89</option><option value="WGS84">WGS84</option></select></div>'+
+      '<label style="display:block;font-size:10px;font-weight:800;color:#65736b;margin:8px 0 3px">Lat · Lon</label>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'+
+        '<input id="cfLat" type="number" step="0.0000001" placeholder="Lat" style="width:100%;border:1px solid #cfdad3;border-radius:8px;padding:7px;font:inherit">'+
+        '<input id="cfLon" type="number" step="0.0000001" placeholder="Lon" style="width:100%;border:1px solid #cfdad3;border-radius:8px;padding:7px;font:inherit"></div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">'+
+        '<button type="button" id="cfU2G" style="flex:1 1 auto;border:0;border-radius:8px;padding:8px 6px;font-size:11px;font-weight:750;cursor:pointer;background:#edf3ef;color:#234233">UTM→Geo</button>'+
+        '<button type="button" id="cfG2U" style="flex:1 1 auto;border:0;border-radius:8px;padding:8px 6px;font-size:11px;font-weight:750;cursor:pointer;background:#edf3ef;color:#234233">Geo→UTM</button>'+
+        '<button type="button" id="cfPick" style="flex:1 1 auto;border:0;border-radius:8px;padding:8px 6px;font-size:11px;font-weight:750;cursor:pointer;background:#edf3ef;color:#234233">Mapatik</button>'+
+        '<button type="button" id="cfGoogle" style="flex:1 1 auto;border:0;border-radius:8px;padding:8px 6px;font-size:11px;font-weight:750;cursor:pointer;background:#edf3ef;color:#234233">Google</button></div>'+
+      '<div id="cfResult" style="margin-top:9px;padding:8px;border-radius:8px;background:#f7faf8;border:1px solid #e2e8e4;font-size:12px;overflow-wrap:anywhere">Sartu koordenatuak.</div>';
+    mapEl.appendChild(coordPanel);
+    L.DomEvent.disableClickPropagation(coordPanel);
+    L.DomEvent.disableScrollPropagation(coordPanel);
+
+    // Rellenar zonas 1..60 (por defecto 30)
+    const zsel=coordPanel.querySelector("#cfZone");
+    for(let z=1;z<=60;z++){ const o=document.createElement("option"); o.value=String(z); o.textContent=String(z); if(z===30)o.selected=true; zsel.appendChild(o); }
+
+    const $=id=>document.getElementById(id);
+    const orig={ X:$("utmE"),Y:$("utmN"),Zone:$("utmZone"),Hem:$("utmHem"),Datum:$("utmDatum"),Lat:$("geoLat"),Lon:$("geoLon"),Res:$("coordResult") };
+
+    coordPanel.querySelector("#cfClose").addEventListener("click",()=>setPanel(false));
+
+    // UTM -> Geo: copia a los campos originales, pulsa el botón original, trae resultado
+    coordPanel.querySelector("#cfU2G").addEventListener("click",()=>{
+      orig.X.value=$("cfX").value; orig.Y.value=$("cfY").value;
+      orig.Zone.value=$("cfZone").value; orig.Datum.value=$("cfDatum").value; orig.Hem.value="N";
+      $("utmToGeo").click();
+      $("cfLat").value=orig.Lat.value; $("cfLon").value=orig.Lon.value;
+      showResult(orig.Res);
+    });
+    coordPanel.querySelector("#cfG2U").addEventListener("click",()=>{
+      orig.Lat.value=$("cfLat").value; orig.Lon.value=$("cfLon").value;
+      orig.Datum.value=$("cfDatum").value;
+      $("geoToUtm").click();
+      $("cfX").value=orig.X.value; $("cfY").value=orig.Y.value; $("cfZone").value=orig.Zone.value;
+      showResult(orig.Res);
+    });
+    coordPanel.querySelector("#cfPick").addEventListener("click",()=>{
+      $("pickCoord").click(); // activa el modo coger-del-mapa original
+      setMsg("Egin klik mapan puntu bat hartzeko.");
+      // Cuando el original rellene lat/lon, los copiamos (observamos el resultado)
+      const chk=setInterval(()=>{
+        if(orig.Lat.value){ $("cfLat").value=orig.Lat.value; $("cfLon").value=orig.Lon.value; $("cfX").value=orig.X.value; $("cfY").value=orig.Y.value; showResult(orig.Res); clearInterval(chk); }
+      },400);
+      setTimeout(()=>clearInterval(chk),15000);
+    });
+    coordPanel.querySelector("#cfGoogle").addEventListener("click",()=>{
+      orig.Lat.value=$("cfLat").value; orig.Lon.value=$("cfLon").value;
+      $("googleMaps").click();
+    });
+
+    function showResult(origRes){ const r=$("cfResult"); if(r&&origRes) r.innerHTML=origRes.innerHTML||origRes.textContent||"—"; }
+
+    // Ocultar el panel grande original (sin moverlo)
+    const big = orig.X.closest(".panel");
+    if(big) big.style.display="none";
+  }
+  function setPanel(open){
+    if(!coordPanel) return;
+    coordPanel.style.display = open ? "block" : "none";
+    if(open){ coordBtn.classList.add("active"); coordBtn.style.background="#176b43"; coordBtn.style.color="#fff"; }
+    else { coordBtn.classList.remove("active"); coordBtn.style.background=""; coordBtn.style.color=""; }
+  }
+  function togglePanel(){ setPanel(coordPanel && coordPanel.style.display==="none"); }
+
   async function init(){
     await waitFor();
     map=window.IrratiGISMap;
     addButtons();
+    try{ buildCoordPanel(); }catch(e){ console.warn("coord panel:",e); }
     const clearBtn=document.getElementById("clearTrack");
     if(clearBtn) clearBtn.addEventListener("click",()=>{ mode=MODES.NONE; highlight(); clearHandles(); });
-    console.log("IrratiGIS editor de vértices (abajo) listo.");
+    console.log("IrratiGIS editor + conversor listo (v22).");
   }
   if(document.readyState==="loading"){ document.addEventListener("DOMContentLoaded",init); }
   else { init(); }
