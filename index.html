@@ -507,7 +507,7 @@ button,.filebtn,input,select{touch-action:manipulation}
 </header>
 
 <main class="wrap">
-  <section class="panel">
+    <section class="panel" style="display:none">
     <div class="upload">
       <label class="filebtn" for="file">GPX edo KML kargatu</label>
       <input id="file" type="file" accept=".gpx,.kml,application/gpx+xml,application/vnd.google-earth.kml+xml">
@@ -517,20 +517,20 @@ button,.filebtn,input,select{touch-action:manipulation}
     <div id="message" class="message">Kalkuluak lokalean egiten dira nabigatzailean.</div>
   </section>
 
-  <section class="cards">
+   <section class="cards" style="display:none">
     <div class="card"><span>PERIMETROA</span><strong id="pm">—</strong><small id="pkm">—</small></div>
     <div class="card"><span>AZALERA</span><strong id="m2">—</strong><small id="ha">—</small></div>
     <div class="card"><span>AZALERA</span><strong id="km2">—</strong><small id="points">—</small></div>
     <div class="card"><span>GEOMETRIA</span><strong id="geom">—</strong><small id="rings">—</small></div>
   </section>
 
-  <section class="panel file-details-panel">
+    <section class="panel file-details-panel">
     <h2>Fitxategiaren xehetasunak</h2>
     <div class="details">
-      <div><span>IZENA</span><strong id="dname">—</strong></div>
       <div><span>FORMATUA</span><strong id="dformat">—</strong></div>
-      <div><span>MOTA</span><strong id="dtype">—</strong></div>
-      <div><span>PUNTUAK</span><strong id="dpoints">—</strong></div>
+      <div style="display:none"><span>IZENA</span><strong id="dname">—</strong></div>
+      <div style="display:none"><span>MOTA</span><strong id="dtype">—</strong></div>
+      <div style="display:none"><span>PUNTUAK</span><strong id="dpoints">—</strong></div>
     </div>
   </section>
 
@@ -545,6 +545,7 @@ button,.filebtn,input,select{touch-action:manipulation}
     </div>
     <div id="map"></div></div>
        <div class="tracktools icon-tools">
+      <button id="openFileBtn" type="button" title="GPX / KML kargatu">📂</button>
       <button id="drawTrack" title="Track-a marraztu">✏️</button>
       <button id="closeTrack" title="Track-a itxi / azalera">⬠</button>
       <button id="undoTrack" title="Azken puntua desegin">↩️</button>
@@ -2735,6 +2736,10 @@ function calculate(rings){
 }
   window.recalcFromRings = function(rings){
   const res = calculate(rings);
+      let badge=document.getElementById("geomBadge");
+  if(!badge){ badge=document.createElement("div"); badge.id="geomBadge"; badge.style.cssText="position:absolute;right:8px;bottom:22px;z-index:1000;background:rgba(255,255,255,.92);border-radius:8px;padding:5px 10px;box-shadow:0 1px 5px rgba(0,0,0,.25);font:800 12px system-ui;color:#176b43;pointer-events:none"; map.getContainer().appendChild(badge); }
+  badge.innerHTML="📐 Azalera: "+fmt(res.area/10000,2)+" ha · Perimetroa: "+fmt(res.perimeterKm*1000,0)+" m";
+  badge.style.display="block";
   $("pm").textContent=fmt(res.perimeterKm*1000,2)+" m";
   $("pkm").textContent=fmt(res.perimeterKm,3)+" km";
   $("m2").textContent=fmt(res.area,2)+" m²";
@@ -2779,7 +2784,7 @@ function reset(){
   map.setView([43.05,-2.2],9);
 }
 $("clear").addEventListener("click",reset);
-
+if($("openFileBtn"))$("openFileBtn").addEventListener("click",()=>$("file").click());
 $("file").addEventListener("change",async e=>{
   const f=e.target.files&&e.target.files[0];
   if(!f)return;
