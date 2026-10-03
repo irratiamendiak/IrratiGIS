@@ -1269,7 +1269,7 @@ function refreshWaypoints(){
   });
   $("waypointCount").textContent=String(waypoints.length);
   $("addWaypoint").classList.toggle("active",waypointMode);
-  $("addWaypoint").textContent=waypointMode?"Klik egin mapan…":"Waypoint gehitu";
+    $("addWaypoint").innerHTML=waypointMode?"📍…":"📍"; $("addWaypoint").title=waypointMode?"Klik egin mapan…":"Waypoint gehitu";
 }
 
 window.__deleteWaypoint=function(i){
@@ -1480,11 +1480,11 @@ function updateManualTrack(){
   $("trackDistance").textContent=fmt(distanceKm,2)+" km";
   $("trackState").textContent=manualTrackClosed?"itxia":(drawingTrack?"marrazten":"geldituta");
   $("drawTrack").classList.toggle("active",drawingTrack);
-  $("drawTrack").textContent=drawingTrack?"Marraztea gelditu":"Track-a marraztu";
+  $("drawTrack").innerHTML=drawingTrack?"✋":"✏️"; $("drawTrack").title=drawingTrack?"Marraztea gelditu":"Track-a marraztu";
 
   if($("closeTrack")){
     $("closeTrack").disabled=manualTrackPoints.length<3;
-    $("closeTrack").textContent=manualTrackClosed?"Track-a berriro ireki":"Track-a itxi / azalera";
+     $("closeTrack").innerHTML=manualTrackClosed?"⬠↺":"⬠"; $("closeTrack").title=manualTrackClosed?"Track-a berriro ireki":"Track-a itxi / azalera";
   }
 }
 
