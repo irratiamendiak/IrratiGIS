@@ -141,7 +141,7 @@
     // Panel flotante con campos PROPIOS (no toca el conversor original)
     coordPanel=document.createElement("div");
     coordPanel.id="coordFloatPanel";
-    coordPanel.style.cssText="position:absolute;right:8px;top:70px;z-index:1200;width:min(280px,82vw);background:#fff;border:1px solid #dce5df;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:12px;display:none;font:13px system-ui;color:#16231c";
+    coordPanel.style.cssText="position:absolute;right:8px;top:120px;z-index:1200;width:min(280px,82vw);background:#fff;border:1px solid #dce5df;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:12px;display:none;font:13px system-ui;color:#16231c";
     coordPanel.innerHTML=
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
       '<strong style="font-size:14px;color:#176b43">📐 Koordenatuak</strong>'+
