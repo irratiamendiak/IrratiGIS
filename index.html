@@ -873,8 +873,9 @@ async function loadControlledBurns(){
 
       const marker = L.marker([lat,lon],{icon:flameIcon});
 
-                  let uTxt = "";
+                       let uTxt = "";
       try { if (typeof proj4 !== "undefined") { const pu = proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[lon,lat]); uTxt = `<br><strong>UTM (ETRS89 30N):</strong> X ${Math.round(pu[0])} · Y ${Math.round(pu[1])}`; } } catch(e){}
+      const shareBtns = window.irratiShareButtons ? window.irratiShareButtons({titulo:"Baimendutako erreketa",kodea:fire.id,titularra:fire.titular,telefonoa:fire.telefono,erregaia:materialEu(fire.tipoQuema || fire.descripcionMaterial),herria:udalerriaIzena(fire.municipio || fire.udalerria),lat:lat,lon:lon}) : "";
       marker.bindPopup(
         `<strong>🔥 Baimendutako erreketa</strong><br><br>`+
         `<strong>Kodea:</strong> ${escapeHtml(fire.id || "—")}<br>`+
@@ -882,7 +883,8 @@ async function loadControlledBurns(){
         `<strong>Telefonoa:</strong> ${escapeHtml(fire.telefono || "—")}<br>`+
         `<strong>Erregaia:</strong> ${escapeHtml(materialEu(fire.tipoQuema || fire.descripcionMaterial))}<br>`+
         `<strong>Herria:</strong> ${escapeHtml(udalerriaIzena(fire.municipio || fire.udalerria))}<br>`+
-        `<strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uTxt}`
+        `<strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uTxt}`+
+        shareBtns
       );
 
       marker.addTo(controlledBurnLayer);
