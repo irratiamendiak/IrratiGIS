@@ -944,11 +944,19 @@ map.on("overlayadd", (e) => {
     controlledBurnsLoaded = false;
     loadControlledBurns();
   }
+    if (e.layer === drawings) {
+    const r = window.getCurrentRings && window.getCurrentRings();
+    if(r && window.recalcFromRings) window.recalcFromRings(r);
+  }
 });
 map.on("overlayremove", (e) => {
   if (e.layer === controlledBurnLayer) {
     const badge = document.getElementById("burnCounter");
     if(badge) badge.style.display = "none";
+  }
+  if (e.layer === drawings) {
+    const gb = document.getElementById("geomBadge");
+    if(gb) gb.style.display = "none";
   }
 });
 /* B5M geruza-katalogoa: benetako WMS GetCapabilities zerbitzuetatik kargatzen da. */
@@ -1519,7 +1527,8 @@ $("clearTrack").addEventListener("click",()=>{
 
   // Garbitu perimetroa, azalerak eta geometria-laburpena.
   ["pm","pkm","m2","ha","km2","points","geom","rings"].forEach(id=>{
-    if($(id))$(id).textContent="—";
+    if($(id))$(id).textContent="—";  const gb=document.getElementById("geomBadge"); if(gb) gb.style.display="none";
+    
   });
 
   // Garbitu Fitxategiaren xehetasunak.
@@ -2775,6 +2784,7 @@ function draw(rings){
 
 function reset(){
   drawings.clearLayers();
+    const gb=document.getElementById("geomBadge"); if(gb) gb.style.display="none";
   currentRings=null;
   ["pm","pkm","m2","ha","km2","points","geom","rings","dname","dformat","dtype","dpoints"]
     .forEach(id=>$(id).textContent="—");
