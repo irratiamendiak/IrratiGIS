@@ -1,8 +1,8 @@
 /* ============================================================
    IrratiGIS · gis-tools.js
    Fase 2: edición de GPX/KML cargados con Leaflet-Geoman
-   Edita los tracks/polígonos reales y recalcula superficie/perímetro.
-   Carga en index.html: <script src="gis-tools.js?v=3" defer></script>
+   Al editar, redibuja limpio y recalcula superficie/perímetro.
+   Carga en index.html: <script src="gis-tools.js?v=4" defer></script>
    ============================================================ */
 (() => {
   "use strict";
@@ -10,43 +10,20 @@
   const GEOMAN_CSS = "https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.css";
   const GEOMAN_JS  = "https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.min.js";
 
-  function loadCss(href){
-    if(document.querySelector(`link[href="${href}"]`)) return;
-    const l=document.createElement("link"); l.rel="stylesheet"; l.href=href; document.head.appendChild(l);
-  }
-  function loadScript(src){
-    return new Promise((resolve,reject)=>{
-      if(document.querySelector(`script[src="${src}"]`)){ resolve(); return; }
-      const s=document.createElement("script"); s.src=src; s.onload=()=>resolve(); s.onerror=()=>reject(new Error("No se pudo cargar "+src));
-      document.head.appendChild(s);
-    });
-  }
-  function waitForMap(){
-    return new Promise(resolve=>{
-      const t=setInterval(()=>{ if(window.IrratiGISMap && typeof L!=="undefined"){ clearInterval(t); resolve(window.IrratiGISMap); } },300);
-    });
-  }
-  function ensurePm(map){
-    if(map.pm) return true;
-    try{ if(L.PM && L.PM.Map){ map.pm = new L.PM.Map(map); } }catch(_){}
-    if(map.pm) return true;
-    try{ if(L.PM && typeof L.PM.reInitLayer==="function"){ L.PM.reInitLayer(map); } }catch(_){}
-    return !!map.pm;
-  }
+  function loadCss(href){ if(document.querySelector(`link[href="${href}"]`)) return; const l=document.createElement("link"); l.rel="stylesheet"; l.href=href; document.head.appendChild(l); }
+  function loadScript(src){ return new Promise((resolve,reject)=>{ if(document.querySelector(`script[src="${src}"]`)){ resolve(); return; } const s=document.createElement("script"); s.src=src; s.onload=()=>resolve(); s.onerror=()=>reject(new Error("No se pudo cargar "+src)); document.head.appendChild(s); }); }
+  function waitForMap(){ return new Promise(resolve=>{ const t=setInterval(()=>{ if(window.IrratiGISMap && typeof L!=="undefined"){ clearInterval(t); resolve(window.IrratiGISMap); } },300); }); }
+  function ensurePm(map){ if(map.pm) return true; try{ if(L.PM && L.PM.Map){ map.pm = new L.PM.Map(map); } }catch(_){} if(map.pm) return true; try{ if(L.PM && typeof L.PM.reInitLayer==="function"){ L.PM.reInitLayer(map); } }catch(_){} return !!map.pm; }
 
-  function isEditableGeom(layer){
-    return (layer instanceof L.Polygon) || (layer instanceof L.Polyline);
-  }
-  function isNumberMarker(layer){
-    return (layer instanceof L.CircleMarker) && !(layer instanceof L.Polygon) && !(layer instanceof L.Polyline);
-  }
+  function isEditableGeom(layer){ return (layer instanceof L.Polygon) || (layer instanceof L.Polyline); }
+  function isNumberMarker(layer){ return (layer instanceof L.CircleMarker) && !(layer instanceof L.Polygon) && !(layer instanceof L.Polyline); }
 
   function ringsFromDrawings(drawings){
     const rings=[];
     drawings.eachLayer(layer=>{
       if(!isEditableGeom(layer)) return;
-      let latlngs = layer.getLatLngs();
       const isPoly = (layer instanceof L.Polygon);
+      let latlngs = layer.getLatLngs();
       const coordsArr = isPoly ? (Array.isArray(latlngs[0]) ? latlngs[0] : latlngs) : latlngs;
       const ring = coordsArr.map(p=>[p.lng,p.lat]);
       if(isPoly && ring.length>=3){
@@ -56,6 +33,12 @@
       if(ring.length>=2) rings.push(ring);
     });
     return rings;
+  }
+
+  function removeNumberMarkers(drawings){
+    const toRemove=[];
+    drawings.eachLayer(layer=>{ if(isNumberMarker(layer)) toRemove.push(layer); });
+    toRemove.forEach(l=>drawings.removeLayer(l));
   }
 
   async function init(){
@@ -78,48 +61,42 @@
     function showToolbar(){ try{ map.pm.addControls(toolbarOpts); }catch(_){} }
     function hideToolbar(){ try{ map.pm.removeControls(); }catch(_){} }
 
-    function setNumberMarkersVisible(visible){
-      drawings.eachLayer(layer=>{
-        if(isNumberMarker(layer)){
-          const el = layer.getElement && layer.getElement();
-          if(el) el.style.display = visible ? "" : "none";
-        }
-      });
-    }
+    let editing=false;
 
-    function recalc(){
+    function finishEditAndRedraw(){
       try{
         const rings = ringsFromDrawings(drawings);
         if(!rings.length) return;
         if(window.setCurrentRings) window.setCurrentRings(rings);
+        if(window.redrawRings){ window.redrawRings(rings); }
         if(window.recalcFromRings) window.recalcFromRings(rings);
         const msg=document.getElementById("message");
         if(msg) msg.textContent="Geometria editatua: azalera eta perimetroa eguneratu dira.";
-      }catch(e){ console.warn("recalc:",e); }
+      }catch(e){ console.warn("finishEdit:",e); }
     }
 
     map.on("pm:globaleditmodetoggled", (e)=>{
-      if(e.enabled){ setNumberMarkersVisible(false); }
-      else { setNumberMarkersVisible(true); recalc(); }
+      editing = e.enabled;
+      if(e.enabled){ removeNumberMarkers(drawings); }
+      else { finishEditAndRedraw(); }
     });
     map.on("pm:globaldragmodetoggled", (e)=>{
-      if(!e.enabled) recalc();
+      if(e.enabled){ removeNumberMarkers(drawings); }
+      else { finishEditAndRedraw(); }
     });
-    map.on("pm:edit", ()=> recalc());
-    map.on("pm:dragend", ()=> recalc());
-    map.on("pm:remove", ()=> recalc());
+    map.on("pm:remove", ()=> finishEditAndRedraw());
 
     function updateToolbarVisibility(){
       const tv = document.getElementById("irratiTracksView");
       const active = tv && tv.classList.contains("active");
-      if(active) showToolbar(); else { hideToolbar(); setNumberMarkersVisible(true); }
+      if(active) showToolbar(); else hideToolbar();
     }
     const tv = document.getElementById("irratiTracksView");
     if(tv){ new MutationObserver(updateToolbarVisibility).observe(tv,{attributes:true,attributeFilter:["class"]}); }
     setTimeout(updateToolbarVisibility, 500);
     document.querySelectorAll(".irrati-tab").forEach(b=> b.addEventListener("click", ()=> setTimeout(updateToolbarVisibility,150)));
 
-    console.log("IrratiGIS GIS tresnak: edición de GPX/KML lista.");
+    console.log("IrratiGIS GIS tresnak: edición de GPX/KML lista (v4).");
   }
 
   if(document.readyState==="loading"){ document.addEventListener("DOMContentLoaded", init); }
