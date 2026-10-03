@@ -1,7 +1,8 @@
 /* ============================================================
    IrratiGIS · gis-tools.js
-   Fase 2: edición de geometrías con Leaflet-Geoman (Community)
-   Se carga desde index.html con: <script src="gis-tools.js?v=2" defer></script>
+   Fase 2: edición de GPX/KML cargados con Leaflet-Geoman
+   Edita los tracks/polígonos reales y recalcula superficie/perímetro.
+   Carga en index.html: <script src="gis-tools.js?v=3" defer></script>
    ============================================================ */
 (() => {
   "use strict";
@@ -20,15 +21,11 @@
       document.head.appendChild(s);
     });
   }
-
   function waitForMap(){
     return new Promise(resolve=>{
-      const t=setInterval(()=>{
-        if(window.IrratiGISMap && typeof L!=="undefined"){ clearInterval(t); resolve(window.IrratiGISMap); }
-      },300);
+      const t=setInterval(()=>{ if(window.IrratiGISMap && typeof L!=="undefined"){ clearInterval(t); resolve(window.IrratiGISMap); } },300);
     });
   }
-
   function ensurePm(map){
     if(map.pm) return true;
     try{ if(L.PM && L.PM.Map){ map.pm = new L.PM.Map(map); } }catch(_){}
@@ -37,64 +34,94 @@
     return !!map.pm;
   }
 
+  function isEditableGeom(layer){
+    return (layer instanceof L.Polygon) || (layer instanceof L.Polyline);
+  }
+  function isNumberMarker(layer){
+    return (layer instanceof L.CircleMarker) && !(layer instanceof L.Polygon) && !(layer instanceof L.Polyline);
+  }
+
+  function ringsFromDrawings(drawings){
+    const rings=[];
+    drawings.eachLayer(layer=>{
+      if(!isEditableGeom(layer)) return;
+      let latlngs = layer.getLatLngs();
+      const isPoly = (layer instanceof L.Polygon);
+      const coordsArr = isPoly ? (Array.isArray(latlngs[0]) ? latlngs[0] : latlngs) : latlngs;
+      const ring = coordsArr.map(p=>[p.lng,p.lat]);
+      if(isPoly && ring.length>=3){
+        const first=ring[0], last=ring[ring.length-1];
+        if(first[0]!==last[0] || first[1]!==last[1]) ring.push([first[0],first[1]]);
+      }
+      if(ring.length>=2) rings.push(ring);
+    });
+    return rings;
+  }
+
   async function init(){
     const map = await waitForMap();
     loadCss(GEOMAN_CSS);
     try{ await loadScript(GEOMAN_JS); }catch(e){ console.error("Geoman:",e); return; }
-
     for(let i=0;i<10 && !ensurePm(map);i++){ await new Promise(r=>setTimeout(r,200)); }
-    if(!map.pm){ console.warn("Geoman: no se pudo enganchar al mapa (map.pm ausente)"); return; }
-
+    if(!map.pm){ console.warn("Geoman: no se pudo enganchar al mapa"); return; }
     try{ map.pm.setLang("eu"); }catch(_){ try{ map.pm.setLang("es"); }catch(__){} }
 
-    const editLayer = (window.drawings) ? window.drawings : L.featureGroup().addTo(map);
-    window.IrratiGISEditLayer = editLayer;
+    const drawings = window.drawings;
+    if(!drawings){ console.warn("gis-tools: window.drawings no disponible"); return; }
 
     const toolbarOpts = {
       position: "topright",
-      drawMarker: true,
-      drawPolyline: true,
-      drawPolygon: true,
-      drawCircle: false,
-      drawCircleMarker: false,
-      drawRectangle: true,
-      drawText: false,
-      editMode: true,
-      dragMode: true,
-      cutPolygon: false,
-      removalMode: true,
-      rotateMode: false
+      drawMarker: false, drawPolyline: false, drawPolygon: false,
+      drawCircle: false, drawCircleMarker: false, drawRectangle: false, drawText: false,
+      editMode: true, dragMode: true, cutPolygon: false, removalMode: true, rotateMode: false
     };
-
     function showToolbar(){ try{ map.pm.addControls(toolbarOpts); }catch(_){} }
     function hideToolbar(){ try{ map.pm.removeControls(); }catch(_){} }
 
-    map.on("pm:create", (e) => {
-      try{ if(e.layer){ e.layer.addTo(editLayer); } }catch(_){}
+    function setNumberMarkersVisible(visible){
+      drawings.eachLayer(layer=>{
+        if(isNumberMarker(layer)){
+          const el = layer.getElement && layer.getElement();
+          if(el) el.style.display = visible ? "" : "none";
+        }
+      });
+    }
+
+    function recalc(){
+      try{
+        const rings = ringsFromDrawings(drawings);
+        if(!rings.length) return;
+        if(window.setCurrentRings) window.setCurrentRings(rings);
+        if(window.recalcFromRings) window.recalcFromRings(rings);
+        const msg=document.getElementById("message");
+        if(msg) msg.textContent="Geometria editatua: azalera eta perimetroa eguneratu dira.";
+      }catch(e){ console.warn("recalc:",e); }
+    }
+
+    map.on("pm:globaleditmodetoggled", (e)=>{
+      if(e.enabled){ setNumberMarkersVisible(false); }
+      else { setNumberMarkersVisible(true); recalc(); }
     });
+    map.on("pm:globaldragmodetoggled", (e)=>{
+      if(!e.enabled) recalc();
+    });
+    map.on("pm:edit", ()=> recalc());
+    map.on("pm:dragend", ()=> recalc());
+    map.on("pm:remove", ()=> recalc());
 
     function updateToolbarVisibility(){
-      const tracksView = document.getElementById("irratiTracksView");
-      const active = tracksView && tracksView.classList.contains("active");
-      if(active) showToolbar(); else hideToolbar();
+      const tv = document.getElementById("irratiTracksView");
+      const active = tv && tv.classList.contains("active");
+      if(active) showToolbar(); else { hideToolbar(); setNumberMarkersVisible(true); }
     }
-
-    const tracksView = document.getElementById("irratiTracksView");
-    if(tracksView){
-      const obs = new MutationObserver(updateToolbarVisibility);
-      obs.observe(tracksView,{attributes:true,attributeFilter:["class"]});
-    }
+    const tv = document.getElementById("irratiTracksView");
+    if(tv){ new MutationObserver(updateToolbarVisibility).observe(tv,{attributes:true,attributeFilter:["class"]}); }
     setTimeout(updateToolbarVisibility, 500);
-    document.querySelectorAll(".irrati-tab").forEach(b=>{
-      b.addEventListener("click", ()=> setTimeout(updateToolbarVisibility, 150));
-    });
+    document.querySelectorAll(".irrati-tab").forEach(b=> b.addEventListener("click", ()=> setTimeout(updateToolbarVisibility,150)));
 
-    console.log("IrratiGIS GIS tresnak: Geoman listo. map.pm =", !!map.pm);
+    console.log("IrratiGIS GIS tresnak: edición de GPX/KML lista.");
   }
 
-  if(document.readyState==="loading"){
-    document.addEventListener("DOMContentLoaded", init);
-  }else{
-    init();
-  }
+  if(document.readyState==="loading"){ document.addEventListener("DOMContentLoaded", init); }
+  else { init(); }
 })();
