@@ -32,9 +32,9 @@
     else fallback();
     function fallback(){ const ta=document.createElement("textarea"); ta.value=t; ta.style.position="fixed"; ta.style.left="-9999px"; document.body.appendChild(ta); ta.select(); try{document.execCommand("copy");}catch(_){} ta.remove(); done(); }
   };
-  window.irratiBurnShareText=function(d){
+   window.irratiBurnShareText=function(d){
     const L=[];
-    L.push("🔥 "+(d.titulo||"Erreketa"));
+    L.push((d.titulo||"Erreketa"));
     if(d.kodea) L.push("Kodea: "+d.kodea);
     if(d.titularra) L.push("Titularra: "+d.titularra);
     if(d.telefonoa) L.push("Telefonoa: "+d.telefonoa);
@@ -43,15 +43,31 @@
     if(d.helbidea) L.push("Helbidea: "+d.helbidea);
     if(Number.isFinite(d.lat)&&Number.isFinite(d.lon)){
       L.push("Koordenatuak: "+d.lat.toFixed(6)+", "+d.lon.toFixed(6));
-      L.push("📍 https://maps.google.com/?q="+d.lat+","+d.lon);
+      const u=toUtm30(d.lat,d.lon);
+      if(u) L.push("UTM (ETRS89 30N): X "+u.x+" · Y "+u.y);
+      L.push("https://maps.google.com/?q="+d.lat+","+d.lon);
     }
     return L.join("\n");
+  };
+  window.irratiPointShareText=function(lat,lon){
+    const L=["Kokapena"];
+    L.push("Koordenatuak: "+lat.toFixed(6)+", "+lon.toFixed(6));
+    const u=toUtm30(lat,lon);
+    if(u) L.push("UTM (ETRS89 30N): X "+u.x+" · Y "+u.y);
+    L.push("https://maps.google.com/?q="+lat+","+lon);
+    return L.join("\n");
+  };
+    window.irratiMakeShareText=function(d){
+    if(d && d.titulo==="Kokapena" && Number.isFinite(d.lat) && Number.isFinite(d.lon) && window.irratiPointShareText){
+      return window.irratiPointShareText(d.lat,d.lon);
+    }
+    return window.irratiBurnShareText(d);
   };
   window.irratiShareButtons=function(d){
     const json=encodeURIComponent(JSON.stringify(d));
     return '<div style="display:flex;gap:6px;margin-top:8px">'+
-      '<button type="button" onclick="(function(b){var d=JSON.parse(decodeURIComponent(b.getAttribute(\'data-share\')));window.irratiCopyText(window.irratiBurnShareText(d),b)})(this)" data-share="'+json+'" style="flex:1;border:0;border-radius:8px;padding:7px;font-weight:700;cursor:pointer;background:#edf3ef;color:#234233;font-size:12px">📋 Kopiatu</button>'+
-      '<button type="button" onclick="(function(b){var d=JSON.parse(decodeURIComponent(b.getAttribute(\'data-share\')));window.irratiShareText(window.irratiBurnShareText(d))})(this)" data-share="'+json+'" style="flex:1;border:0;border-radius:8px;padding:7px;font-weight:700;cursor:pointer;background:#176b43;color:#fff;font-size:12px">↗️ Partekatu</button></div>';
+      '<button type="button" onclick="(function(b){var d=JSON.parse(decodeURIComponent(b.getAttribute(\'data-share\')));window.irratiCopyText(window.irratiMakeShareText(d),b)})(this)" data-share="'+json+'" style="flex:1;border:0;border-radius:8px;padding:7px;font-weight:700;cursor:pointer;background:#edf3ef;color:#234233;font-size:12px">Kopiatu</button>'+
+      '<button type="button" onclick="(function(b){var d=JSON.parse(decodeURIComponent(b.getAttribute(\'data-share\')));window.irratiShareText(window.irratiMakeShareText(d))})(this)" data-share="'+json+'" style="flex:1;border:0;border-radius:8px;padding:7px;font-weight:700;cursor:pointer;background:#176b43;color:#fff;font-size:12px">Partekatu</button></div>';
   };
   async function apiFetch(path,options={}){return fetch(`${API}${path}`,{...options,mode:"cors",credentials:"omit",cache:"no-store"});}
   function recoverMap(){
