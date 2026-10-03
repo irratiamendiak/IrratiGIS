@@ -524,7 +524,7 @@ button,.filebtn,input,select{touch-action:manipulation}
     <div class="card"><span>GEOMETRIA</span><strong id="geom">—</strong><small id="rings">—</small></div>
   </section>
 
-    <section class="panel file-details-panel">
+     <section class="panel file-details-panel" style="display:none">
     <h2>Fitxategiaren xehetasunak</h2>
     <div class="details">
       <div><span>FORMATUA</span><strong id="dformat">—</strong></div>
@@ -2817,6 +2817,7 @@ $("file").addEventListener("change",async e=>{
     $("dformat").textContent=ext.toUpperCase();
     $("dtype").textContent=data.type;
     $("dpoints").textContent=fmt(res.totalPoints,0);
+        if(window.recalcFromRings) window.recalcFromRings(data.rings);
     $("message").textContent="Fitxategia prest. Geruzen kontrolean mapa aldatu dezakezu.";
   }catch(err){
     console.error(err);
