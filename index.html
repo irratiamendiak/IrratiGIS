@@ -2755,6 +2755,7 @@ function draw(rings){
   const b=drawings.getBounds();
   if(b.isValid())map.fitBounds(b.pad(.12));
 }
+  window.redrawRings = function(rings){ draw(rings); };
 
 function reset(){
   drawings.clearLayers();
