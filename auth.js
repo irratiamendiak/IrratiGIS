@@ -21,10 +21,9 @@
   }
   const MUNI={"1":"Abaltzisketa","2":"Aduna","3":"Aizarnazabal","4":"Albiztur","5":"Alegia","6":"Alkiza","7":"Altzo","8":"Amezketa","9":"Andoain","10":"Anoeta","11":"Antzuola","12":"Arama","13":"Aretxabaleta","14":"Asteasu","15":"Ataun","16":"Aia","17":"Azkoitia","18":"Azpeitia","19":"Beasain","20":"Beizama","21":"Belauntza","22":"Berastegi","23":"Berrobi","24":"Bidegoian","25":"Zegama","26":"Zerain","27":"Zestoa","28":"Zizurkil","29":"Deba","30":"Eibar","31":"Elduain","32":"Elgoibar","33":"Elgeta","34":"Eskoriatza","35":"Ezkio-itsaso","36":"Hondarribia","37":"Gaintza","38":"Gabiria","39":"Getaria","40":"Hernani","41":"Hernialde","42":"Ibarra","43":"Idiazabal","44":"Ikaztegieta","45":"Irun","46":"Irura","47":"Itsasondo","48":"Larraul","49":"Lazkao","50":"Leaburu","51":"Legazpi","52":"Legorreta","53":"Lezo","54":"Lizartza","55":"Arrasate/Mondragón","56":"Mutriku","57":"Mutiloa","58":"Olaberria","59":"Oñati","60":"Orexa","61":"Orio","62":"Ormaiztegi","63":"Oiartzun","64":"Pasaia","65":"Soraluze/Placencia de las Armas","66":"Errezil","67":"Errenteria","68":"Leintz-Gatzaga","69":"Donostia-San Sebastián","70":"Segura","71":"Tolosa","72":"Urnieta","73":"Usurbil","74":"Bergara","75":"Villabona","76":"Ordizia","77":"Urretxu","78":"Zaldibia","79":"Zarautz","80":"Zumarraga","81":"Zumaia","82":"Mendaro","83":"Lasarte-Oria","84":"Astigarraga","85":"Baliarrain","86":"Orendain","87":"Altzaga","88":"Gaztelu","89":"Itsaso","98":"Alzania","99":"Sierra de Aralar"};
   function udalerriaIzena(v){const k=String(v??"").trim();return MUNI[k]||(v||"—");}
-    window.irratiShareText=function(text){
+      window.irratiShareText=function(text){
     const t=String(text||"");
-    if(navigator.share){ navigator.share({text:t}).catch(()=>{ window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank"); }); }
-    else { window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank"); }
+    window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank","noopener");
   };
   window.irratiCopyText=function(text,btn){
     const t=String(text||"");
