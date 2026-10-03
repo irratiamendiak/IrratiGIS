@@ -6,7 +6,7 @@
    - Puntua ezabatu (borrar vértice)
    Reutiliza la capa window.drawings, window.currentRings y
    window.redrawRings / recalcFromRings / setCurrentRings.
-   Carga en index.html: <script src="gis-tools.js?v=10" defer></script>
+   Carga en index.html: 
    ============================================================ */
 (() => {
   "use strict";
