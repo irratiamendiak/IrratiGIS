@@ -122,6 +122,7 @@
     btnMove=mk("editMove","🖐️","Puntuak editatu/mugitu",()=>toggle(MODES.MOVE));
     btnAdd =mk("editAdd","➕·","Puntua gehitu",()=>toggle(MODES.ADD));
     btnDel =mk("editDel","✖️·","Puntua ezabatu",()=>toggle(MODES.DEL));
+    mk("sharePoint","📍↗️","Kokapena partekatu",()=>toggleShare());
   }
 
   // ---- Conversor de coordenadas compacto (panel flotante propio) ----
@@ -141,7 +142,7 @@
     // Panel flotante con campos PROPIOS (no toca el conversor original)
     coordPanel=document.createElement("div");
     coordPanel.id="coordFloatPanel";
-    coordPanel.style.cssText="position:absolute;right:8px;top:120px;z-index:1200;width:min(280px,82vw);background:#fff;border:1px solid #dce5df;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:12px;display:none;font:13px system-ui;color:#16231c";
+    coordPanel.style.cssText="position:absolute;right:8px;top:70px;z-index:1200;width:min(280px,82vw);background:#fff;border:1px solid #dce5df;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:12px;display:none;font:13px system-ui;color:#16231c";
     coordPanel.innerHTML=
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
       '<strong style="font-size:14px;color:#176b43">📐 Koordenatuak</strong>'+
@@ -219,6 +220,34 @@
     else { coordBtn.classList.remove("active"); coordBtn.style.background=""; coordBtn.style.color=""; }
   }
   function togglePanel(){ setPanel(coordPanel && coordPanel.style.display==="none"); }
+
+
+  // ---- Modo "compartir punto": clic en el mapa -> popup con Kopiatu/Partekatu ----
+  let shareMode=false;
+  function toggleShare(){
+    shareMode=!shareMode;
+    const b=document.getElementById("sharePoint");
+    if(b){ if(shareMode){ b.style.background="#176b43"; b.style.color="#fff"; } else { b.style.background=""; b.style.color=""; } }
+    const mapEl=map&&map.getContainer&&map.getContainer();
+    if(mapEl) mapEl.style.cursor = shareMode ? "crosshair" : "";
+    setMsg(shareMode?"Sakatu mapan puntu bat partekatzeko.":"");
+    if(shareMode){ map.on("click",onShareClick); } else { map.off("click",onShareClick); }
+  }
+  function onShareClick(e){
+    const lat=e.latlng.lat, lon=e.latlng.lng;
+    const txt = window.irratiPointShareText ? window.irratiPointShareText(lat,lon) : (lat.toFixed(6)+", "+lon.toFixed(6));
+    const btns = window.irratiShareButtons ? window.irratiShareButtons({titulo:"Kokapena",lat:lat,lon:lon}) : "";
+    const u = window.toUtm30 ? null : null;
+    let utmLine="";
+    try{ if(typeof proj4!=="undefined"){ const p=proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[lon,lat]); utmLine="<br><strong>UTM (ETRS89 30N):</strong> X "+Math.round(p[0])+" · Y "+Math.round(p[1]); } }catch(_){}
+    const html="<strong>Kokapena</strong><br><br><strong>Geografikoak:</strong> "+lat.toFixed(6)+", "+lon.toFixed(6)+utmLine+btns;
+    L.popup({closeButton:true}).setLatLng(e.latlng).setContent(html).openOn(map);
+    // desactivar el modo tras un uso
+    shareMode=false;
+    const b=document.getElementById("sharePoint"); if(b){ b.style.background=""; b.style.color=""; }
+    if(map&&map.getContainer) map.getContainer().style.cursor="";
+    map.off("click",onShareClick);
+  }
 
   async function init(){
     await waitFor();
