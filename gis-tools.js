@@ -251,90 +251,94 @@
   }
 
 
-  // ---- Regla: medir distancias ----
-  let measureMode=false, measurePts=[], measureLayer=null, measureBadge=null;
+  // ---- Regla: medir distancia (2 puntos) con línea elástica ----
+  let measureMode=false, measureA=null, measureB=null, measureLayer=null, measureTip=null, measureSlopeTip=null;
   function fmtDist(m){
     if(m>=1000) return (m/1000).toLocaleString("eu-ES",{minimumFractionDigits:2,maximumFractionDigits:2})+" km";
     return m.toLocaleString("eu-ES",{minimumFractionDigits:0,maximumFractionDigits:0})+" m";
   }
-  function measureTotal(){
-    if(measurePts.length<2) return 0;
-    let tot=0;
-    for(let i=1;i<measurePts.length;i++){
-      try{ tot+=turf.distance([measurePts[i-1].lng,measurePts[i-1].lat],[measurePts[i].lng,measurePts[i].lat],{units:"meters"}); }catch(_){}
-    }
-    return tot;
+  function distBetween(a,b){
+    try{ return turf.distance([a.lng,a.lat],[b.lng,b.lat],{units:"meters"}); }catch(_){ return 0; }
   }
-  function showMeasureBadge(txt){
-    const mapEl=map.getContainer();
-    if(!measureBadge){
-      measureBadge=document.createElement("div");
-      measureBadge.id="measureBadge";
-      measureBadge.style.cssText="position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:1200;background:#176b43;color:#fff;border-radius:9px;padding:7px 12px;box-shadow:0 2px 10px rgba(0,0,0,.3);font:800 13px system-ui;pointer-events:none;white-space:nowrap";
-      mapEl.appendChild(measureBadge);
+  function midPoint(a,b){ return L.latLng((a.lat+b.lat)/2,(a.lng+b.lng)/2); }
+
+  function ensureLayer(){ if(!measureLayer) measureLayer=L.layerGroup().addTo(map); return measureLayer; }
+  function clearMeasureDraw(){ if(measureLayer) measureLayer.clearLayers(); measureTip=null; measureSlopeTip=null; }
+
+  // Etiqueta de distancia sobre la línea (tooltip permanente en el punto medio)
+  function showDistOnLine(a,b){
+    const d=distBetween(a,b);
+    const mid=midPoint(a,b);
+    if(!measureTip){
+      measureTip=L.tooltip({permanent:true,direction:"center",className:"irrati-measure-tip"}).setLatLng(mid).setContent(fmtDist(d));
+      measureTip.addTo(ensureLayer());
+    }else{
+      measureTip.setLatLng(mid).setContent(fmtDist(d));
     }
-    measureBadge.textContent=txt;
-    measureBadge.style.display="block";
   }
-  function hideMeasureBadge(){ if(measureBadge) measureBadge.style.display="none"; }
-  function redrawMeasure(){
-    if(!measureLayer) measureLayer=L.layerGroup().addTo(map);
-    measureLayer.clearLayers();
-    if(measurePts.length){
-      // línea
-      if(measurePts.length>=2){
-        L.polyline(measurePts,{color:"#176b43",weight:3,dashArray:"6,4"}).addTo(measureLayer);
-      }
-      // puntos
-      measurePts.forEach((p,i)=>{
-        L.circleMarker(p,{radius:5,weight:2,color:"#fff",fillColor:"#176b43",fillOpacity:1}).addTo(measureLayer);
-      });
-    }
-    const tot=measureTotal();
-    showMeasureBadge(measurePts.length<2?"Distantzia: sakatu bigarren puntua":("Distantzia: "+fmtDist(tot)));
+
+  function redrawLine(a,b){
+    const lyr=ensureLayer();
+    // borrar solo la línea y puntos previos, mantener tooltips
+    lyr.eachLayer(l=>{ if(l instanceof L.Polyline || l instanceof L.CircleMarker) lyr.removeLayer(l); });
+    if(a&&b){ L.polyline([a,b],{color:"#176b43",weight:3,dashArray:"6,4"}).addTo(lyr); }
+    [a,b].forEach(p=>{ if(p) L.circleMarker(p,{radius:5,weight:2,color:"#fff",fillColor:"#176b43",fillOpacity:1}).addTo(lyr); });
   }
+
   function toggleMeasure(){
     measureMode=!measureMode;
     const b=document.getElementById("measureDist");
     if(b){ if(measureMode){ b.style.background="#176b43"; b.style.color="#fff"; } else { b.style.background=""; b.style.color=""; } }
     const mapEl=map.getContainer();
-    if(mapEl) mapEl.style.cursor = measureMode ? "crosshair" : "";
     if(measureMode){
-      // desactivar otros modos
       if(shareMode) toggleShare();
-      measurePts=[]; redrawMeasure();
-      showMeasureBadge("Distantzia: sakatu lehen puntua");
+      // empezar medición nueva
+      measureA=null; measureB=null; clearMeasureDraw();
+      if(mapEl) mapEl.style.cursor="crosshair";
       map.on("click",onMeasureClick);
-      map.on("dblclick",onMeasureEnd);
-      map.doubleClickZoom.disable();
-      setMsg("Neurtze modua: sakatu mapan puntuak. Bukatzeko, klik bikoitza edo sakatu berriro 📏.");
-       }else{
-      map.off("click",onMeasureClick);
-      map.off("dblclick",onMeasureEnd);
-      map.doubleClickZoom.enable();
+      map.on("mousemove",onMeasureMove);
+      setMsg("Neurtze modua: sakatu lehen puntua.");
+    }else{
+      // al apagar: si hay 2 puntos, calcular desnivel/pendiente
       if(mapEl) mapEl.style.cursor="";
+      map.off("click",onMeasureClick);
+      map.off("mousemove",onMeasureMove);
       setMsg("");
-      const tot=measureTotal();
-      if(measurePts.length>=2){ showMeasureBadge("Distantzia: "+fmtDist(tot)); computeSlope(tot); }
+      if(measureA && measureB){ computeSlope(measureA,measureB); }
     }
   }
-  function onMeasureClick(e){ measurePts.push(e.latlng); redrawMeasure(); }
-  function onMeasureEnd(e){
-    if(e&&e.originalEvent) L.DomEvent.stop(e.originalEvent);
-    // termina el modo pero deja la medición dibujada
-    measureMode=false;
-    const b=document.getElementById("measureDist"); if(b){ b.style.background=""; b.style.color=""; }
-    map.off("click",onMeasureClick); map.off("dblclick",onMeasureEnd);
-    map.doubleClickZoom.enable();
-    const mapEl=map.getContainer(); if(mapEl) mapEl.style.cursor="";
-    const tot=measureTotal();
-    showMeasureBadge("Distantzia: "+fmtDist(tot));
-    // Consultar altitudes al IGN y calcular pendiente (primer vs último punto)
-    if(measurePts.length>=2){ computeSlope(tot); }
+
+  function onMeasureClick(e){
+    if(!measureA){
+      // primer punto
+      measureA=e.latlng; measureB=null;
+      redrawLine(measureA,null);
+      setMsg("Mugitu sagua eta sakatu bigarren puntua.");
+    }else if(!measureB){
+      // segundo punto -> fija la medición
+      measureB=e.latlng;
+      redrawLine(measureA,measureB);
+      showDistOnLine(measureA,measureB);
+      map.off("mousemove",onMeasureMove);
+      setMsg("Distantzia neurtuta. Sakatu berriro 📏 desnibela ikusteko.");
+    }
   }
-  async function computeSlope(distM){
-    const a=measurePts[0], b=measurePts[measurePts.length-1];
-    showMeasureBadge("Distantzia: "+fmtDist(distM)+" · altuera kargatzen…");
+  function onMeasureMove(e){
+    if(measureA && !measureB){
+      redrawLine(measureA,e.latlng);
+      showDistOnLine(measureA,e.latlng);
+    }
+  }
+
+  async function computeSlope(a,b){
+    const dist=distBetween(a,b);
+    // etiqueta de desnivel cerca del segundo punto
+    if(!measureSlopeTip){
+      measureSlopeTip=L.tooltip({permanent:true,direction:"top",className:"irrati-slope-tip"}).setLatLng(b).setContent("altuera kargatzen…");
+      measureSlopeTip.addTo(ensureLayer());
+    }else{
+      measureSlopeTip.setLatLng(b).setContent("altuera kargatzen…");
+    }
     try{
       const wkt="MULTIPOINT("+a.lng+" "+a.lat+", "+b.lng+" "+b.lat+")";
       const r=await fetch("https://api-processes.idee.es/processes/getElevation/execution",{
@@ -347,20 +351,27 @@
       const z1=Number(vals[0][2]), z2=Number(vals[1][2]);
       if(!Number.isFinite(z1)||!Number.isFinite(z2)) throw new Error("altitud");
       const desnivel=z2-z1;
-      const pct = distM>0 ? (desnivel/distM*100) : 0;
-      const grados = distM>0 ? (Math.atan2(desnivel,distM)*180/Math.PI) : 0;
+      const pct = dist>0 ? (desnivel/dist*100) : 0;
+      const grados = dist>0 ? (Math.atan2(desnivel,dist)*180/Math.PI) : 0;
       const nf=(n,d)=>n.toLocaleString("eu-ES",{minimumFractionDigits:d,maximumFractionDigits:d});
-      showMeasureBadge("Distantzia: "+fmtDist(distM)+" · Desnibela: "+nf(desnivel,1)+" m · Malda: "+nf(pct,1)+"% ("+nf(grados,1)+"°)");
+      measureSlopeTip.setContent("Desnibela: "+nf(desnivel,1)+" m · Malda: "+nf(pct,1)+"% ("+nf(grados,1)+"°)");
     }catch(err){
-      showMeasureBadge("Distantzia: "+fmtDist(distM)+" · (ezin izan da altuera lortu)");
+      measureSlopeTip.setContent("(ezin izan da altuera lortu)");
     }
   }
-  // Limpiar medición al pulsar "Track-a ezabatu"
-  function clearMeasure(){ measurePts=[]; if(measureLayer) measureLayer.clearLayers(); hideMeasureBadge(); if(measureMode) toggleMeasure(); }
 
+  function clearMeasure(){ measureA=null; measureB=null; clearMeasureDraw(); map.off("mousemove",onMeasureMove); if(measureMode) toggleMeasure(); }
+
+  function injectMeasureCss(){
+    if(document.getElementById("irratiMeasureCss")) return;
+    const st=document.createElement("style"); st.id="irratiMeasureCss";
+    st.textContent=".irrati-measure-tip{background:#176b43;color:#fff;border:0;border-radius:7px;padding:3px 8px;font:800 12px system-ui;box-shadow:0 1px 5px rgba(0,0,0,.3)}.irrati-measure-tip::before{display:none}.irrati-slope-tip{background:#8a5a1f;color:#fff;border:0;border-radius:7px;padding:3px 8px;font:800 11px system-ui;box-shadow:0 1px 5px rgba(0,0,0,.3)}.irrati-slope-tip::before{border-top-color:#8a5a1f}";
+    document.head.appendChild(st);
+  }
   async function init(){
     await waitFor();
     map=window.IrratiGISMap;
+    injectMeasureCss();
     addButtons();
     try{ buildCoordPanel(); }catch(e){ console.warn("coord panel:",e); }
     const clearBtn=document.getElementById("clearTrack");
