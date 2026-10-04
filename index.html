@@ -506,7 +506,7 @@ button,.filebtn,input,select{touch-action:manipulation}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.27</h1>
+    <h1>Azalera eta mapa · V2.11.28</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -654,7 +654,7 @@ button,.filebtn,input,select{touch-action:manipulation}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.27 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.28 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -963,15 +963,24 @@ async function loadControlledBurns(){
       `${fires.length} baimendutako erreketa kargatu dira.`;
 
     // Contador flotante sobre el mapa
+    // Kontagailua Leaflet kontrol gisa: beste botoien azpian kokatzen da, gainjarri gabe.
     let badge = document.getElementById("burnCounter");
     if(!badge){
-      badge = document.createElement("div");
-      badge.id = "burnCounter";
-      badge.style.cssText = "position:absolute;left:10px;top:130px;z-index:1000;background:#fff;border-radius:10px;padding:8px 12px;box-shadow:0 2px 10px rgba(0,0,0,.25);font:800 14px system-ui;color:#176b43;pointer-events:none";
-      map.getContainer().appendChild(badge);
+      const BurnCounter = L.Control.extend({
+        options:{position:"topleft"},
+        onAdd:function(){
+          const d = L.DomUtil.create("div");
+          d.id = "burnCounter";
+          d.style.cssText = "display:none;background:#fff;border-radius:10px;padding:8px 12px;box-shadow:0 2px 10px rgba(0,0,0,.25);font:800 14px system-ui;color:#176b43;pointer-events:none";
+          return d;
+        }
+      });
+      map.addControl(new BurnCounter());
+      badge = document.getElementById("burnCounter");
     }
     badge.textContent = `🔥 ${fires.length} erreketa aktibo`;
-    badge.style.display = "block";
+    // Geruza aktibo badago bakarrik erakutsi.
+    badge.style.display = map.hasLayer(controlledBurnLayer) ? "block" : "none";
 
   }catch(error){
     console.error("Ezin izan dira baimendutako erreketak kargatu:", error);
@@ -1807,7 +1816,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.27">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.28">
 ${pts}
 </gpx>`;
 
@@ -1991,7 +2000,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.27"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.28"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3030,7 +3039,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.27 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.28 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
