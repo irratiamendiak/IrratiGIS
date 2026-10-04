@@ -1247,7 +1247,6 @@ function clearMapCreatedWaypoints(){
   waypoints=[];
   waypointMode=false;
   waypointLayer.clearLayers();
-  if(map.hasLayer(waypointLayer)) map.removeLayer(waypointLayer);
   refreshWaypoints();
   $("message").textContent=removed
     ? removed+" waypoint ezabatu dira."
@@ -1537,8 +1536,8 @@ $("clearTrack").addEventListener("click",()=>{
   // Ezabatu bai eskuzko geometria bai GPX/KMLtik kargatutako geometria.
   manualTrackLayer.clearLayers();
   drawings.clearLayers();
-  if(map.hasLayer(manualTrackLayer)) map.removeLayer(manualTrackLayer);
-  if(map.hasLayer(drawings)) map.removeLayer(drawings);
+  manualTrackLayer.clearLayers();
+  drawings.clearLayers();
 
   // Garbitu perimetroa, azalerak eta geometria-laburpena.
   ["pm","pkm","m2","ha","km2","points","geom","rings"].forEach(id=>{
