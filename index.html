@@ -881,7 +881,7 @@ async function loadControlledBurns(){
         `<strong>Titularra:</strong> ${escapeHtml(fire.titular || "—")}<br>`+
         `<strong>Telefonoa:</strong> ${escapeHtml(fire.telefono || "—")}<br>`+
         `<strong>Erregaia:</strong> ${escapeHtml(materialEu(fire.tipoQuema || fire.descripcionMaterial))}<br>`+
-        `<strong>Herria:</strong> ${escapeHtml(udalerriaIzena(fire.municipio || fire.udalerria))}<br>`+
+        `<strong>Herria:</strong> ${escapeHtml(udalerriaIzena(f.municipio || f.udalerria))}<br>`+
         `<strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uTxt}`+
         shareBtns
       );
@@ -1254,7 +1254,11 @@ function clearMapCreatedWaypoints(){
 }
 if($("clearMapWaypoints"))$("clearMapWaypoints").addEventListener("click",clearMapCreatedWaypoints);
 function refreshWaypoints(){
-  if(waypoints.length && !map.hasLayer(waypointLayer)) waypointLayer.addTo(map);
+   if(waypoints.length){
+    if(!map.hasLayer(waypointLayer)) waypointLayer.addTo(map);
+  }else if(map.hasLayer(waypointLayer)){
+    map.removeLayer(waypointLayer);
+  }
   waypointLayer.clearLayers();
   waypoints.forEach((w,i)=>{
     const iconSymbol=w.icon||"●";
@@ -1436,8 +1440,12 @@ refreshWaypoints();
 
 
 function updateManualTrack(){
-  if(!map.hasLayer(manualTrackLayer)) manualTrackLayer.addTo(map);
-  manualTrackLayer.clearLayers();
+   manualTrackLayer.clearLayers();
+  if(manualTrackPoints.length){
+    if(!map.hasLayer(manualTrackLayer)) manualTrackLayer.addTo(map);
+  }else if(map.hasLayer(manualTrackLayer)){
+    map.removeLayer(manualTrackLayer);
+  }
 
   manualTrackPoints.forEach((p,i)=>{
     L.circleMarker(p,{radius:5,weight:2,fillOpacity:.9})
@@ -1527,23 +1535,13 @@ $("clearTrack").addEventListener("click",()=>{
   // Ezabatu bai eskuzko geometria bai GPX/KMLtik kargatutako geometria.
   manualTrackLayer.clearLayers();
   drawings.clearLayers();
-  $("clearTrack").addEventListener("click",()=>{
-  manualTrackPoints=[];
-  drawingTrack=false;
-  manualTrackClosed=false;
-  currentRings=null;
-
-  // Ezabatu bai eskuzko geometria bai GPX/KMLtik kargatutako geometria.
-  manualTrackLayer.clearLayers();
-  drawings.clearLayers();
-  manualTrackLayer.clearLayers();
-  drawings.clearLayers();
+  if(map.hasLayer(drawings)) map.removeLayer(drawings);
 
   // Garbitu perimetroa, azalerak eta geometria-laburpena.
   ["pm","pkm","m2","ha","km2","points","geom","rings"].forEach(id=>{
-    if($(id))$(id).textContent="—";  const gb=document.getElementById("geomBadge"); if(gb) gb.style.display="none";
-    
+    if($(id))$(id).textContent="—";
   });
+  const gb=document.getElementById("geomBadge"); if(gb) gb.style.display="none";
 
   // Garbitu Fitxategiaren xehetasunak.
   ["dname","dformat","dtype","dpoints"].forEach(id=>{
@@ -1557,8 +1555,6 @@ $("clearTrack").addEventListener("click",()=>{
   updateManualTrack();
   $("message").textContent="Track-a, perimetroa, azalerak eta fitxategiaren xehetasunak ezabatu dira.";
 });
-
-function closeManualTrackAsSurface(){
   if(manualTrackPoints.length<3){
     $("message").textContent="Azalera sortzeko gutxienez 3 puntu behar dira.";
     return;
