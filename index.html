@@ -649,7 +649,7 @@ button,.filebtn,input,select{touch-action:manipulation}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.23f5 · Waypoint-ak ezabatu zuzenduta · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.23f6 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -881,7 +881,7 @@ async function loadControlledBurns(){
         `<strong>Titularra:</strong> ${escapeHtml(fire.titular || "—")}<br>`+
         `<strong>Telefonoa:</strong> ${escapeHtml(fire.telefono || "—")}<br>`+
         `<strong>Erregaia:</strong> ${escapeHtml(materialEu(fire.tipoQuema || fire.descripcionMaterial))}<br>`+
-        `<strong>Herria:</strong> ${escapeHtml(udalerriaIzena(f.municipio || f.udalerria))}<br>`+
+        `<strong>Herria:</strong> ${escapeHtml(udalerriaIzena(fire.municipio || fire.udalerria))}<br>`+
         `<strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uTxt}`+
         shareBtns
       );
@@ -1254,7 +1254,8 @@ function clearMapCreatedWaypoints(){
 }
 if($("clearMapWaypoints"))$("clearMapWaypoints").addEventListener("click",clearMapCreatedWaypoints);
 function refreshWaypoints(){
-   if(waypoints.length){
+  // Waypoint-ik ez badago, geruza desaktibatu (kontrolean ere desmarkatzen da).
+  if(waypoints.length){
     if(!map.hasLayer(waypointLayer)) waypointLayer.addTo(map);
   }else if(map.hasLayer(waypointLayer)){
     map.removeLayer(waypointLayer);
@@ -1414,7 +1415,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.23f5">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.23f6">
 ${pts}
 </gpx>`;
 
@@ -1440,7 +1441,8 @@ refreshWaypoints();
 
 
 function updateManualTrack(){
-   manualTrackLayer.clearLayers();
+  manualTrackLayer.clearLayers();
+  // Punturik ez badago, geruza desaktibatu (kontrolean ere desmarkatzen da).
   if(manualTrackPoints.length){
     if(!map.hasLayer(manualTrackLayer)) manualTrackLayer.addTo(map);
   }else if(map.hasLayer(manualTrackLayer)){
@@ -1535,13 +1537,15 @@ $("clearTrack").addEventListener("click",()=>{
   // Ezabatu bai eskuzko geometria bai GPX/KMLtik kargatutako geometria.
   manualTrackLayer.clearLayers();
   drawings.clearLayers();
+  // GPX/KML geruza ere desaktibatu (kontrolean desmarkatzen da).
   if(map.hasLayer(drawings)) map.removeLayer(drawings);
 
   // Garbitu perimetroa, azalerak eta geometria-laburpena.
   ["pm","pkm","m2","ha","km2","points","geom","rings"].forEach(id=>{
     if($(id))$(id).textContent="—";
   });
-  const gb=document.getElementById("geomBadge"); if(gb) gb.style.display="none";
+  const gb=document.getElementById("geomBadge");
+  if(gb) gb.style.display="none";
 
   // Garbitu Fitxategiaren xehetasunak.
   ["dname","dformat","dtype","dpoints"].forEach(id=>{
@@ -1555,6 +1559,8 @@ $("clearTrack").addEventListener("click",()=>{
   updateManualTrack();
   $("message").textContent="Track-a, perimetroa, azalerak eta fitxategiaren xehetasunak ezabatu dira.";
 });
+
+function closeManualTrackAsSurface(){
   if(manualTrackPoints.length<3){
     $("message").textContent="Azalera sortzeko gutxienez 3 puntu behar dira.";
     return;
@@ -1593,7 +1599,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.23f5"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.23f6"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -1606,7 +1612,7 @@ ${pts}
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
   a.href=url;
-  a.download="track-v2.11.23f5.gpx";
+  a.download="track-v2.11.23f6.gpx";
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -2632,7 +2638,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.23f5 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.23f6 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
@@ -2805,6 +2811,7 @@ function draw(rings){
 
 function reset(){
   drawings.clearLayers();
+  if(map.hasLayer(drawings)) map.removeLayer(drawings);
     const gb=document.getElementById("geomBadge"); if(gb) gb.style.display="none";
   currentRings=null;
   ["pm","pkm","m2","ha","km2","points","geom","rings","dname","dformat","dtype","dpoints"]
@@ -2919,7 +2926,7 @@ if(window.visualViewport){
           `<strong>Titularra:</strong> ${escapeHtml(f.titular || "—")}<br>`+
           `<strong>Telefonoa:</strong> ${escapeHtml(f.telefono || "—")}<br>`+
           `<strong>Materiala:</strong> ${escapeHtml(f.tipoQuema || f.descripcionMaterial || "—")}<br>`+
-          `<strong>Herria:</strong> ${escapeHtml(udalerriaIzena(fire.municipio || fire.udalerria))}<br>`+
+          `<strong>Herria:</strong> ${escapeHtml(udalerriaIzena(f.municipio || f.udalerria))}<br>`+
           `<strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uTxtH}`
         );
         m.addTo(histLayer);
