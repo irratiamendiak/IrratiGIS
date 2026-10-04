@@ -501,7 +501,7 @@ button,.filebtn,input,select{touch-action:manipulation}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.25</h1>
+    <h1>Azalera eta mapa · V2.11.26</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -649,7 +649,7 @@ button,.filebtn,input,select{touch-action:manipulation}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.25 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.26 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -981,7 +981,7 @@ let manualTrackPoints=[];
 let drawingTrack=false;
 let manualTrackClosed=false;
 
-L.control.layers(
+const layersControl=L.control.layers(
   {
     "OpenStreetMap":osm,
     "Oinarri argia · B5M geruzetarako":lightBase,
@@ -1238,6 +1238,176 @@ map.on("click",e=>{
   if(waypointMode||drawingTrack||coordPickMode)return;
   queryB5mFeatureInfo(e.latlng);
 });
+
+/* ===== geoEuskadi: Suteen aurkako babesa (ekosistema-zerbitzuak) ===== */
+const GEOEUSKADI_INGURUMENA="https://www.geo.euskadi.eus/geoeuskadi/services/S91B/WMS_INGURUMENA/MapServer/WMSServer";
+const SUTE_BABESA_LAYER="Asaldura_naturalen_kontrola_suteen_aurkako_babesa_Control_de_perturbaciones_naturales_Proteccion_contra_incendios";
+const suteBabesaInfo={version:"1.3.0",format:"image/png",infoFormats:["application/geo+json","text/html","text/plain"]};
+const suteBabesaLayer=L.tileLayer.wms(GEOEUSKADI_INGURUMENA,{
+  layers:SUTE_BABESA_LAYER, format:"image/png", transparent:true,
+  version:"1.3.0", opacity:.7, pane:"wmsOverlayPane",
+  attribution:"Eusko Jaurlaritza / Gobierno Vasco · geoEuskadi"
+});
+layersControl.addOverlay(suteBabesaLayer,"🛡️ Suteen aurkako babesa (geoEuskadi)");
+
+/* Legenda */
+const LegendControl=L.Control.extend({
+  options:{position:"bottomleft"},
+  onAdd:function(){
+    const d=L.DomUtil.create("div","leaflet-bar");
+    d.style.cssText="background:#fff;padding:6px 8px;display:none;max-width:240px;font:12px system-ui";
+    L.DomEvent.disableClickPropagation(d);
+    this._div=d;
+    return d;
+  },
+  show:function(title,imgUrl){
+    this._div.innerHTML=`<strong>${escapeHtml(title)}</strong><br><img src="${imgUrl}" alt="" style="max-width:100%;margin-top:4px">`;
+    this._div.style.display="block";
+  },
+  hide:function(){ this._div.style.display="none"; }
+});
+const legendControl=new LegendControl();
+map.addControl(legendControl);
+
+/* ===== Toponimia (B5M INSPIRE · izen geografikoak) ===== */
+const B5M_INSPIRE_WMS="https://b5m.gipuzkoa.eus/inspire/wms/gipuzkoa_wms";
+const toponimiaLayer=L.layerGroup();
+let toponimiaLoaded=false;
+layersControl.addOverlay(toponimiaLayer,"🏷️ Toponimia (B5M)");
+
+async function loadToponimia(){
+  if(toponimiaLoaded)return;
+  toponimiaLoaded=true;
+  try{
+    const info=await getWmsCapabilities(B5M_INSPIRE_WMS);
+    const gn=info.layers.filter(l=>/^GN\./i.test(l.name)||/geographical\s*names|izen geografiko|nombres geogr/i.test(l.title));
+    if(!gn.length)throw new Error("Ez da toponimia-geruzarik aurkitu.");
+    const names=gn.map(l=>l.name).join(",");
+    L.tileLayer.wms(B5M_INSPIRE_WMS,{
+      layers:names, format:info.format, transparent:true,
+      version:info.version, pane:"wmsOverlayPane",
+      attribution:"Gipuzkoako Foru Aldundia · b5m"
+    }).addTo(toponimiaLayer);
+    b5mQueryLayers.set("toponimia",{baseUrl:B5M_INSPIRE_WMS,name:names,title:"Toponimia",info});
+  }catch(err){
+    toponimiaLoaded=false;
+    console.error("Toponimia:",err);
+    $("message").textContent="Ezin izan da toponimia kargatu: "+err.message;
+  }
+}
+
+map.on("overlayadd",e=>{
+  if(e.layer===suteBabesaLayer){
+    b5mQueryLayers.set("suteBabesa",{baseUrl:GEOEUSKADI_INGURUMENA,name:SUTE_BABESA_LAYER,title:"Suteen aurkako babesa",info:suteBabesaInfo});
+    legendControl.show("Suteen aurkako babesa",
+      GEOEUSKADI_INGURUMENA+"?request=GetLegendGraphic&version=1.3.0&format=image/png&layer="+encodeURIComponent(SUTE_BABESA_LAYER));
+  }
+  if(e.layer===toponimiaLayer){
+    loadToponimia();
+    if(toponimiaLoaded&&!b5mQueryLayers.has("toponimia")){/* kargatzen ari da */}
+  }
+});
+map.on("overlayremove",e=>{
+  if(e.layer===suteBabesaLayer){
+    b5mQueryLayers.delete("suteBabesa");
+    legendControl.hide();
+  }
+  if(e.layer===toponimiaLayer){
+    b5mQueryLayers.delete("toponimia");
+  }
+});
+
+/* ===== Bilatzaile geografikoa (B5M toposearch2 APIa) ===== */
+const B5M_SEARCH="https://b5m.gipuzkoa.eus/api/2.0/toposearch2";
+const searchResultLayer=L.layerGroup().addTo(map);
+
+const SearchControl=L.Control.extend({
+  options:{position:"topleft"},
+  onAdd:function(){
+    const box=L.DomUtil.create("div","leaflet-bar");
+    box.style.cssText="background:#fff;padding:4px;width:min(280px,62vw);font:13px system-ui";
+    box.innerHTML=`
+      <input type="search" placeholder="🔍 Bilatu: mendia, auzoa, helbidea, GI-2131 3…"
+        style="width:100%;border:1px solid #cfdad3;border-radius:6px;padding:7px 8px;font:inherit;box-sizing:border-box">
+      <div class="srch-res" style="max-height:45vh;overflow:auto"></div>`;
+    L.DomEvent.disableClickPropagation(box);
+    L.DomEvent.disableScrollPropagation(box);
+    const input=box.querySelector("input");
+    const res=box.querySelector(".srch-res");
+    let timer=null, lastDocs=[], seq=0;
+
+    const showDoc=d=>{
+      const lat=parseFloat(d.lat), lon=parseFloat(d.lon);
+      if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+      res.innerHTML="";
+      searchResultLayer.clearLayers();
+      const bb=(d.boundingbox||[]).map(Number);
+      let fitted=false;
+      if(bb.length===4&&bb.every(Number.isFinite)){
+        const b=L.latLngBounds([[bb[0],bb[1]],[bb[3],bb[2]]]);
+        if(b.isValid()&&!b.getNorthEast().equals(b.getSouthWest())&&
+           b.getNorthEast().distanceTo(b.getSouthWest())>150){
+          map.fitBounds(b.pad(.2),{maxZoom:17}); fitted=true;
+        }
+      }
+      if(!fitted)map.setView([lat,lon],16);
+      const extra=[d.type,d.city,d.street&&(d.street+(d.door_number?" "+d.door_number:""))].filter(Boolean).join(" · ");
+      L.marker([lat,lon]).bindPopup(
+        `<strong>${escapeHtml(d.display_name||"—")}</strong><br>`+
+        `${escapeHtml(extra)}<br>`+
+        `${lat.toFixed(6)}, ${lon.toFixed(6)}<br>`+
+        (d.map_link?`<a href="${escapeHtml(d.map_link)}" target="_blank" rel="noopener">B5M mapan ikusi</a>`:"")
+      ).addTo(searchResultLayer).openPopup();
+    };
+
+    const render=docs=>{
+      lastDocs=docs;
+      if(!docs.length){res.innerHTML='<div style="padding:6px;color:#65736b">Ez da emaitzarik aurkitu.</div>';return;}
+      res.innerHTML="";
+      docs.forEach(d=>{
+        const it=document.createElement("div");
+        it.style.cssText="padding:6px;border-top:1px solid #eef2ef;cursor:pointer";
+        it.innerHTML=`<strong>${escapeHtml(d.display_name||"—")}</strong><br>`+
+          `<small style="color:#65736b">${escapeHtml([d.type,d.city].filter(Boolean).join(" · "))}</small>`;
+        it.onmouseenter=()=>it.style.background="#f1f7f3";
+        it.onmouseleave=()=>it.style.background="";
+        it.onclick=()=>showDoc(d);
+        res.appendChild(it);
+      });
+    };
+
+    const search=async q=>{
+      const my=++seq;
+      res.innerHTML='<div style="padding:6px;color:#65736b">Bilatzen…</div>';
+      try{
+        const url=B5M_SEARCH+"?"+new URLSearchParams({q,lang:"eu",rows:"15",format:"json"});
+        const r=await fetch(url);
+        if(!r.ok)throw new Error("HTTP "+r.status);
+        const j=await r.json();
+        if(my!==seq)return;
+        render((j.response&&j.response.docs)||[]);
+      }catch(err){
+        if(my!==seq)return;
+        console.error("B5M bilatzailea:",err);
+        res.innerHTML='<div style="padding:6px;color:#8b2f2f">Bilatzaileak ez du erantzun.</div>';
+      }
+    };
+
+    input.addEventListener("input",()=>{
+      clearTimeout(timer);
+      const q=input.value.trim();
+      if(q.length<3){res.innerHTML="";return;}
+      timer=setTimeout(()=>search(q),350);
+    });
+    input.addEventListener("keydown",e=>{
+      if(e.key==="Enter"&&lastDocs.length){e.preventDefault();showDoc(lastDocs[0]);}
+      if(e.key==="Escape"){res.innerHTML="";}
+    });
+    input.addEventListener("search",()=>{ if(!input.value){res.innerHTML="";searchResultLayer.clearLayers();} });
+    return box;
+  }
+});
+map.addControl(new SearchControl());
 
 function addB5mOrthoRadio(container,baseUrl,info,item,prefix){
   const label=document.createElement("label");
@@ -1614,7 +1784,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.25">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.26">
 ${pts}
 </gpx>`;
 
@@ -1798,7 +1968,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.25"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.26"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -2837,7 +3007,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.25 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.26 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
