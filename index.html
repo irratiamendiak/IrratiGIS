@@ -2564,15 +2564,14 @@ async function generateMapPdf(){
 
     let y=62;
 
-    // Waypoint laburpena / resumen
-    pdf.setFont("helvetica","bold");
-    pdf.setFontSize(8.5);
-    pdf.setTextColor(24,78,52);
-    pdf.text("WAYPOINT-AK",x,y);
-    y+=5;
-
+       // Waypoint laburpena / resumen — solo si hay waypoints
     const summaryWaypoints=Array.isArray(waypoints)?waypoints:[];
     if(summaryWaypoints.length){
+      pdf.setFont("helvetica","bold");
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(24,78,52);
+      pdf.text("WAYPOINT-AK",x,y);
+      y+=5;
       summaryWaypoints.slice(0,8).forEach(w=>{
         try{
           const iconPng=waypointIconPng(w.icon||"●",64);
@@ -2597,12 +2596,7 @@ async function generateMapPdf(){
         pdf.text("+"+(summaryWaypoints.length-8)+" waypoint gehiago",x,y);
         y+=6;
       }
-    }else{
-      pdf.setFont("helvetica","normal");
-      pdf.setFontSize(7);
-      pdf.setTextColor(90,90,90);
-      pdf.text("—",x,y);
-      y+=7;
+ 
     }
 
     pdf.setFont("helvetica","bold");
