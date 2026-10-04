@@ -1560,6 +1560,8 @@ function closeManualTrackAsSurface(){
     coords.push(coords[0].slice());
     const areaHa=turf.area(turf.polygon([coords]))/10000;
     const perimeterM=turf.length(turf.lineString(coords),{units:"kilometers"})*1000;
+    currentRings=[coords];
+    if(window.recalcFromRings){ window.recalcFromRings(currentRings); }
     try{
       const b=manualTrackLayer.getBounds();
       if(b.isValid())map.fitBounds(b.pad(.12));
@@ -1567,6 +1569,7 @@ function closeManualTrackAsSurface(){
     $("message").textContent="Track itxia: "+fmt(areaHa,4)+" ha · "+fmt(perimeterM,2)+" m.";
   }else{
     currentRings=null;
+    if(window.recalcFromRings){ window.recalcFromRings([]); }
     $("message").textContent="Track-a berriro ireki da.";
   }
 }
