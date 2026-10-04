@@ -327,6 +327,31 @@
     const mapEl=map.getContainer(); if(mapEl) mapEl.style.cursor="";
     const tot=measureTotal();
     showMeasureBadge("Distantzia: "+fmtDist(tot));
+    // Consultar altitudes al IGN y calcular pendiente (primer vs último punto)
+    if(measurePts.length>=2){ computeSlope(tot); }
+  }
+  async function computeSlope(distM){
+    const a=measurePts[0], b=measurePts[measurePts.length-1];
+    showMeasureBadge("Distantzia: "+fmtDist(distM)+" · altuera kargatzen…");
+    try{
+      const wkt="MULTIPOINT("+a.lng+" "+a.lat+", "+b.lng+" "+b.lat+")";
+      const r=await fetch("https://api-processes.idee.es/processes/getElevation/execution",{
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({inputs:{crs:4326,formato:"wkt",geom:wkt,withCoord:true,outputFormat:"array"}})
+      });
+      const j=await r.json();
+      const vals=j&&j.values;
+      if(!Array.isArray(vals)||vals.length<2) throw new Error("altitud");
+      const z1=Number(vals[0][2]), z2=Number(vals[1][2]);
+      if(!Number.isFinite(z1)||!Number.isFinite(z2)) throw new Error("altitud");
+      const desnivel=z2-z1;
+      const pct = distM>0 ? (desnivel/distM*100) : 0;
+      const grados = distM>0 ? (Math.atan2(desnivel,distM)*180/Math.PI) : 0;
+      const nf=(n,d)=>n.toLocaleString("eu-ES",{minimumFractionDigits:d,maximumFractionDigits:d});
+      showMeasureBadge("Distantzia: "+fmtDist(distM)+" · Desnibela: "+nf(desnivel,1)+" m · Malda: "+nf(pct,1)+"% ("+nf(grados,1)+"°)");
+    }catch(err){
+      showMeasureBadge("Distantzia: "+fmtDist(distM)+" · (ezin izan da altuera lortu)");
+    }
   }
   // Limpiar medición al pulsar "Track-a ezabatu"
   function clearMeasure(){ measurePts=[]; if(measureLayer) measureLayer.clearLayers(); hideMeasureBadge(); if(measureMode) toggleMeasure(); }
