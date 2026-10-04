@@ -494,6 +494,11 @@ button,.filebtn,input,select{touch-action:manipulation}
   }
 }
 
+.lc-group-head{
+  font-weight:800;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:#176b43;margin:8px 0 3px;padding-top:6px;border-top:1px solid #dde5df;
+}
+.leaflet-control-layers-overlays .lc-group-head:first-child{border-top:0;margin-top:0;padding-top:0}
 </style>
   <link rel="stylesheet" href="irratigis-theme.css?v=1">
 </head>
@@ -501,7 +506,7 @@ button,.filebtn,input,select{touch-action:manipulation}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.26</h1>
+    <h1>Azalera eta mapa · V2.11.27</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -649,7 +654,7 @@ button,.filebtn,input,select{touch-action:manipulation}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.26 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.27 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -981,7 +986,21 @@ let manualTrackPoints=[];
 let drawingTrack=false;
 let manualTrackClosed=false;
 
-const layersControl=L.control.layers(
+/* Geruzen kontrola taldeekin: "Edizioa" (erabiltzailearen datuak) eta "Geruzak". */
+const GroupedLayersControl=L.Control.Layers.extend({
+  _addItem:function(obj){
+    const heads=this.options.groupHeads||{};
+    if(obj.overlay && heads[obj.name]){
+      const hd=document.createElement("div");
+      hd.className="lc-group-head";
+      hd.textContent=heads[obj.name];
+      this._overlaysList.appendChild(hd);
+    }
+    return L.Control.Layers.prototype._addItem.call(this,obj);
+  }
+});
+
+const layersControl=new GroupedLayersControl(
   {
     "OpenStreetMap":osm,
     "Oinarri argia · B5M geruzetarako":lightBase,
@@ -992,16 +1011,20 @@ const layersControl=L.control.layers(
     "EU Huts":euHuts
   },
   {
+  "Eskuz marraztutako track-a":manualTrackLayer,
   "GPX / KML":drawings,
+  "Waypoint-ak":waypointLayer,
   "🔥 Baimendutako erreketak":controlledBurnLayer,
   "🔥 Suteak 2010-2025 (EGIF)":egifLayer,
-  "Katastroko partzelak · WMS":cadastralWms,
-  "Eskuz marraztutako track-a":manualTrackLayer,
-  "Waypoint-ak":waypointLayer
+  "Katastroko partzelak · WMS":cadastralWms
 },
   {
     collapsed:true,
-    position:"topright"
+    position:"topright",
+    groupHeads:{
+      "Eskuz marraztutako track-a":"✏️ Edizioa",
+      "🔥 Baimendutako erreketak":"🗺️ Geruzak"
+    }
   }
 ).addTo(map);
   /* 🔥 Cargar las quemas solo al activar su casilla */
@@ -1784,7 +1807,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.26">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.27">
 ${pts}
 </gpx>`;
 
@@ -1968,7 +1991,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.26"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.27"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3007,7 +3030,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.26 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.27 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
