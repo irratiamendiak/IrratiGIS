@@ -1254,6 +1254,7 @@ function clearMapCreatedWaypoints(){
 }
 if($("clearMapWaypoints"))$("clearMapWaypoints").addEventListener("click",clearMapCreatedWaypoints);
 function refreshWaypoints(){
+  if(waypoints.length && !map.hasLayer(waypointLayer)) waypointLayer.addTo(map);
   waypointLayer.clearLayers();
   waypoints.forEach((w,i)=>{
     const iconSymbol=w.icon||"●";
@@ -1435,6 +1436,7 @@ refreshWaypoints();
 
 
 function updateManualTrack(){
+  if(!map.hasLayer(manualTrackLayer)) manualTrackLayer.addTo(map);
   manualTrackLayer.clearLayers();
 
   manualTrackPoints.forEach((p,i)=>{
@@ -2772,6 +2774,7 @@ function calculate(rings){
 
 function draw(rings){
   drawings.clearLayers();
+  if(!map.hasLayer(drawings)) drawings.addTo(map);
   rings.forEach(r=>{
     const latlng=r.map(c=>[c[1],c[0]]);
     const closed=r.length>=4 && coordsEqual(r[0],r[r.length-1]);
