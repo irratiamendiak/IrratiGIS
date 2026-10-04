@@ -501,7 +501,7 @@ button,.filebtn,input,select{touch-action:manipulation}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.23f6</h1>
+    <h1>Azalera eta mapa · V2.11.24</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -649,7 +649,7 @@ button,.filebtn,input,select{touch-action:manipulation}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.23f6 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.24 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -692,6 +692,17 @@ const pnoa=L.tileLayer.wms("https://www.ign.es/wms-inspire/pnoa-ma",{
 const ignRaster=L.tileLayer.wms("https://www.ign.es/wms-inspire/mapa-raster",{
   layers:"mtn_rasterizado", format:"image/png", transparent:false,
   continuousWorld:true, attribution:"© Instituto Geográfico Nacional de España"
+});
+
+/* Overlay WMS-entzako panel propioa: oinarrizko mapen GAINEAN beti (tilePane=200, overlayPane=400). */
+map.createPane("wmsOverlayPane");
+map.getPane("wmsOverlayPane").style.zIndex=350;
+map.getPane("wmsOverlayPane").style.pointerEvents="none";
+
+/* Erreferentziazko oinarri argia: B5M geruzak ondo ikusteko. */
+const lightBase=L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",{
+  subdomains:"abcd", maxZoom:20,
+  attribution:"© OpenStreetMap contributors © CARTO"
 });
 
 const euHuts=L.tileLayer("https://maps.refuges.info/hiking/{z}/{x}/{y}.png",{
@@ -808,11 +819,11 @@ b5mTopo.on("add",loadB5mTopo);
 
 /* Oinarrizko mapak: B5M ortoargazki bat hautatzean hauek kenduko dira.
    B5M kartografia-geruzak ez dira zerrenda honetan sartzen; overlay gisa mantentzen dira. */
-const standardBaseLayers=[osm,gipMap,pnoa,ignRaster,euHuts,b5mTopo];
+const standardBaseLayers=[osm,lightBase,gipMap,pnoa,ignRaster,euHuts,b5mTopo];
 
 const cadastralWms=L.tileLayer.wms("https://b5m.gipuzkoa.eus/inspire/wms/gipuzkoa_wms",{
   layers:"CP.CadastralParcel", format:"image/png", transparent:true,
-  version:"1.3.0", opacity:0.8, attribution:"Gipuzkoako Foru Aldundia · Katastro INSPIRE"
+  version:"1.3.0", opacity:0.8, pane:"wmsOverlayPane", attribution:"Gipuzkoako Foru Aldundia · Katastro INSPIRE"
 });
 
 const drawings=L.featureGroup();
@@ -973,6 +984,7 @@ let manualTrackClosed=false;
 L.control.layers(
   {
     "OpenStreetMap":osm,
+    "Oinarri argia · B5M geruzetarako":lightBase,
     "GeoGipuzkoa · mapa":gipMap,
     "B5M · Topografikoa":b5mTopo,
     "PNOA · azken ortoargazkia":pnoa,
@@ -1047,7 +1059,13 @@ async function getWmsCapabilities(baseUrl){
     const name=xmlText(el,"Name");
     if(!name)continue;
     const title=xmlText(el,"Title")||name;
-    layers.push({name,title});
+    // Eskala-tartea (geruzaren zuzeneko umeak soilik).
+    const own=tag=>{
+      const c=[...el.children].find(x=>x.localName===tag);
+      const v=c?parseFloat(c.textContent):NaN;
+      return Number.isFinite(v)?v:null;
+    };
+    layers.push({name,title,minScale:own("MinScaleDenominator"),maxScale:own("MaxScaleDenominator")});
   }
   // Remove duplicates while preserving order.
   const seen=new Set();
@@ -1067,9 +1085,28 @@ function makeWmsLayer(baseUrl,info,layerName,opaque=false){
     transparent:!opaque,
     version:info.version,
     opacity:opaque?1:0.85,
+    pane:opaque?"tilePane":"wmsOverlayPane",
     attribution:"Gipuzkoako Foru Aldundia · b5m"
   });
 }
+
+/* Uneko mapa-eskala gutxi gorabehera (WMS 0,28 mm pixel-arauaren arabera). */
+function currentScaleDenominator(){
+  const lat=map.getCenter().lat*Math.PI/180;
+  return 559082264.028*Math.cos(lat)/Math.pow(2,map.getZoom());
+}
+const b5mScaleItems=[];
+function updateB5mScaleHints(){
+  const s=currentScaleDenominator();
+  b5mScaleItems.forEach(it=>{
+    const tooBig=it.maxScale && s>it.maxScale;   // urrunegi
+    const tooSmall=it.minScale && s<it.minScale; // hurbilegi
+    const out=tooBig||tooSmall;
+    it.span.style.opacity=out?".5":"1";
+    it.hint.textContent=tooBig?" (zoom egin)":(tooSmall?" (zooma txikitu)":"");
+  });
+}
+map.on("zoomend moveend",updateB5mScaleHints);
 
 function addB5mCheckbox(container,baseUrl,info,item,prefix=""){
   const label=document.createElement("label");
@@ -1078,8 +1115,15 @@ function addB5mCheckbox(container,baseUrl,info,item,prefix=""){
   cb.type="checkbox";
   const span=document.createElement("span");
   span.textContent=(prefix?prefix+" · ":"")+item.title;
+  const hint=document.createElement("small");
+  hint.style.color="#8b2f2f";
+  span.appendChild(hint);
   label.append(cb,span);
   container.appendChild(label);
+  if(item.minScale||item.maxScale){
+    b5mScaleItems.push({span,hint,minScale:item.minScale,maxScale:item.maxScale});
+    updateB5mScaleHints();
+  }
 
   cb.addEventListener("change",()=>{
     const key=baseUrl+"|"+item.name;
@@ -1469,7 +1513,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.23f6">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.24">
 ${pts}
 </gpx>`;
 
@@ -1653,7 +1697,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.23f6"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.24"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -2692,7 +2736,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.23f6 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.24 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
