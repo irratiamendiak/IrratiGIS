@@ -308,12 +308,14 @@
       map.on("dblclick",onMeasureEnd);
       map.doubleClickZoom.disable();
       setMsg("Neurtze modua: sakatu mapan puntuak. Bukatzeko, klik bikoitza edo sakatu berriro 📏.");
-    }else{
+       }else{
       map.off("click",onMeasureClick);
       map.off("dblclick",onMeasureEnd);
       map.doubleClickZoom.enable();
       if(mapEl) mapEl.style.cursor="";
       setMsg("");
+      const tot=measureTotal();
+      if(measurePts.length>=2){ showMeasureBadge("Distantzia: "+fmtDist(tot)); computeSlope(tot); }
     }
   }
   function onMeasureClick(e){ measurePts.push(e.latlng); redrawMeasure(); }
