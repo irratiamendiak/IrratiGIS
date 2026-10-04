@@ -825,6 +825,58 @@ const waypointLayer=L.featureGroup();
 const controlledBurnLayer = L.featureGroup();
 window.controlledBurnLayer = controlledBurnLayer;
 
+// 🔥 Suteak 2010-2025 (EGIF) — panel FWI-ko datu berberak.
+// Fitxategia IrratiGIS biltegian: "suteak-egif.json".
+// (Panel FWI-ko fitxategia zuzenean erabiltzeko: "../panel-fwi/<fitxategi-izena>")
+const EGIF_URL = "suteak-egif.json";
+const egifLayer = L.featureGroup();
+let egifLoaded = false;
+let egifLoading = false;
+
+function egifStyle(ha){
+  if(ha >= 10) return {radius:9, fillColor:"#b30000"};
+  if(ha >= 1)  return {radius:6, fillColor:"#e34a33"};
+  return {radius:4, fillColor:"#fc8d59"};
+}
+
+async function loadEgif(){
+  if(egifLoaded || egifLoading) return;
+  egifLoading = true;
+  try{
+    const r = await fetch(EGIF_URL, {cache:"no-cache"});
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    const list = Array.isArray(j.suteak) ? j.suteak : [];
+    egifLayer.clearLayers();
+    list.forEach(s=>{
+      const lat = Number(s.lat), lon = Number(s.lon);
+      if(!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+      const ha = Number(s.ha) || 0;
+      const st = egifStyle(ha);
+      L.circleMarker([lat,lon],{
+        radius:st.radius, color:"#5a0a0a", weight:1,
+        fillColor:st.fillColor, fillOpacity:.8
+      }).bindPopup(
+        `<strong>🔥 Sutea (EGIF)</strong><br><br>`+
+        `<strong>Data:</strong> ${escapeHtml(s.f || "—")} ${escapeHtml(s.h || "")}<br>`+
+        `<strong>Herria:</strong> ${escapeHtml(s.m || "—")}<br>`+
+        `<strong>Lekua:</strong> ${escapeHtml(s.p || "—")}<br>`+
+        `<strong>Azalera:</strong> ${fmt(ha,2)} ha<br>`+
+        `<strong>Kausa:</strong> ${escapeHtml(s.c || "—")}<br>`+
+        `<strong>Estazioa:</strong> ${escapeHtml(s.e || "—")}<br>`+
+        `<strong>Geografikoak:</strong> ${lat.toFixed(5)}, ${lon.toFixed(5)}`
+      ).addTo(egifLayer);
+    });
+    egifLoaded = true;
+    $("message").textContent = `${list.length} sute historiko kargatu dira (EGIF ${j.desde || ""}–${j.hasta || ""}).`;
+  }catch(err){
+    console.error("EGIF suteak:", err);
+    $("message").textContent = "Ezin izan dira EGIF suteak kargatu: " + err.message;
+  }finally{
+    egifLoading = false;
+  }
+}
+
 let controlledBurnsLoaded = false;
 let controlledBurnsLoading = false;
 
@@ -930,6 +982,7 @@ L.control.layers(
   {
   "GPX / KML":drawings,
   "🔥 Baimendutako erreketak":controlledBurnLayer,
+  "🔥 Suteak 2010-2025 (EGIF)":egifLayer,
   "Katastroko partzelak · WMS":cadastralWms,
   "Eskuz marraztutako track-a":manualTrackLayer,
   "Waypoint-ak":waypointLayer
@@ -941,6 +994,7 @@ L.control.layers(
 ).addTo(map);
   /* 🔥 Cargar las quemas solo al activar su casilla */
 map.on("overlayadd", (e) => {
+  if (e.layer === egifLayer) loadEgif();
   if (e.layer === controlledBurnLayer) {
     controlledBurnsLoaded = false;
     loadControlledBurns();
