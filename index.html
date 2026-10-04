@@ -801,7 +801,7 @@ async function loadB5mTopo(){
     console.error(err);
     $("message").textContent="Ezin izan da B5M mapa topografikoa kargatu: "+err.message;
   }finally{
-    b5mTopoLoading=false;gpx
+    b5mTopoLoading=false;
   }
 }
 b5mTopo.on("add",loadB5mTopo);
