@@ -2651,7 +2651,21 @@ async function generateMapPdf(){
   }
 }
 
-$("exportPdf").addEventListener("click",generateMapPdf);
+$("exportPdf").addEventListener("click",()=>{
+  let veil=document.getElementById("pdfVeil");
+  if(!veil){
+    veil=document.createElement("div");
+    veil.id="pdfVeil";
+    veil.style.cssText="position:absolute;inset:0;z-index:5000;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;font:800 16px system-ui;color:#176b43;border-radius:13px;pointer-events:none";
+    veil.textContent="⏳ PDF sortzen…";
+    const mapEl=document.getElementById("map");
+    if(mapEl) mapEl.appendChild(veil);
+  }
+  veil.style.display="flex";
+  Promise.resolve().then(generateMapPdf).finally(()=>{
+    setTimeout(()=>{ if(veil) veil.style.display="none"; },400);
+  });
+});
 
 
 let currentRings=null;
