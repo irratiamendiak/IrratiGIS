@@ -499,6 +499,8 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 /* B5M panela behean: gorantz irekitzen da, geruzen zerrendarekin gainjarri gabe. */
 .leaflet-bottom .b5m-panel{max-height:46vh!important}
 .leaflet-bottom.leaflet-right .b5m-control{margin-bottom:6px}
+/* Ezkutatzeko klasea: tema-CSSak ezin du gainidatzi. */
+#histPanel.ig-hidden,.ig-hidden{display:none!important}
 .lc-group-head{
   font-weight:800;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
   color:#176b43;margin:8px 0 3px;padding-top:6px;border-top:1px solid #dde5df;
@@ -511,7 +513,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.38</h1>
+    <h1>Azalera eta mapa · V2.11.39</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -578,7 +580,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
       Track-a marrazteko, sakatu «Track-a marraztu» eta gero egin klik mapan.
     </p>
   </section>
-    <section class="panel" id="histPanel" style="display:none">
+    <section class="panel ig-hidden" id="histPanel">
     <div class="maphead">
       <div>
         <h2>🔥 Erreketen historikoa</h2>
@@ -659,7 +661,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.38 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.39 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1361,11 +1363,11 @@ map.on("overlayremove",e=>{ if(e.layer===natura2000Layer){ b5mQueryLayers.delete
 
 /* «Erreketen historikoa» panela: «Baimendutako erreketak» geruza aktibo dagoenean bakarrik. */
 map.on("overlayadd",e=>{
-  if(e.layer===controlledBurnLayer){ const p=$("histPanel"); if(p) p.style.display=""; }
+  if(e.layer===controlledBurnLayer){ const p=$("histPanel"); if(p) p.classList.remove("ig-hidden"); }
 });
 map.on("overlayremove",e=>{
   if(e.layer===controlledBurnLayer){
-    const p=$("histPanel"); if(p) p.style.display="none";
+    const p=$("histPanel"); if(p) p.classList.add("ig-hidden");
     const c=$("histClear"); if(c) c.click();   // historikoaren puntuak ere kendu
   }
 });
@@ -2116,7 +2118,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.38">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.39">
 ${pts}
 </gpx>`;
 
@@ -2300,7 +2302,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.38"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.39"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3339,7 +3341,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.38 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.39 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
