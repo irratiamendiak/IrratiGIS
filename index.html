@@ -513,7 +513,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.40</h1>
+    <h1>Azalera eta mapa · V2.11.41</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -661,7 +661,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.40 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.41 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1521,24 +1521,26 @@ function updateCampbellSun(){
   campbellSun=sunPosition(campbellDate(),c.lat,c.lng);
 }
 
-/* Lerrokadura-mailak (erabiltzailearen definizioa):
-   4 = 3/3: malda + hegoaldera begira (HE/H/HM) + haizea aldeko
-   3 = 2/3: malda + haizea aldeko (ez hegoaldera)
-   2 = 2/3: malda + hegoaldera begira (haizea ez aldeko)
-   1 = 1/3: malda bakarrik
-   Haizea aldeko: malda haizea datorren aldera begira (±45°), aldapa gora bultzatzen du. */
-function isSouthFacing(az){ return az>=112.5 && az<247.5; }
+/* Lerrokadura-mailak (erabiltzailearen definizioa, malda ≥ %20):
+   3 = 3/3: haizea H/HM/HE  + malda H/HM/HE-ra begira
+   2 = 2/3: haizea I/IM/IE  + malda I/IM/IE-ra begira (eguzkirik gabe)
+   1 = 1/3: haizea H osagaia + malda I/IM/IE-ra begira (eguzkirik gabe)
+   Gainerako konbinazioak ez dira margotzen. */
+function inSouth(deg){ return deg>=112.5 && deg<247.5; }
+function inNorth(deg){ return deg>=292.5 || deg<67.5; }
 function campbellLevel(az){
   const w=campbellWind;
-  const windOk = w && Number.isFinite(w.dir) && (w.speed===null || w.speed>=WIND_MIN_KMH) && angDiff(az,w.dir)<=45;
-  const south = isSouthFacing(az);
-  if(windOk&&south) return 4;
-  if(windOk) return 3;
-  if(south) return 2;
-  return 1;
+  if(!w || !Number.isFinite(w.dir)) return 0;
+  if(w.speed!==null && w.speed<WIND_MIN_KMH) return 0;
+  const windS=inSouth(w.dir), windN=inNorth(w.dir);
+  const slopeS=inSouth(az),   slopeN=inNorth(az);
+  if(windS && slopeS) return 3;
+  if(windN && slopeN) return 2;
+  if(windS && slopeN) return 1;
+  return 0;
 }
-const CAMPBELL_COLORS={4:[215,25,28],3:[253,141,60],2:[255,220,90],1:[150,170,160]};
-const CAMPBELL_ALPHA={4:230,3:200,2:160,1:90};
+const CAMPBELL_COLORS={3:[215,25,28],2:[253,141,60],1:[255,220,90]};
+const CAMPBELL_ALPHA={3:230,2:200,1:160};
 
 const CampbellLayer=L.GridLayer.extend({
   createTile:function(coords,done){
@@ -1627,10 +1629,9 @@ function campbellLegend(){
       `<span class="cb-op-val">${Math.round(campbellCfg.opacity*100)}%</span></div>`+
     `<div style="font-size:11px">${windTxt}</div>`+
     `<div style="margin-bottom:4px"></div>`+
-    sw("rgb(215,25,28)","3/3 · malda + hegoa + haizea alde")+
-    sw("rgb(253,141,60)","2/3 · malda + haizea alde")+
-    sw("rgb(255,220,90)","2/3 · malda + hegoa")+
-    sw("rgba(150,170,160,.6)","1/3 · malda bakarrik")+
+    sw("rgb(215,25,28)","3/3 · haizea H/HM/HE · malda H/HM/HE")+
+    sw("rgb(253,141,60)","2/3 · haizea I/IM/IE · malda I/IM/IE")+
+    sw("rgb(255,220,90)","1/3 · haizea H osagaia · malda I/IM/IE")+
     `<div style="color:#65736b;margin-top:4px;font-size:11px">Malda ≥ %20 · zoom ${CAMPBELL_MINZOOM}tik aurrera · ~30 m`+
     (w&&w.source==="Open-Meteo"?` · haizea: Open-Meteo`:"")+`</div>`
   );
@@ -2140,7 +2141,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.40">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.41">
 ${pts}
 </gpx>`;
 
@@ -2324,7 +2325,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.40"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.41"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3363,7 +3364,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.40 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.41 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
