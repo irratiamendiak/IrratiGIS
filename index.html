@@ -511,7 +511,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.37</h1>
+    <h1>Azalera eta mapa · V2.11.38</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -578,7 +578,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
       Track-a marrazteko, sakatu «Track-a marraztu» eta gero egin klik mapan.
     </p>
   </section>
-    <section class="panel">
+    <section class="panel" id="histPanel" style="display:none">
     <div class="maphead">
       <div>
         <h2>🔥 Erreketen historikoa</h2>
@@ -659,7 +659,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.37 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.38 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1358,6 +1358,17 @@ map.on("overlayadd",e=>{
   if(natura2000Legend) legendControl.show("Natura 2000",natura2000Legend);
 });
 map.on("overlayremove",e=>{ if(e.layer===natura2000Layer){ b5mQueryLayers.delete("natura2000"); legendControl.hide(); } });
+
+/* «Erreketen historikoa» panela: «Baimendutako erreketak» geruza aktibo dagoenean bakarrik. */
+map.on("overlayadd",e=>{
+  if(e.layer===controlledBurnLayer){ const p=$("histPanel"); if(p) p.style.display=""; }
+});
+map.on("overlayremove",e=>{
+  if(e.layer===controlledBurnLayer){
+    const p=$("histPanel"); if(p) p.style.display="none";
+    const c=$("histClear"); if(c) c.click();   // historikoaren puntuak ere kendu
+  }
+});
 
 /* ===== Toponimia (B5M INSPIRE · izen geografikoak) ===== */
 const B5M_INSPIRE_WMS="https://b5m.gipuzkoa.eus/inspire/wms/gipuzkoa_wms";
@@ -2105,7 +2116,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.37">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.38">
 ${pts}
 </gpx>`;
 
@@ -2289,7 +2300,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.37"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.38"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3328,7 +3339,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.37 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.38 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
