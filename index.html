@@ -511,7 +511,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.29</h1>
+    <h1>Azalera eta mapa · V2.11.31</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -659,7 +659,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.29 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.31 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1301,7 +1301,8 @@ const LegendControl=L.Control.extend({
     this._div.innerHTML=`<strong>${escapeHtml(title)}</strong><br><img src="${imgUrl}" alt="" style="max-width:100%;margin-top:4px">`;
     this._div.style.display="block";
   },
-  hide:function(){ this._div.style.display="none"; }
+  hide:function(){ this._div.style.display="none"; },
+  showHtml:function(html){ this._div.innerHTML=html; this._div.style.display="block"; return this._div; }
 });
 const legendControl=new LegendControl();
 map.addControl(legendControl);
@@ -1353,6 +1354,114 @@ map.on("overlayremove",e=>{
     b5mQueryLayers.delete("toponimia");
   }
 });
+
+/* ===== Campbell lerrokadura: hegoaldera begira dauden maldak =====
+   Lur-eredua: AWS Terrarium (elevation-tiles-prod), ~30 m bereizmena.
+   Malda eta orientazioa nabigatzailean kalkulatzen dira (Horn metodoa). */
+const TERRARIUM="https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+const campbellCfg={wind:"all",minSlope:11};   // 11° ≈ %20
+const WIND_DIR={SE:135,S:180,SW:225};
+
+function angDiff(a,b){ let d=Math.abs(a-b)%360; return d>180?360-d:d; }
+
+function campbellColor(az){
+  if(campbellCfg.wind==="all"){
+    if(az>=157.5&&az<202.5) return [215,25,28];   // H
+    if(az>=112.5&&az<157.5) return [253,141,60];  // HE
+    if(az>=202.5&&az<247.5) return [240,59,32];   // HM
+    return null;
+  }
+  const d=angDiff(az,WIND_DIR[campbellCfg.wind]);
+  if(d<=22.5) return [215,25,28];   // lerrokadura osoa
+  if(d<=45)   return [253,174,97];  // partziala
+  return null;
+}
+
+const CampbellLayer=L.GridLayer.extend({
+  createTile:function(coords,done){
+    const tile=document.createElement("canvas");
+    tile.width=256; tile.height=256;
+    const img=new Image();
+    img.crossOrigin="anonymous";
+    img.onload=()=>{
+      try{
+        const tmp=document.createElement("canvas");
+        tmp.width=256; tmp.height=256;
+        const tctx=tmp.getContext("2d");
+        tctx.drawImage(img,0,0);
+        const src=tctx.getImageData(0,0,256,256).data;
+        const N=256, elev=new Float32Array(N*N);
+        for(let i=0;i<N*N;i++){
+          elev[i]=(src[i*4]*256+src[i*4+1]+src[i*4+2]/256)-32768;
+        }
+        // Pixel-tamaina metrotan (tile-aren erdiko latitudean).
+        const n=Math.pow(2,coords.z);
+        const latRad=Math.atan(Math.sinh(Math.PI*(1-2*(coords.y+.5)/n)));
+        const res=156543.03392*Math.cos(latRad)/n;
+        const E=(x,y)=>elev[Math.min(N-1,Math.max(0,y))*N+Math.min(N-1,Math.max(0,x))];
+
+        const ctx=tile.getContext("2d");
+        const out=ctx.createImageData(N,N);
+        const minTan=Math.tan(campbellCfg.minSlope*Math.PI/180);
+        for(let y=0;y<N;y++){
+          for(let x=0;x<N;x++){
+            const a=E(x-1,y-1),b=E(x,y-1),c=E(x+1,y-1),
+                  d=E(x-1,y),          f=E(x+1,y),
+                  g=E(x-1,y+1),hh=E(x,y+1),ii=E(x+1,y+1);
+            const dzdx=((c+2*f+ii)-(a+2*d+g))/(8*res);   // ekialdera
+            const dzdy=((g+2*hh+ii)-(a+2*b+c))/(8*res);  // hegoaldera (irudiko y)
+            const grad=Math.hypot(dzdx,dzdy);
+            if(grad<minTan) continue;
+            // Orientazioa: aldapa beherako norabidea, iparraldetik erlojuaren norantzan.
+            let az=Math.atan2(-dzdx,dzdy)*180/Math.PI;
+            if(az<0) az+=360;
+            const col=campbellColor(az);
+            if(!col) continue;
+            const k=(y*N+x)*4;
+            out.data[k]=col[0]; out.data[k+1]=col[1]; out.data[k+2]=col[2]; out.data[k+3]=150;
+          }
+        }
+        ctx.putImageData(out,0,0);
+        done(null,tile);
+      }catch(err){ done(err,tile); }
+    };
+    img.onerror=()=>done(new Error("DEM"),tile);
+    img.src=TERRARIUM.replace("{z}",coords.z).replace("{x}",coords.x).replace("{y}",coords.y);
+    return tile;
+  }
+});
+
+const campbellLayer=new CampbellLayer({
+  pane:"wmsOverlayPane", minZoom:11, maxNativeZoom:15, maxZoom:20,
+  opacity:.75, attribution:"Lur-eredua: Mapzen/AWS Terrain Tiles"
+});
+layersControl.addOverlay(campbellLayer,"⛰️ Campbell · hegoaldeko maldak");
+
+function campbellLegend(){
+  const sel=(v,t)=>`<option value="${v}"${campbellCfg.wind===v?" selected":""}>${t}</option>`;
+  const sl=(v)=>`<option value="${v}"${campbellCfg.minSlope===v?" selected":""}>≥ ${v}° (≈${Math.round(Math.tan(v*Math.PI/180)*100)}%)</option>`;
+  const sw=(c,t)=>`<div><span style="display:inline-block;width:12px;height:12px;background:${c};margin-right:5px;vertical-align:-2px"></span>${t}</div>`;
+  const legend=campbellCfg.wind==="all"
+    ? sw("rgb(253,141,60)","HE · hego-ekialdea")+sw("rgb(215,25,28)","H · hegoaldea")+sw("rgb(240,59,32)","HM · hego-mendebaldea")
+    : sw("rgb(215,25,28)","Lerrokadura osoa (±22,5°)")+sw("rgb(253,174,97)","Partziala (±45°)");
+  const div=legendControl.showHtml(
+    `<strong>⛰️ Campbell · maldak</strong>`+
+    `<div style="margin:5px 0 3px">Haizea nondik: <select class="cb-wind">`+
+      sel("all","Guztiak (HE/H/HM)")+sel("SE","HE")+sel("S","H")+sel("SW","HM")+`</select></div>`+
+    `<div style="margin-bottom:5px">Malda: <select class="cb-slope">`+sl(6)+sl(11)+sl(17)+sl(22)+`</select></div>`+
+    legend+
+    `<div style="color:#65736b;margin-top:4px;font-size:11px">Zoom 11tik aurrera · ~30 m</div>`
+  );
+  div.querySelector(".cb-wind").onchange=e=>{ campbellCfg.wind=e.target.value; campbellLayer.redraw(); campbellLegend(); };
+  div.querySelector(".cb-slope").onchange=e=>{ campbellCfg.minSlope=Number(e.target.value); campbellLayer.redraw(); campbellLegend(); };
+}
+map.on("overlayadd",e=>{
+  if(e.layer===campbellLayer){
+    campbellLegend();
+    if(map.getZoom()<11) $("message").textContent="Campbell geruza: egin zoom (11 edo gehiago) maldak ikusteko.";
+  }
+});
+map.on("overlayremove",e=>{ if(e.layer===campbellLayer) legendControl.hide(); });
 
 /* ===== Bilatzaile geografikoa (B5M toposearch2 APIa) ===== */
 const B5M_SEARCH="https://b5m.gipuzkoa.eus/api/2.0/toposearch2";
@@ -1821,7 +1930,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.29">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.31">
 ${pts}
 </gpx>`;
 
@@ -2005,7 +2114,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.29"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.31"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3044,7 +3153,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.29 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.31 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
@@ -3363,6 +3472,39 @@ if(window.visualViewport){
   if(qBtn) qBtn.addEventListener("click", queryHistory);
   if(cBtn) cBtn.addEventListener("click", clearHistory);
 })();
+})();
+</script>
+<script>
+/* gis-tools.js-k sortutako goiburu-testu batzuk ezkutatu. */
+(function(){
+  const TEXTS=[
+    "Baimendutako erreketak · GIS tresnak",
+    "GIS tresnak",
+    "Kargatu, editatu, neurtu eta esportatu.",
+    "Lan-eremua"
+  ];
+  const norm=s=>String(s||"").replace(/\s+/g," ").trim();
+  function hideTexts(){
+    document.querySelectorAll("h1,h2,h3,h4,p,span,small,div,strong,a").forEach(el=>{
+      if(el.dataset.igHidden||el.closest("#map,.leaflet-container,.wp-dialog"))return;
+      if(el.children.length)return;                // testu-hostoak bakarrik
+      if(!TEXTS.includes(norm(el.textContent)))return;
+      el.style.display="none"; el.dataset.igHidden="1";
+      // Gurasoa hutsik geratzen bada (eta maparik ez badu), hura ere ezkutatu.
+      let par=el.parentElement;
+      for(let i=0;i<3&&par&&par!==document.body;i++){
+        if(par.querySelector("#map,input,button,select,canvas,img"))break;
+        if(norm(par.innerText))break;
+        par.style.display="none";
+        par=par.parentElement;
+      }
+    });
+  }
+  document.addEventListener("DOMContentLoaded",hideTexts);
+  window.addEventListener("load",hideTexts);
+  const mo=new MutationObserver(hideTexts);
+  mo.observe(document.documentElement,{childList:true,subtree:true});
+  setTimeout(()=>mo.disconnect(),15000);
 })();
 </script>
 </body>
