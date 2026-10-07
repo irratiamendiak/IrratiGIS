@@ -511,7 +511,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.35</h1>
+    <h1>Azalera eta mapa · V2.11.36</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -659,7 +659,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.35 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.36 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1306,6 +1306,58 @@ const LegendControl=L.Control.extend({
 });
 const legendControl=new LegendControl();
 map.addControl(legendControl);
+
+/* ===== Natura 2000 (geoEuskadi; ordezkoa: MITECO) =====
+   Geruza-izena GetCapabilities-etik bilatzen da (zerbitzuaren egitura aldatu ohi da). */
+const natura2000Layer=L.layerGroup();
+let natura2000Loaded=false;
+let natura2000Query=null, natura2000Legend=null;
+layersControl.addOverlay(natura2000Layer,"🌿 Natura 2000 (geoEuskadi)");
+
+async function loadNatura2000(){
+  if(natura2000Loaded)return;
+  natura2000Loaded=true;
+  try{
+    const info=await getWmsCapabilities(GEOEUSKADI_INGURUMENA);
+    const all=info.layers;
+    let pick=all.filter(l=>/natura\s*2000/i.test(l.title)||/natura_?2000/i.test(l.name));
+    if(!pick.length) pick=all.filter(l=>/\b(ZEC|ZEPA|LIC)\b/i.test(l.title));
+    if(!pick.length) throw new Error("Natura 2000 geruza ez da aurkitu geoEuskadin.");
+    // Talde-geruza bat badago (adib. «Natura 2000»), hori bakarrik erabili.
+    const group=pick.find(l=>/natura\s*2000/i.test(l.title));
+    const names=(group?[group]:pick).map(l=>l.name).join(",");
+    L.tileLayer.wms(GEOEUSKADI_INGURUMENA,{
+      layers:names, format:"image/png", transparent:true, version:info.version||"1.3.0",
+      opacity:.6, pane:"wmsOverlayPane",
+      attribution:"Eusko Jaurlaritza / Gobierno Vasco · geoEuskadi"
+    }).addTo(natura2000Layer);
+    natura2000Query={baseUrl:GEOEUSKADI_INGURUMENA,name:names,title:"Natura 2000",info:{
+      version:info.version||"1.3.0",format:"image/png",
+      infoFormats:(info.infoFormats&&info.infoFormats.length)?info.infoFormats:["text/html"]
+    }};
+    natura2000Legend=GEOEUSKADI_INGURUMENA+"?request=GetLegendGraphic&version=1.3.0&format=image/png&layer="+encodeURIComponent((group||pick[0]).name);
+    if(map.hasLayer(natura2000Layer)){
+      b5mQueryLayers.set("natura2000",natura2000Query);
+      legendControl.show("Natura 2000",natura2000Legend);
+    }
+  }catch(err){
+    console.warn("Natura 2000 geoEuskadi; MITECO erabiliko da:",err);
+    // Ordezkoa: MITECOren WMS ofiziala (EPSG:4326).
+    L.tileLayer.wms("https://wms.mapama.gob.es/sig/Biodiversidad/RedNatura/wms.aspx",{
+      layers:"PS.ProtectedSite", format:"image/png", transparent:true, version:"1.3.0",
+      crs:L.CRS.EPSG4326, opacity:.6, pane:"wmsOverlayPane",
+      attribution:"MITECO · Red Natura 2000"
+    }).addTo(natura2000Layer);
+    $("message").textContent="Natura 2000: geoEuskadi ez dago eskuragarri, MITECOren geruza erabiltzen da.";
+  }
+}
+map.on("overlayadd",e=>{
+  if(e.layer!==natura2000Layer)return;
+  if(!natura2000Loaded){ loadNatura2000(); return; }
+  if(natura2000Query) b5mQueryLayers.set("natura2000",natura2000Query);
+  if(natura2000Legend) legendControl.show("Natura 2000",natura2000Legend);
+});
+map.on("overlayremove",e=>{ if(e.layer===natura2000Layer){ b5mQueryLayers.delete("natura2000"); legendControl.hide(); } });
 
 /* ===== Toponimia (B5M INSPIRE · izen geografikoak) ===== */
 const B5M_INSPIRE_WMS="https://b5m.gipuzkoa.eus/inspire/wms/gipuzkoa_wms";
@@ -2044,7 +2096,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.35">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.36">
 ${pts}
 </gpx>`;
 
@@ -2228,7 +2280,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.35"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.36"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3267,7 +3319,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.35 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.36 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
