@@ -511,7 +511,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.36</h1>
+    <h1>Azalera eta mapa · V2.11.37</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -659,7 +659,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.36 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.37 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1413,7 +1413,7 @@ map.on("overlayremove",e=>{
    Eguzkiaren posizioa aukeratutako orduan kalkulatzen da (SunCalc formulak). */
 const TERRARIUM="https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
 const CAMPBELL_MINZOOM=11;
-const campbellCfg={wind:"auto",minSlope:11,hour:"now"};   // 11° ≈ %20
+const campbellCfg={wind:"auto",minSlope:11,hour:"now",opacity:.75};   // 11° ≈ %20
 const WIND_DIR={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};
 const WIND_EU={N:"I",NE:"IE",E:"E",SE:"HE",S:"H",SW:"HM",W:"M",NW:"IM"};
 const WIND_MIN_KMH=5;   // honetatik behera haizea ez da kontuan hartzen
@@ -1503,7 +1503,7 @@ function campbellLevel(az){
   return 1;
 }
 const CAMPBELL_COLORS={4:[215,25,28],3:[253,141,60],2:[255,220,90],1:[150,170,160]};
-const CAMPBELL_ALPHA={4:180,3:150,2:110,1:60};
+const CAMPBELL_ALPHA={4:230,3:200,2:160,1:90};
 
 const CampbellLayer=L.GridLayer.extend({
   createTile:function(coords,done){
@@ -1562,7 +1562,7 @@ const CampbellLayer=L.GridLayer.extend({
 /* OHARRA: ez jarri minZoom aukera; bestela Leaflet-ek kontroleko kontrol-laukia desgaitzen du. */
 const campbellLayer=new CampbellLayer({
   pane:"wmsOverlayPane", maxNativeZoom:15, maxZoom:20,
-  opacity:.8, attribution:"Lur-eredua: Mapzen/AWS Terrain Tiles"
+  opacity:campbellCfg.opacity, attribution:"Lur-eredua: Mapzen/AWS Terrain Tiles"
 });
 layersControl.addOverlay(campbellLayer,"⛰️ Campbell · lerrokadura");
 
@@ -1587,6 +1587,9 @@ function campbellLegend(){
     `<strong>⛰️ Campbell · lerrokadura</strong>`+
     `<div style="margin:5px 0 3px">Haizea: <select class="cb-wind">${winds}</select></div>`+
     `<div style="margin-bottom:3px">Ordua: <select class="cb-hour">${hours}</select></div>`+
+    `<div style="margin-bottom:3px;display:flex;align-items:center;gap:6px">Ikusgarritasuna: `+
+      `<input type="range" class="cb-op" min="15" max="100" step="5" value="${Math.round(campbellCfg.opacity*100)}" style="width:90px">`+
+      `<span class="cb-op-val">${Math.round(campbellCfg.opacity*100)}%</span></div>`+
     `<div style="font-size:11px">${windTxt}</div>`+
     `<div style="margin-bottom:4px"></div>`+
     sw("rgb(215,25,28)","3/3 · malda + hegoa + haizea alde")+
@@ -1598,6 +1601,12 @@ function campbellLegend(){
   );
   div.querySelector(".cb-wind").onchange=e=>{ campbellCfg.wind=e.target.value; refreshCampbell(); };
   div.querySelector(".cb-hour").onchange=e=>{ campbellCfg.hour=e.target.value; refreshCampbell(); };
+  const op=div.querySelector(".cb-op"), opVal=div.querySelector(".cb-op-val");
+  op.oninput=()=>{
+    campbellCfg.opacity=Number(op.value)/100;
+    campbellLayer.setOpacity(campbellCfg.opacity);
+    opVal.textContent=op.value+"%";
+  };
 }
 async function refreshCampbell(){
   updateCampbellSun();
@@ -2096,7 +2105,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.36">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.37">
 ${pts}
 </gpx>`;
 
@@ -2280,7 +2289,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.36"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.37"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3319,7 +3328,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.36 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.37 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
