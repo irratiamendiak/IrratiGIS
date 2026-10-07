@@ -511,7 +511,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.31</h1>
+    <h1>Azalera eta mapa · V2.11.32</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -659,7 +659,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.31 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.32 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1355,32 +1355,61 @@ map.on("overlayremove",e=>{
   }
 });
 
-/* ===== Campbell lerrokadura: hegoaldera begira dauden maldak =====
+/* ===== Campbell lerrokadura: malda + haizea + eguzkia =====
    Lur-eredua: AWS Terrarium (elevation-tiles-prod), ~30 m bereizmena.
-   Malda eta orientazioa nabigatzailean kalkulatzen dira (Horn metodoa). */
+   Malda eta orientazioa nabigatzailean kalkulatzen dira (Horn metodoa).
+   Eguzkiaren posizioa aukeratutako orduan kalkulatzen da (SunCalc formulak). */
 const TERRARIUM="https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
-const campbellCfg={wind:"all",minSlope:11};   // 11° ≈ %20
+const CAMPBELL_MINZOOM=11;
+const campbellCfg={wind:"S",minSlope:11,hour:"now"};   // 11° ≈ %20
 const WIND_DIR={SE:135,S:180,SW:225};
+let campbellSun=null;
 
 function angDiff(a,b){ let d=Math.abs(a-b)%360; return d>180?360-d:d; }
 
-function campbellColor(az){
-  if(campbellCfg.wind==="all"){
-    if(az>=157.5&&az<202.5) return [215,25,28];   // H
-    if(az>=112.5&&az<157.5) return [253,141,60];  // HE
-    if(az>=202.5&&az<247.5) return [240,59,32];   // HM
-    return null;
-  }
-  const d=angDiff(az,WIND_DIR[campbellCfg.wind]);
-  if(d<=22.5) return [215,25,28];   // lerrokadura osoa
-  if(d<=45)   return [253,174,97];  // partziala
-  return null;
+/* Eguzkiaren posizioa (azimuta iparraldetik erlojuaren norantzan, altuera gradutan). */
+function sunPosition(date,lat,lng){
+  const rad=Math.PI/180;
+  const d=date.valueOf()/864e5-0.5+2440588-2451545;
+  const M=rad*(357.5291+0.98560028*d);
+  const C=rad*(1.9148*Math.sin(M)+0.02*Math.sin(2*M)+0.0003*Math.sin(3*M));
+  const Lsun=M+C+rad*102.9372+Math.PI;
+  const e=rad*23.4397;
+  const dec=Math.asin(Math.sin(e)*Math.sin(Lsun));
+  const ra=Math.atan2(Math.sin(Lsun)*Math.cos(e),Math.cos(Lsun));
+  const phi=rad*lat;
+  const H=rad*(280.16+360.9856235*d)-rad*(-lng)-ra;
+  const alt=Math.asin(Math.sin(phi)*Math.sin(dec)+Math.cos(phi)*Math.cos(dec)*Math.cos(H));
+  const az=Math.atan2(Math.sin(H),Math.cos(H)*Math.sin(phi)-Math.tan(dec)*Math.cos(phi));
+  return {altitude:alt/rad, azimuth:((az/rad)+180+360)%360};
 }
+function campbellDate(){
+  const d=new Date();
+  if(campbellCfg.hour!=="now"){ d.setHours(Number(campbellCfg.hour),0,0,0); }
+  return d;
+}
+function updateCampbellSun(){
+  const c=map.getCenter();
+  campbellSun=sunPosition(campbellDate(),c.lat,c.lng);
+}
+
+/* 2 = 3/3 osoa (malda+haizea+eguzkia), 1 = 2/3 (malda+haizea), 0 = ezer ez */
+function campbellLevel(az){
+  const windOk = campbellCfg.wind==="all"
+    ? (az>=112.5 && az<247.5)
+    : angDiff(az,WIND_DIR[campbellCfg.wind])<=45;
+  if(!windOk) return 0;
+  const sunOk = campbellSun && campbellSun.altitude>5 && angDiff(az,campbellSun.azimuth)<=45;
+  return sunOk?2:1;
+}
+const CAMPBELL_COLORS={2:[215,25,28],1:[253,174,97]};
 
 const CampbellLayer=L.GridLayer.extend({
   createTile:function(coords,done){
     const tile=document.createElement("canvas");
     tile.width=256; tile.height=256;
+    // Zoom txikian ez da kalkulatzen (geruza markatu daiteke, baina hutsik).
+    if(coords.z<CAMPBELL_MINZOOM){ setTimeout(()=>done(null,tile),0); return tile; }
     const img=new Image();
     img.crossOrigin="anonymous";
     img.onload=()=>{
@@ -1394,7 +1423,6 @@ const CampbellLayer=L.GridLayer.extend({
         for(let i=0;i<N*N;i++){
           elev[i]=(src[i*4]*256+src[i*4+1]+src[i*4+2]/256)-32768;
         }
-        // Pixel-tamaina metrotan (tile-aren erdiko latitudean).
         const n=Math.pow(2,coords.z);
         const latRad=Math.atan(Math.sinh(Math.PI*(1-2*(coords.y+.5)/n)));
         const res=156543.03392*Math.cos(latRad)/n;
@@ -1408,17 +1436,16 @@ const CampbellLayer=L.GridLayer.extend({
             const a=E(x-1,y-1),b=E(x,y-1),c=E(x+1,y-1),
                   d=E(x-1,y),          f=E(x+1,y),
                   g=E(x-1,y+1),hh=E(x,y+1),ii=E(x+1,y+1);
-            const dzdx=((c+2*f+ii)-(a+2*d+g))/(8*res);   // ekialdera
-            const dzdy=((g+2*hh+ii)-(a+2*b+c))/(8*res);  // hegoaldera (irudiko y)
-            const grad=Math.hypot(dzdx,dzdy);
-            if(grad<minTan) continue;
-            // Orientazioa: aldapa beherako norabidea, iparraldetik erlojuaren norantzan.
+            const dzdx=((c+2*f+ii)-(a+2*d+g))/(8*res);
+            const dzdy=((g+2*hh+ii)-(a+2*b+c))/(8*res);
+            if(Math.hypot(dzdx,dzdy)<minTan) continue;
             let az=Math.atan2(-dzdx,dzdy)*180/Math.PI;
             if(az<0) az+=360;
-            const col=campbellColor(az);
-            if(!col) continue;
+            const lvl=campbellLevel(az);
+            if(!lvl) continue;
+            const col=CAMPBELL_COLORS[lvl];
             const k=(y*N+x)*4;
-            out.data[k]=col[0]; out.data[k+1]=col[1]; out.data[k+2]=col[2]; out.data[k+3]=150;
+            out.data[k]=col[0]; out.data[k+1]=col[1]; out.data[k+2]=col[2]; out.data[k+3]=lvl===2?170:120;
           }
         }
         ctx.putImageData(out,0,0);
@@ -1431,37 +1458,54 @@ const CampbellLayer=L.GridLayer.extend({
   }
 });
 
+/* OHARRA: ez jarri minZoom aukera; bestela Leaflet-ek kontroleko kontrol-laukia desgaitzen du. */
 const campbellLayer=new CampbellLayer({
-  pane:"wmsOverlayPane", minZoom:11, maxNativeZoom:15, maxZoom:20,
-  opacity:.75, attribution:"Lur-eredua: Mapzen/AWS Terrain Tiles"
+  pane:"wmsOverlayPane", maxNativeZoom:15, maxZoom:20,
+  opacity:.8, attribution:"Lur-eredua: Mapzen/AWS Terrain Tiles"
 });
-layersControl.addOverlay(campbellLayer,"⛰️ Campbell · hegoaldeko maldak");
+layersControl.addOverlay(campbellLayer,"⛰️ Campbell · lerrokadura");
 
 function campbellLegend(){
-  const sel=(v,t)=>`<option value="${v}"${campbellCfg.wind===v?" selected":""}>${t}</option>`;
-  const sl=(v)=>`<option value="${v}"${campbellCfg.minSlope===v?" selected":""}>≥ ${v}° (≈${Math.round(Math.tan(v*Math.PI/180)*100)}%)</option>`;
+  updateCampbellSun();
+  const opt=(cur,v,t)=>`<option value="${v}"${String(cur)===String(v)?" selected":""}>${t}</option>`;
+  let hours=opt(campbellCfg.hour,"now","Orain");
+  for(let hr=7;hr<=21;hr++) hours+=opt(campbellCfg.hour,hr,String(hr).padStart(2,"0")+":00");
+  const slopes=[6,11,17,22].map(v=>opt(campbellCfg.minSlope,v,`≥ ${v}° (≈${Math.round(Math.tan(v*Math.PI/180)*100)}%)`)).join("");
   const sw=(c,t)=>`<div><span style="display:inline-block;width:12px;height:12px;background:${c};margin-right:5px;vertical-align:-2px"></span>${t}</div>`;
-  const legend=campbellCfg.wind==="all"
-    ? sw("rgb(253,141,60)","HE · hego-ekialdea")+sw("rgb(215,25,28)","H · hegoaldea")+sw("rgb(240,59,32)","HM · hego-mendebaldea")
-    : sw("rgb(215,25,28)","Lerrokadura osoa (±22,5°)")+sw("rgb(253,174,97)","Partziala (±45°)");
+  const s=campbellSun;
+  const sunTxt = s.altitude>5
+    ? `☀️ Eguzkia: ${Math.round(s.azimuth)}° (${["I","IE","E","HE","H","HM","M","IM"][Math.round(s.azimuth/45)%8]}) · ${Math.round(s.altitude)}° altuera`
+    : `🌙 Eguzkirik ez: 3/3 ezin da`;
   const div=legendControl.showHtml(
-    `<strong>⛰️ Campbell · maldak</strong>`+
+    `<strong>⛰️ Campbell · lerrokadura</strong>`+
     `<div style="margin:5px 0 3px">Haizea nondik: <select class="cb-wind">`+
-      sel("all","Guztiak (HE/H/HM)")+sel("SE","HE")+sel("S","H")+sel("SW","HM")+`</select></div>`+
-    `<div style="margin-bottom:5px">Malda: <select class="cb-slope">`+sl(6)+sl(11)+sl(17)+sl(22)+`</select></div>`+
-    legend+
-    `<div style="color:#65736b;margin-top:4px;font-size:11px">Zoom 11tik aurrera · ~30 m</div>`
+      opt(campbellCfg.wind,"all","HE/H/HM")+opt(campbellCfg.wind,"SE","HE")+opt(campbellCfg.wind,"S","H")+opt(campbellCfg.wind,"SW","HM")+`</select></div>`+
+    `<div style="margin-bottom:3px">Ordua: <select class="cb-hour">${hours}</select></div>`+
+    `<div style="margin-bottom:5px">Malda: <select class="cb-slope">${slopes}</select></div>`+
+    `<div style="margin-bottom:4px;font-size:11px">${sunTxt}</div>`+
+    sw("rgb(215,25,28)","3/3 · malda + haizea + eguzkia")+
+    sw("rgb(253,174,97)","2/3 · malda + haizea")+
+    `<div style="color:#65736b;margin-top:4px;font-size:11px">Zoom ${CAMPBELL_MINZOOM}tik aurrera · ~30 m</div>`
   );
-  div.querySelector(".cb-wind").onchange=e=>{ campbellCfg.wind=e.target.value; campbellLayer.redraw(); campbellLegend(); };
-  div.querySelector(".cb-slope").onchange=e=>{ campbellCfg.minSlope=Number(e.target.value); campbellLayer.redraw(); campbellLegend(); };
+  const redraw=()=>{ campbellLayer.redraw(); campbellLegend(); };
+  div.querySelector(".cb-wind").onchange=e=>{ campbellCfg.wind=e.target.value; redraw(); };
+  div.querySelector(".cb-hour").onchange=e=>{ campbellCfg.hour=e.target.value; redraw(); };
+  div.querySelector(".cb-slope").onchange=e=>{ campbellCfg.minSlope=Number(e.target.value); redraw(); };
 }
+let campbellTimer=null;
 map.on("overlayadd",e=>{
   if(e.layer===campbellLayer){
     campbellLegend();
-    if(map.getZoom()<11) $("message").textContent="Campbell geruza: egin zoom (11 edo gehiago) maldak ikusteko.";
+    campbellLayer.redraw();
+    if(map.getZoom()<CAMPBELL_MINZOOM) $("message").textContent="Campbell geruza: egin zoom (11 edo gehiago) maldak ikusteko.";
+    // «Orain» moduan, 15 minuturo eguneratu.
+    clearInterval(campbellTimer);
+    campbellTimer=setInterval(()=>{ if(campbellCfg.hour==="now"){ campbellLayer.redraw(); campbellLegend(); } },15*60*1000);
   }
 });
-map.on("overlayremove",e=>{ if(e.layer===campbellLayer) legendControl.hide(); });
+map.on("overlayremove",e=>{
+  if(e.layer===campbellLayer){ legendControl.hide(); clearInterval(campbellTimer); }
+});
 
 /* ===== Bilatzaile geografikoa (B5M toposearch2 APIa) ===== */
 const B5M_SEARCH="https://b5m.gipuzkoa.eus/api/2.0/toposearch2";
@@ -1930,7 +1974,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.31">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.32">
 ${pts}
 </gpx>`;
 
@@ -2114,7 +2158,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.31"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.32"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3153,7 +3197,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.31 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.32 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
