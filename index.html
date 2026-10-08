@@ -513,7 +513,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.43</h1>
+    <h1>Azalera eta mapa · V2.11.44</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -661,7 +661,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.43 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.44 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1318,18 +1318,29 @@ async function getEgifList(){
 const zarCfg={mode:"freq",cell:500,bw:1500,opacity:.55};
 const ZAR_COLORS={3:"#b30000",2:"#f03b20",1:"#feb24c"};
 const zarLayer=L.layerGroup();
-const zarRenderer=L.canvas({padding:.5,pane:"wmsOverlayPane"});
+const zarRenderer=L.canvas({padding:.5});
 layersControl.addOverlay(zarLayer,"🟥 Arrisku-eremuak (EGIF)");
 const UTM30_DEF="+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs";
 const WGS_DEF="+proj=longlat +datum=WGS84 +no_defs";
 let zarCount=0;
 
+function zarStatus(txt,isErr){
+  legendControl.showHtml(`<strong>🟥 Arrisku-eremuak (EGIF)</strong>`+
+    `<div style="margin-top:4px;font-size:12px;color:${isErr?"#8b2f2f":"#65736b"}">${escapeHtml(txt)}</div>`);
+}
 async function buildZar(){
   zarLayer.clearLayers();
+  zarStatus("Kalkulatzen…");
   let list;
   try{ list=await getEgifList(); }
-  catch(err){ $("message").textContent="Arrisku-eremuak: ezin izan dira EGIF datuak kargatu ("+err.message+")."; return; }
+  catch(err){
+    console.error("Arrisku-eremuak:",err);
+    zarStatus("Ezin izan da «suteak-egif.json» irakurri ("+err.message+"). Egiaztatu fitxategia IrratiGIS biltegian dagoela.",true);
+    return;
+  }
   zarCount=list.length;
+  if(!list.length){ zarStatus("EGIF fitxategian ez dago suterik.",true); return; }
+  try{
   const pts=list.map(s=>{
     const p=proj4(WGS_DEF,UTM30_DEF,[Number(s.lon),Number(s.lat)]);
     const ha=Number(s.ha)||0;
@@ -1373,7 +1384,12 @@ async function buildZar(){
       }).addTo(zarLayer);
     }
   }
+  console.log("Arrisku-eremuak:",zarCount,"sute,",zarLayer.getLayers().length,"gelaxka");
   zarLegend();
+  }catch(err){
+    console.error("Arrisku-eremuak kalkulua:",err);
+    zarStatus("Errorea kalkuluan: "+err.message,true);
+  }
 }
 
 function zarLegend(){
@@ -2234,7 +2250,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.43">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.44">
 ${pts}
 </gpx>`;
 
@@ -2418,7 +2434,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.43"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.44"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3457,7 +3473,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.43 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.44 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
