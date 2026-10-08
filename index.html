@@ -515,7 +515,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.49</h1>
+    <h1>Azalera eta mapa · V2.11.50</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -663,7 +663,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.49 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.50 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1466,6 +1466,67 @@ function zarLegend(){
 }
 map.on("overlayadd",e=>{ if(e.layer===zarLayer) buildZar(); });
 map.on("overlayremove",e=>{ if(e.layer===zarLayer){ zarLayer.clearLayers(); legendControl.hide(); } });
+
+/* ===== Uxal-sektoreak (ehiza-batiden eremuak) · sektoreak.geojson ===== */
+const SEKTOREAK_URL="sektoreak.geojson";
+const SEK_COLORS={A:"#7b3294",B:"#d95f02",C:"#1b9e77"};
+const sekRenderer=L.canvas({padding:.3});
+const sektoreakLayer=L.geoJSON(null,{
+  renderer:sekRenderer,
+  style:f=>{
+    const c=SEK_COLORS[f.properties.KATEGORIA]||"#555";
+    return {color:c,weight:2,fillColor:c,fillOpacity:.12};
+  },
+  onEachFeature:(f,l)=>{
+    const p=f.properties||{};
+    const row=(k,v)=>v!==undefined&&v!==null&&v!==""?`<tr><td style="color:#65736b;padding-right:8px;vertical-align:top">${k}</td><td><strong>${escapeHtml(v)}</strong></td></tr>`:"";
+    l.bindTooltip(escapeHtml(p.SEKTORE_IZ||"—"),{sticky:true,direction:"top",opacity:.9});
+    l.bindPopup(
+      `<strong>🐗 ${escapeHtml(p.SEKTORE_IZ||"Sektorea")}</strong>`+
+      `<table style="font-size:12px;margin-top:5px">`+
+        row("Uxala",p.UXAL_IZENA&&(p.UXAL_IZENA+(p.UXAL_KODEA?" ("+p.UXAL_KODEA+")":"")))+
+        row("Udalerria",p.UDALERRIA)+
+        row("Kategoria",p.KATEGORIA)+
+        row("Mota",p.MOTA)+
+        row("Azalera",Number.isFinite(p.HECTARES)?fmt(p.HECTARES,2)+" ha":"")+
+        row("Taldeak",p.TALDEAK)+
+        row("Baimena",p.BAIMENA)+
+        row("Lur-mota",p.TERRENO_CL)+
+        row("Natura 2000",p.RN2000)+
+        row("Erreserba",p.RESERVA_AM)+
+        row("Oharrak",p.OHARRAK)+
+        row("Ehiza-kodea",p.COD_EHIZAK)+
+      `</table>`,{maxWidth:340}
+    );
+    l.on("mouseover",()=>l.setStyle({weight:4,fillOpacity:.3}));
+    l.on("mouseout",()=>sektoreakLayer.resetStyle(l));
+  }
+});
+let sektoreakLoaded=false;
+layersControl.addOverlay(sektoreakLayer,"🐗 Uxal-sektoreak (batidak)");
+
+function sektoreakLegend(n){
+  const sw=(c,t)=>`<div><span style="display:inline-block;width:12px;height:12px;border:2px solid ${c};background:${c}33;margin-right:5px;vertical-align:-3px"></span>${t}</div>`;
+  legendControl.showHtml(`<strong>🐗 Uxal-sektoreak</strong><div style="margin-top:4px"></div>`+
+    sw(SEK_COLORS.A,"A kategoria")+sw(SEK_COLORS.B,"B kategoria")+sw(SEK_COLORS.C,"C kategoria")+sw("#555","Kategoriarik gabe")+
+    `<div style="color:#65736b;margin-top:4px;font-size:11px">${n} sektore · sakatu sektore batean fitxa ikusteko</div>`);
+}
+async function loadSektoreak(){
+  if(sektoreakLoaded){ sektoreakLegend(sektoreakLayer.getLayers().length); return; }
+  legendControl.showHtml(`<strong>🐗 Uxal-sektoreak</strong><div style="margin-top:4px;color:#65736b">Kargatzen…</div>`);
+  try{
+    const r=await fetch(SEKTOREAK_URL,{cache:"no-cache"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    sektoreakLayer.addData(await r.json());
+    sektoreakLoaded=true;
+    sektoreakLegend(sektoreakLayer.getLayers().length);
+  }catch(err){
+    console.error("Uxal-sektoreak:",err);
+    legendControl.showHtml(`<strong>🐗 Uxal-sektoreak</strong><div style="margin-top:4px;color:#8b2f2f;font-size:12px">Ezin izan da «sektoreak.geojson» irakurri (${escapeHtml(err.message)}). Egiaztatu fitxategia IrratiGIS biltegian dagoela.</div>`);
+  }
+}
+map.on("overlayadd",e=>{ if(e.layer===sektoreakLayer) loadSektoreak(); });
+map.on("overlayremove",e=>{ if(e.layer===sektoreakLayer) legendControl.hide(); });
 
 /* ===== Natura 2000 (geoEuskadi; ordezkoa: MITECO) =====
    Geruza-izena GetCapabilities-etik bilatzen da (zerbitzuaren egitura aldatu ohi da). */
@@ -2433,7 +2494,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.49">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.50">
 ${pts}
 </gpx>`;
 
@@ -2617,7 +2678,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.49"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.50"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3658,7 +3719,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.49 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.50 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
