@@ -515,7 +515,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.45</h1>
+    <h1>Azalera eta mapa · V2.11.46</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -663,7 +663,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.45 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.46 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1318,7 +1318,7 @@ async function getEgifList(){
   return egifListCache;
 }
 const zarCfg={mode:"freq",cell:500,bw:1500,opacity:.55};
-const ZAR_COLORS={3:"#b30000",2:"#f03b20",1:"#feb24c"};
+const ZAR_COLORS={4:"#b30000",3:"#f03b20",2:"#feb24c",1:"#d9ef8b",0:"#66bd63"};
 const zarLayer=L.layerGroup();
 const zarRenderer=L.canvas({padding:.5});
 layersControl.addOverlay(zarLayer,"🟥 Arrisku-eremuak (EGIF)");
@@ -1326,10 +1326,27 @@ const UTM30_DEF="+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs";
 const WGS_DEF="+proj=longlat +datum=WGS84 +no_defs";
 let zarCount=0;
 
+/* Gipuzkoako muga (OpenStreetMap / Nominatim), mapa osoa margotzeko. */
+let gipuzkoaShape=null;
+async function getGipuzkoaShape(){
+  if(gipuzkoaShape) return gipuzkoaShape;
+  const url="https://nominatim.openstreetmap.org/search?"+new URLSearchParams({
+    q:"Gipuzkoa, España", format:"json", polygon_geojson:"1", polygon_threshold:"0.0005", limit:"1"
+  });
+  const r=await fetch(url,{headers:{"Accept":"application/json"}});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const j=await r.json();
+  const g=j&&j[0]&&j[0].geojson;
+  if(!g||!/Polygon/.test(g.type)) throw new Error("Gipuzkoako muga ez da aurkitu");
+  gipuzkoaShape=turf.feature(g);
+  return gipuzkoaShape;
+}
+
 function zarStatus(txt,isErr){
   legendControl.showHtml(`<strong>🟥 Arrisku-eremuak (EGIF)</strong>`+
     `<div style="margin-top:4px;font-size:12px;color:${isErr?"#8b2f2f":"#65736b"}">${escapeHtml(txt)}</div>`);
 }
+let zarFullMap=true;
 async function buildZar(){
   zarLayer.clearLayers();
   zarStatus("Kalkulatzen…");
@@ -1342,6 +1359,10 @@ async function buildZar(){
   }
   zarCount=list.length;
   if(!list.length){ zarStatus("EGIF fitxategian ez dago suterik.",true); return; }
+  let shape=null;
+  try{ shape=await getGipuzkoaShape(); }
+  catch(err){ console.warn("Gipuzkoako muga:",err); }
+  zarFullMap=!!shape;
   try{
   const pts=list.map(s=>{
     const p=proj4(WGS_DEF,UTM30_DEF,[Number(s.lon),Number(s.lat)]);
@@ -1350,9 +1371,16 @@ async function buildZar(){
   });
   const {cell,bw}=zarCfg;
   let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-  pts.forEach(p=>{minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);});
-  minX=Math.floor((minX-bw)/cell)*cell; minY=Math.floor((minY-bw)/cell)*cell;
-  maxX=Math.ceil((maxX+bw)/cell)*cell;  maxY=Math.ceil((maxY+bw)/cell)*cell;
+  const ext=(x,y)=>{minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);};
+  if(shape){
+    const bb=turf.bbox(shape);   // [minLon,minLat,maxLon,maxLat]
+    [[bb[0],bb[1]],[bb[2],bb[1]],[bb[0],bb[3]],[bb[2],bb[3]]].forEach(c=>{const p=proj4(WGS_DEF,UTM30_DEF,c);ext(p[0],p[1]);});
+  }else{
+    pts.forEach(p=>ext(p.x,p.y));
+    minX-=bw; minY-=bw; maxX+=bw; maxY+=bw;
+  }
+  minX=Math.floor(minX/cell)*cell; minY=Math.floor(minY/cell)*cell;
+  maxX=Math.ceil(maxX/cell)*cell;  maxY=Math.ceil(maxY/cell)*cell;
   const nx=Math.round((maxX-minX)/cell), ny=Math.round((maxY-minY)/cell);
   const grid=new Float64Array(nx*ny);
   const rr=Math.ceil(bw/cell);
@@ -1369,15 +1397,30 @@ async function buildZar(){
       }
     }
   });
-  const vals=[...grid].filter(v=>v>0).sort((a,b)=>a-b);
-  if(!vals.length) return;
+  // Gipuzkoa barruko gelaxkak.
+  const inside=new Uint8Array(nx*ny);
+  const centers=new Array(nx*ny);
+  for(let j=0;j<ny;j++){
+    for(let i=0;i<nx;i++){
+      const k=j*nx+i;
+      const c=proj4(UTM30_DEF,WGS_DEF,[minX+(i+.5)*cell,minY+(j+.5)*cell]);
+      centers[k]=c;
+      inside[k]= shape ? (turf.booleanPointInPolygon(c,shape)?1:0) : (grid[k]>0?1:0);
+    }
+  }
+  const vals=[];
+  for(let k=0;k<nx*ny;k++) if(inside[k]&&grid[k]>0) vals.push(grid[k]);
+  vals.sort((a,b)=>a-b);
+  if(!vals.length){ zarStatus("Ez dago suterik eremuan.",true); return; }
   const q=f=>vals[Math.min(vals.length-1,Math.floor(f*vals.length))];
   const t50=q(.5), t75=q(.75), t90=q(.9);
   for(let j=0;j<ny;j++){
     for(let i=0;i<nx;i++){
-      const v=grid[j*nx+i];
-      if(v<t50) continue;
-      const cls=v>=t90?3:(v>=t75?2:1);
+      const k=j*nx+i;
+      if(!inside[k]) continue;
+      const v=grid[k];
+      const cls= v<=0?0 : v<t50?1 : v<t75?2 : v<t90?3 : 4;
+      if(!shape && cls<2) continue;   // mugarik gabe: arrisku ertaina eta handiagoa bakarrik
       const x0=minX+i*cell, y0=minY+j*cell;
       const sw=proj4(UTM30_DEF,WGS_DEF,[x0,y0]), ne=proj4(UTM30_DEF,WGS_DEF,[x0+cell,y0+cell]);
       L.rectangle([[sw[1],sw[0]],[ne[1],ne[0]]],{
@@ -1404,10 +1447,12 @@ function zarLegend(){
     `<div style="margin-bottom:5px;display:flex;align-items:center;gap:6px">Ikusgarritasuna: `+
       `<input type="range" class="zar-op" min="15" max="100" step="5" value="${Math.round(zarCfg.opacity*100)}" style="width:90px">`+
       `<span class="zar-op-val">${Math.round(zarCfg.opacity*100)}%</span></div>`+
-    sw(ZAR_COLORS[3],"Oso altua (%10 goiena)")+
-    sw(ZAR_COLORS[2],"Altua (%10–25)")+
-    sw(ZAR_COLORS[1],"Ertaina (%25–50)")+
-    `<div style="color:#65736b;margin-top:4px;font-size:11px">${zarCount} sute · 2010–2025 · ez da ZAR ofiziala</div>`
+    sw(ZAR_COLORS[4],"Oso altua (%10 goiena)")+
+    sw(ZAR_COLORS[3],"Altua (%10–25)")+
+    sw(ZAR_COLORS[2],"Ertaina (%25–50)")+
+    (zarFullMap?sw(ZAR_COLORS[1],"Baxua (%50 behekoa)")+sw(ZAR_COLORS[0],"Nulua (sute-historiarik ez)"):"")+
+    `<div style="color:#65736b;margin-top:4px;font-size:11px">${zarCount} sute · 2010–2025 · ez da ZAR ofiziala`+
+    (zarFullMap?"":" · Gipuzkoako muga ez da kargatu")+`</div>`
   );
   div.querySelector(".zar-mode").onchange=e=>{ zarCfg.mode=e.target.value; buildZar(); };
   const op=div.querySelector(".zar-op"), opVal=div.querySelector(".zar-op-val");
@@ -2252,7 +2297,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.45">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.46">
 ${pts}
 </gpx>`;
 
@@ -2436,7 +2481,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.45"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.46"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3475,7 +3520,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.45 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.46 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
