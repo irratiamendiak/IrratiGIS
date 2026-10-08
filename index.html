@@ -515,7 +515,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.48</h1>
+    <h1>Azalera eta mapa · V2.11.49</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -663,7 +663,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.48 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.49 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1213,8 +1213,10 @@ function featureInfoToHtml(txt,fmt){
     const doc=new DOMParser().parseFromString(txt,"text/html");
     doc.querySelectorAll("script,style,link,iframe,object,embed").forEach(x=>x.remove());
     const rows=[...doc.querySelectorAll("tr")]
+      .filter(tr=>!tr.querySelector("tr"))
       .map(tr=>[...tr.children].map(td=>td.textContent.trim()))
-      .filter(r=>r.some(Boolean));
+      .filter(r=>r.some(Boolean))
+      .filter(r=>!/^requested layer/i.test(r[0]||""));
     if(rows.length){
       return `<table style="font-size:12px;margin-top:3px">`+
         rows.map(r=>"<tr>"+r.map(c=>`<td ${cell}>${escapeHtml(c)}</td>`).join("")+"</tr>").join("")+
@@ -1846,20 +1848,108 @@ map.on("overlayremove",e=>{
 const B5M_SEARCH="https://b5m.gipuzkoa.eus/api/2.0/toposearch2";
 const searchResultLayer=L.layerGroup().addTo(map);
 
+/* ===== Partzela katastralen bilaketa (Diputazioaren INSPIRE WFS) =====
+   Erreferentzia: UUU-PP-PPP (udalerria-poligonoa-partzela), adib. 071-04-109. */
+const B5M_WFS_CP="https://b5m.gipuzkoa.eus/inspire/wfs/gipuzkoa_wfs_cp";
+const parcelLayer=L.featureGroup().addTo(map);
+const normTxt=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+
+function muniCodeFromName(name){
+  const n=normTxt(name).replace(/\./g,"");
+  if(!n) return null;
+  let best=null;
+  for(const [code,label] of Object.entries(MUNI)){
+    const variants=label.split(/[\/-]/).map(normTxt).concat([normTxt(label)]);
+    if(variants.some(v=>v===n)) return code;
+    if(!best && variants.some(v=>v.startsWith(n))) best=code;
+  }
+  return best;
+}
+function parseParcelQuery(q){
+  const s=q.trim();
+  let m=s.match(/^(\d{1,3})\s*[-\s\/.]\s*(\d{1,2})\s*[-\s\/.]\s*(\d{1,3})$/);
+  if(m) return {mun:m[1],pol:m[2],par:m[3]};
+  m=s.match(/^(.+?)\s+(?:pol(?:igonoa|igono|\.)?\s*)?(\d{1,2})\s*[-\s\/.]\s*(?:(?:par(?:tzela|cela)?|pa)\.?\s*)?(\d{1,3})$/i);
+  if(m){
+    const code=muniCodeFromName(m[1]);
+    if(code) return {mun:code,pol:m[2],par:m[3],muniName:MUNI[code]};
+  }
+  return null;
+}
+function parcelRef(p){
+  return String(p.mun).padStart(3,"0")+"-"+String(p.pol).padStart(2,"0")+"-"+String(p.par).padStart(3,"0");
+}
+async function fetchParcel(ref){
+  const filter=
+    '<fes:Filter xmlns:fes="http://www.opengis.net/fes/2.0" xmlns:cp="http://inspire.ec.europa.eu/schemas/cp/4.0">'+
+    '<fes:PropertyIsEqualTo><fes:ValueReference>cp:nationalCadastralReference</fes:ValueReference>'+
+    '<fes:Literal>'+ref+'</fes:Literal></fes:PropertyIsEqualTo></fes:Filter>';
+  const url=B5M_WFS_CP+"?"+new URLSearchParams({
+    service:"WFS", version:"2.0.0", request:"GetFeature",
+    typeNames:"cp:CadastralParcel",
+    namespaces:"xmlns(cp,http://inspire.ec.europa.eu/schemas/cp/4.0)",
+    srsName:"http://www.opengis.net/def/crs/EPSG/0/3857",
+    count:"5", filter
+  });
+  const r=await fetch(url);
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const xml=new DOMParser().parseFromString(await r.text(),"application/xml");
+  if(xml.querySelector("parsererror")) throw new Error("WFS erantzun baliogabea");
+  if(xml.getElementsByTagNameNS("*","ExceptionText").length)
+    throw new Error(xml.getElementsByTagNameNS("*","ExceptionText")[0].textContent.trim());
+  const parcels=[...xml.getElementsByTagNameNS("*","CadastralParcel")];
+  return parcels.map(el=>{
+    const txt=n=>{const e=el.getElementsByTagNameNS("*",n)[0];return e?e.textContent.trim():"";};
+    const toLL=pl=>{
+      const v=pl.trim().split(/\s+/).map(Number), out=[];
+      for(let i=0;i+1<v.length;i+=2){ const ll=L.CRS.EPSG3857.unproject(L.point(v[i],v[i+1])); out.push([ll.lat,ll.lng]); }
+      return out;
+    };
+    const polys=[];
+    [...el.getElementsByTagNameNS("*","Polygon"),...el.getElementsByTagNameNS("*","PolygonPatch")].forEach(pg=>{
+      const rings=[];
+      ["exterior","interior"].forEach(tag=>{
+        [...pg.getElementsByTagNameNS("*",tag)].forEach(ring=>{
+          const pl=ring.getElementsByTagNameNS("*","posList")[0];
+          if(pl) rings.push(toLL(pl.textContent));
+        });
+      });
+      if(rings.length) polys.push(rings);
+    });
+    return {ref:txt("nationalCadastralReference")||ref, area:parseFloat(txt("areaValue")), polys};
+  }).filter(p=>p.polys.length);
+}
+function showParcel(p,muniName){
+  parcelLayer.clearLayers();
+  const shape=L.polygon(p.polys.length===1?p.polys[0]:p.polys,{
+    color:"#ffd60a",weight:4,fillColor:"#ffd60a",fillOpacity:.15
+  }).addTo(parcelLayer);
+  const ha=Number.isFinite(p.area)?fmt(p.area/10000,4)+" ha":"—";
+  shape.bindPopup(
+    `<strong>📐 Partzela ${escapeHtml(p.ref)}</strong><br>`+
+    (muniName?`${escapeHtml(muniName)}<br>`:"")+
+    `Azalera: ${ha}<br>`+
+    `<button type="button" onclick="window.__clearParcel()">Ezabatu</button>`
+  );
+  map.fitBounds(shape.getBounds().pad(.3),{maxZoom:18});
+  shape.openPopup();
+}
+window.__clearParcel=function(){ parcelLayer.clearLayers(); map.closePopup(); };
+
 const SearchControl=L.Control.extend({
   options:{position:"topleft"},
   onAdd:function(){
     const box=L.DomUtil.create("div","leaflet-bar");
     box.style.cssText="background:#fff;padding:4px;width:min(280px,62vw);font:13px system-ui";
     box.innerHTML=`
-      <input type="search" placeholder="🔍 Bilatu: mendia, auzoa, helbidea, GI-2131 3…"
+      <input type="search" placeholder="🔍 Bilatu: mendia, helbidea, GI-2131 3, Tolosa 4 109…"
         style="width:100%;border:1px solid #cfdad3;border-radius:6px;padding:7px 8px;font:inherit;box-sizing:border-box">
       <div class="srch-res" style="max-height:45vh;overflow:auto"></div>`;
     L.DomEvent.disableClickPropagation(box);
     L.DomEvent.disableScrollPropagation(box);
     const input=box.querySelector("input");
     const res=box.querySelector(".srch-res");
-    let timer=null, lastDocs=[], seq=0;
+    let timer=null, lastDocs=[], seq=0, parcelPending=null, parcelPendingMuni="";
 
     const showDoc=d=>{
       const lat=parseFloat(d.lat), lon=parseFloat(d.lon);
@@ -1904,6 +1994,36 @@ const SearchControl=L.Control.extend({
     const search=async q=>{
       const my=++seq;
       res.innerHTML='<div style="padding:6px;color:#65736b">Bilatzen…</div>';
+      const pq=parseParcelQuery(q);
+      if(pq){
+        const ref=parcelRef(pq);
+        const muniName=pq.muniName||MUNI[String(Number(pq.mun))]||"";
+        try{
+          const found=await fetchParcel(ref);
+          if(my!==seq)return;
+          lastDocs=[];
+          if(!found.length){
+            res.innerHTML=`<div style="padding:6px;color:#8b2f2f">Ez da ${escapeHtml(ref)} partzela aurkitu.</div>`;
+            return;
+          }
+          res.innerHTML="";
+          found.forEach(p=>{
+            const it=document.createElement("div");
+            it.style.cssText="padding:6px;border-top:1px solid #eef2ef;cursor:pointer";
+            it.innerHTML=`<strong>📐 Partzela ${escapeHtml(p.ref)}</strong><br>`+
+              `<small style="color:#65736b">${escapeHtml(muniName)}${Number.isFinite(p.area)?" · "+fmt(p.area/10000,2)+" ha":""}</small>`;
+            it.onclick=()=>{ res.innerHTML=""; showParcel(p,muniName); };
+            res.appendChild(it);
+          });
+          parcelPending=found[0]; parcelPendingMuni=muniName;
+        }catch(err){
+          if(my!==seq)return;
+          console.error("Partzela-bilaketa:",err);
+          res.innerHTML='<div style="padding:6px;color:#8b2f2f">Katastroko zerbitzuak ez du erantzun.</div>';
+        }
+        return;
+      }
+      parcelPending=null;
       try{
         const url=B5M_SEARCH+"?"+new URLSearchParams({q,lang:"eu",rows:"15",format:"json"});
         const r=await fetch(url);
@@ -1925,10 +2045,11 @@ const SearchControl=L.Control.extend({
       timer=setTimeout(()=>search(q),350);
     });
     input.addEventListener("keydown",e=>{
+      if(e.key==="Enter"&&parcelPending){e.preventDefault();res.innerHTML="";showParcel(parcelPending,parcelPendingMuni);return;}
       if(e.key==="Enter"&&lastDocs.length){e.preventDefault();showDoc(lastDocs[0]);}
       if(e.key==="Escape"){res.innerHTML="";}
     });
-    input.addEventListener("search",()=>{ if(!input.value){res.innerHTML="";searchResultLayer.clearLayers();} });
+    input.addEventListener("search",()=>{ if(!input.value){res.innerHTML="";searchResultLayer.clearLayers();parcelLayer.clearLayers();} });
     return box;
   }
 });
@@ -2312,7 +2433,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.48">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.49">
 ${pts}
 </gpx>`;
 
@@ -2496,7 +2617,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.48"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.49"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3537,7 +3658,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.48 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.49 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
