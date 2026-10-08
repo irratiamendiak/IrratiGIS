@@ -515,7 +515,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.46</h1>
+    <h1>Azalera eta mapa · V2.11.47</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -663,7 +663,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.46 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.47 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -2125,7 +2125,10 @@ function escapeHtml(s){
 const MUNI={"1":"Abaltzisketa","2":"Aduna","3":"Aizarnazabal","4":"Albiztur","5":"Alegia","6":"Alkiza","7":"Altzo","8":"Amezketa","9":"Andoain","10":"Anoeta","11":"Antzuola","12":"Arama","13":"Aretxabaleta","14":"Asteasu","15":"Ataun","16":"Aia","17":"Azkoitia","18":"Azpeitia","19":"Beasain","20":"Beizama","21":"Belauntza","22":"Berastegi","23":"Berrobi","24":"Bidegoian","25":"Zegama","26":"Zerain","27":"Zestoa","28":"Zizurkil","29":"Deba","30":"Eibar","31":"Elduain","32":"Elgoibar","33":"Elgeta","34":"Eskoriatza","35":"Ezkio-itsaso","36":"Hondarribia","37":"Gaintza","38":"Gabiria","39":"Getaria","40":"Hernani","41":"Hernialde","42":"Ibarra","43":"Idiazabal","44":"Ikaztegieta","45":"Irun","46":"Irura","47":"Itsasondo","48":"Larraul","49":"Lazkao","50":"Leaburu","51":"Legazpi","52":"Legorreta","53":"Lezo","54":"Lizartza","55":"Arrasate/Mondragón","56":"Mutriku","57":"Mutiloa","58":"Olaberria","59":"Oñati","60":"Orexa","61":"Orio","62":"Ormaiztegi","63":"Oiartzun","64":"Pasaia","65":"Soraluze/Placencia de las Armas","66":"Errezil","67":"Errenteria","68":"Leintz-Gatzaga","69":"Donostia-San Sebastián","70":"Segura","71":"Tolosa","72":"Urnieta","73":"Usurbil","74":"Bergara","75":"Villabona","76":"Ordizia","77":"Urretxu","78":"Zaldibia","79":"Zarautz","80":"Zumarraga","81":"Zumaia","82":"Mendaro","83":"Lasarte-Oria","84":"Astigarraga","85":"Baliarrain","86":"Orendain","87":"Altzaga","88":"Gaztelu","89":"Itsaso","98":"Alzania","99":"Sierra de Aralar"};
 function udalerriaIzena(v){const k=String(v??"").trim();return MUNI[k]||(v||"—");}
 function clearMapCreatedWaypoints(){
-  const removed=waypoints.length;
+  // Koordenatu bihurgailuaren puntuak ere ezabatu.
+  const coordPts=(typeof coordMarker!=="undefined")?coordMarker.getLayers().length:0;
+  if(coordPts){ coordMarker.clearLayers(); map.closePopup(); }
+  const removed=waypoints.length+coordPts;
   waypoints=[];
   waypointMode=false;
   waypointLayer.clearLayers();
@@ -2297,7 +2300,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.46">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.47">
 ${pts}
 </gpx>`;
 
@@ -2481,7 +2484,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.46"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.47"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -2562,9 +2565,11 @@ function setGeo(lat,lon,alsoUtm=true){
 function showCoordMarker(lat,lon){
   coordMarker.clearLayers();
   L.marker([lat,lon]).bindPopup(
-    `<strong>Koordenatua</strong><br>${lat.toFixed(7)}, ${lon.toFixed(7)}`
+    `<strong>Koordenatua</strong><br>${lat.toFixed(7)}, ${lon.toFixed(7)}<br>`+
+    `<button type="button" onclick="window.__deleteCoordMarker()">Ezabatu</button>`
   ).addTo(coordMarker);
 }
+window.__deleteCoordMarker=function(){ coordMarker.clearLayers(); map.closePopup(); };
 function convertUtmToGeo(center=true){
   const e=parseFloat($("utmE").value);
   const n=parseFloat($("utmN").value);
@@ -3520,7 +3525,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.46 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.47 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
