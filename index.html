@@ -513,7 +513,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.42</h1>
+    <h1>Azalera eta mapa · V2.11.43</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -661,7 +661,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.42 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.43 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1301,6 +1301,106 @@ const LegendControl=L.Control.extend({
 });
 const legendControl=new LegendControl();
 map.addControl(legendControl);
+
+/* ===== Arrisku-eremuak EGIF historikotik (ZAR antzeko proposamena) =====
+   Sute bakoitzak bere inguruan pisua uzten du (kernel dentsitatea, 1,5 km),
+   500 m-ko saretan. Klaseak: suteek ukitutako gelaxken pertzentilak. */
+let egifListCache=null;
+async function getEgifList(){
+  if(egifListCache) return egifListCache;
+  const r=await fetch(EGIF_URL,{cache:"no-cache"});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const j=await r.json();
+  egifListCache=(Array.isArray(j.suteak)?j.suteak:[])
+    .filter(s=>Number.isFinite(Number(s.lat))&&Number.isFinite(Number(s.lon)));
+  return egifListCache;
+}
+const zarCfg={mode:"freq",cell:500,bw:1500,opacity:.55};
+const ZAR_COLORS={3:"#b30000",2:"#f03b20",1:"#feb24c"};
+const zarLayer=L.layerGroup();
+const zarRenderer=L.canvas({padding:.5,pane:"wmsOverlayPane"});
+layersControl.addOverlay(zarLayer,"🟥 Arrisku-eremuak (EGIF)");
+const UTM30_DEF="+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs";
+const WGS_DEF="+proj=longlat +datum=WGS84 +no_defs";
+let zarCount=0;
+
+async function buildZar(){
+  zarLayer.clearLayers();
+  let list;
+  try{ list=await getEgifList(); }
+  catch(err){ $("message").textContent="Arrisku-eremuak: ezin izan dira EGIF datuak kargatu ("+err.message+")."; return; }
+  zarCount=list.length;
+  const pts=list.map(s=>{
+    const p=proj4(WGS_DEF,UTM30_DEF,[Number(s.lon),Number(s.lat)]);
+    const ha=Number(s.ha)||0;
+    return {x:p[0],y:p[1],w:zarCfg.mode==="freq"?1:1+Math.log(1+ha)};
+  });
+  const {cell,bw}=zarCfg;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  pts.forEach(p=>{minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);});
+  minX=Math.floor((minX-bw)/cell)*cell; minY=Math.floor((minY-bw)/cell)*cell;
+  maxX=Math.ceil((maxX+bw)/cell)*cell;  maxY=Math.ceil((maxY+bw)/cell)*cell;
+  const nx=Math.round((maxX-minX)/cell), ny=Math.round((maxY-minY)/cell);
+  const grid=new Float64Array(nx*ny);
+  const rr=Math.ceil(bw/cell);
+  pts.forEach(p=>{
+    const ci=Math.floor((p.x-minX)/cell), cj=Math.floor((p.y-minY)/cell);
+    for(let j=cj-rr;j<=cj+rr;j++){
+      if(j<0||j>=ny) continue;
+      for(let i=ci-rr;i<=ci+rr;i++){
+        if(i<0||i>=nx) continue;
+        const cx=minX+(i+.5)*cell, cy=minY+(j+.5)*cell;
+        const d2=((cx-p.x)**2+(cy-p.y)**2)/(bw*bw);
+        if(d2>=1) continue;
+        grid[j*nx+i]+=p.w*(1-d2)*(1-d2);
+      }
+    }
+  });
+  const vals=[...grid].filter(v=>v>0).sort((a,b)=>a-b);
+  if(!vals.length) return;
+  const q=f=>vals[Math.min(vals.length-1,Math.floor(f*vals.length))];
+  const t50=q(.5), t75=q(.75), t90=q(.9);
+  for(let j=0;j<ny;j++){
+    for(let i=0;i<nx;i++){
+      const v=grid[j*nx+i];
+      if(v<t50) continue;
+      const cls=v>=t90?3:(v>=t75?2:1);
+      const x0=minX+i*cell, y0=minY+j*cell;
+      const sw=proj4(UTM30_DEF,WGS_DEF,[x0,y0]), ne=proj4(UTM30_DEF,WGS_DEF,[x0+cell,y0+cell]);
+      L.rectangle([[sw[1],sw[0]],[ne[1],ne[0]]],{
+        renderer:zarRenderer, stroke:false, interactive:false,
+        fillColor:ZAR_COLORS[cls], fillOpacity:zarCfg.opacity
+      }).addTo(zarLayer);
+    }
+  }
+  zarLegend();
+}
+
+function zarLegend(){
+  const opt=(v,t)=>`<option value="${v}"${zarCfg.mode===v?" selected":""}>${t}</option>`;
+  const sw=(c,t)=>`<div><span style="display:inline-block;width:12px;height:12px;background:${c};margin-right:5px;vertical-align:-2px"></span>${t}</div>`;
+  const div=legendControl.showHtml(
+    `<strong>🟥 Arrisku-eremuak (EGIF)</strong>`+
+    `<div style="margin:5px 0 3px">Irizpidea: <select class="zar-mode">`+
+      opt("freq","Sute-kopurua")+opt("area","Kopurua + azalera")+`</select></div>`+
+    `<div style="margin-bottom:5px;display:flex;align-items:center;gap:6px">Ikusgarritasuna: `+
+      `<input type="range" class="zar-op" min="15" max="100" step="5" value="${Math.round(zarCfg.opacity*100)}" style="width:90px">`+
+      `<span class="zar-op-val">${Math.round(zarCfg.opacity*100)}%</span></div>`+
+    sw(ZAR_COLORS[3],"Oso altua (%10 goiena)")+
+    sw(ZAR_COLORS[2],"Altua (%10–25)")+
+    sw(ZAR_COLORS[1],"Ertaina (%25–50)")+
+    `<div style="color:#65736b;margin-top:4px;font-size:11px">${zarCount} sute · 2010–2025 · ez da ZAR ofiziala</div>`
+  );
+  div.querySelector(".zar-mode").onchange=e=>{ zarCfg.mode=e.target.value; buildZar(); };
+  const op=div.querySelector(".zar-op"), opVal=div.querySelector(".zar-op-val");
+  op.oninput=()=>{
+    zarCfg.opacity=Number(op.value)/100;
+    zarLayer.eachLayer(l=>l.setStyle({fillOpacity:zarCfg.opacity}));
+    opVal.textContent=op.value+"%";
+  };
+}
+map.on("overlayadd",e=>{ if(e.layer===zarLayer) buildZar(); });
+map.on("overlayremove",e=>{ if(e.layer===zarLayer){ zarLayer.clearLayers(); legendControl.hide(); } });
 
 /* ===== Natura 2000 (geoEuskadi; ordezkoa: MITECO) =====
    Geruza-izena GetCapabilities-etik bilatzen da (zerbitzuaren egitura aldatu ohi da). */
@@ -2134,7 +2234,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.42">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.43">
 ${pts}
 </gpx>`;
 
@@ -2318,7 +2418,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.42"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.43"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3357,7 +3457,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.42 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.43 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
