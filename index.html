@@ -515,7 +515,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.47</h1>
+    <h1>Azalera eta mapa · V2.11.48</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -663,7 +663,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.47 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.48 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1550,6 +1550,18 @@ document.addEventListener("DOMContentLoaded",syncHistPanel);
 window.addEventListener("load",syncHistPanel);
 syncHistPanel();
 
+/* Katastroa: partzelan klik eginda bere datuak (poligonoa, partzela, erreferentzia…). */
+map.on("overlayadd",e=>{
+  if(e.layer===cadastralWms){
+    b5mQueryLayers.set("katastro",{
+      baseUrl:"https://b5m.gipuzkoa.eus/inspire/wms/gipuzkoa_wms",
+      name:"CP.CadastralParcel", title:"Katastroko partzela",
+      info:{version:"1.3.0",format:"image/png",infoFormats:["text/html","text/plain"]}
+    });
+  }
+});
+map.on("overlayremove",e=>{ if(e.layer===cadastralWms) b5mQueryLayers.delete("katastro"); });
+
 /* ===== Toponimia (B5M INSPIRE · izen geografikoak) ===== */
 const B5M_INSPIRE_WMS="https://b5m.gipuzkoa.eus/inspire/wms/gipuzkoa_wms";
 const toponimiaLayer=L.layerGroup();
@@ -2300,7 +2312,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.47">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.48">
 ${pts}
 </gpx>`;
 
@@ -2484,7 +2496,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.47"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.48"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3525,7 +3537,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.47 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.48 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
