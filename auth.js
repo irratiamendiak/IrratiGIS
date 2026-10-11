@@ -1,6 +1,7 @@
 (()=>{
   "use strict";
-    const API="https://irratigis-erreketak.kulixka-mendiak.workers.dev";
+  // Zerbitzaria: Deno Deploy (lehen Cloudflare Worker: irratigis-erreketak.kulixka-mendiak.workers.dev)
+  const API="https://irratigis-api.irratiamendiak.deno.net";
   const TOKEN_KEY="irratigis_session_token";
   const SESSION_TOKEN_KEY="irratigis_session_token_temp";
   const METEOSAT_EUROPE_BOUNDS=[[34,-25],[72,45]];
@@ -114,11 +115,11 @@
   function installFirmsLeafletOverlay(){const leafletMap=window.IrratiGISMap||((typeof map!=="undefined")?map:null);if(!leafletMap||typeof L==="undefined")return false;if(!window.IrratiGISFirmsLayer)window.IrratiGISFirmsLayer=L.featureGroup();const firmsLayer=window.IrratiGISFirmsLayer;const addRow=()=>{const lists=document.querySelectorAll(".leaflet-control-layers-overlays");if(!lists.length)return false;lists.forEach(list=>{if(list.querySelector(".irrati-firms-layer-row"))return;const row=document.createElement("label");row.className="irrati-firms-layer-row";row.style.display="block";const input=document.createElement("input");input.type="checkbox";input.className="leaflet-control-layers-selector";input.checked=leafletMap.hasLayer(firmsLayer);input.addEventListener("change",()=>{if(input.checked){if(window.IrratiGISFirms?.open)window.IrratiGISFirms.open();else firmsLayer.addTo(leafletMap)}else leafletMap.removeLayer(firmsLayer)});const span=document.createElement("span");span.textContent=" 🚨 NASA FIRMS";row.appendChild(input);row.appendChild(span);list.appendChild(row)});return true};addRow();[100,300,700,1500,3000].forEach(ms=>setTimeout(addRow,ms));if(!window.__irratiFirmsDomObserver){window.__irratiFirmsDomObserver=new MutationObserver(()=>addRow());window.__irratiFirmsDomObserver.observe(document.body,{childList:true,subtree:true})}return true;}
   function setOverlayCheckbox(match,on){const map=window.IrratiGISMap;if(!map)return false;let found=false;document.querySelectorAll(".leaflet-control-layers-overlays label").forEach(label=>{const text=(label.textContent||"").toLowerCase();if(!text.includes(match.toLowerCase()))return;const input=label.querySelector("input");if(!input)return;found=true;if(input.checked!==on){input.checked=on;input.dispatchEvent(new Event("change",{bubbles:true}))}});return found}
   function setupMeteosatEuropeView(){const map=window.IrratiGISMap;if(!map)return;const wire=()=>{document.querySelectorAll(".leaflet-control-layers-overlays label").forEach(label=>{const text=(label.textContent||"").toLowerCase();if(!text.includes("meteosat frp"))return;const input=label.querySelector("input");if(!input||input.dataset.europeWired)return;input.dataset.europeWired="1";const go=()=>{if(input.checked)setTimeout(()=>map.fitBounds(METEOSAT_EUROPE_BOUNDS,{padding:[24,24],animate:false,maxZoom:6}),80)};input.addEventListener("change",go);if(input.checked)go()})};wire();if(!window.__irratiMeteosatEuropeObserver){window.__irratiMeteosatEuropeObserver=new MutationObserver(wire);window.__irratiMeteosatEuropeObserver.observe(document.body,{childList:true,subtree:true})}}
-  function setupAppArchitecture(){if(document.getElementById("irratiAppTabs"))return;const main=document.querySelector("main");if(!main)return;const map=document.getElementById("map"),mapPanel=map?.closest(".panel"),coordPanel=document.querySelector(".coordgrid")?.closest(".panel"),uploadPanel=main.querySelector(".upload")?.closest(".panel"),cards=main.querySelector(".cards"),details=main.querySelector(".file-details-panel"),printReport=document.getElementById("printReport"),footer=main.querySelector(".footer");if(!mapPanel)return;const originalMapHead=mapPanel.querySelector(".maphead"),trackTools=mapPanel.querySelector(".tracktools"),trackStats=mapPanel.querySelector(".trackstats"),layersNote=mapPanel.querySelector(".layers-note");const nav=document.createElement("nav");nav.id="irratiAppTabs";nav.className="irrati-app-tabs";nav.setAttribute("aria-label","IrratiGIS atalak");nav.style.display="none";nav.innerHTML=`<button type="button" class="irrati-tab active" data-view="burns" aria-selected="true">🔥 Baimendutako erreketak</button><button type="button" class="irrati-tab" data-view="tracks" aria-selected="false">📐 GIS tresnak</button>`;const fireView=document.createElement("section");fireView.id="irratiFireView";fireView.className="irrati-view";const burnView=document.createElement("section");burnView.id="irratiBurnView";burnView.className="irrati-view active";const tracksView=document.createElement("section");tracksView.id="irratiTracksView";tracksView.className="irrati-view";const fireIntro=document.createElement("div");fireIntro.className="irrati-section-intro";fireIntro.innerHTML=`<div><div class="irrati-section-kicker">ZAINTZA · SUTEAK</div><h2>🔥 Suteak</h2><p>NASA FIRMS satelite bidezko detekzio termikoak eta Meteosat FRP-PIXEL.</p></div><span class="irrati-status-badge">Suteen ikuspegia</span></div>`;const burnIntro=document.createElement("div");burnIntro.className="irrati-section-intro";burnIntro.innerHTML=`<div><h2>🔥 Baimendutako erreketak</h2><p>Baimendutako erreketa kokapenak eta egoera aktiboak.</p></div>`;const trackIntro=document.createElement("div");trackIntro.className="irrati-section-intro";trackIntro.innerHTML=`<div><h2>GIS tresnak</h2><p>Kargatu, editatu, neurtu eta esportatu.</p></div><span class="irrati-status-badge blue">Lan-eremua</span>`;mapPanel.classList.add("irrati-map-panel");if(originalMapHead){const h2=originalMapHead.querySelector("h2");if(h2)h2.textContent="Mapa-bisorea";const badges=originalMapHead.querySelector("div div");if(badges)badges.innerHTML=""}main.innerHTML="";main.appendChild(nav);main.appendChild(fireView);main.appendChild(burnView);main.appendChild(tracksView);if(printReport)main.appendChild(printReport);if(footer)main.appendChild(footer);fireView.appendChild(fireIntro);burnView.appendChild(burnIntro);tracksView.appendChild(trackIntro);if(uploadPanel)tracksView.appendChild(uploadPanel);if(cards)tracksView.appendChild(cards);if(details)tracksView.appendChild(details);if(coordPanel)tracksView.appendChild(coordPanel);if(trackTools)mapPanel.appendChild(trackTools);if(trackStats)mapPanel.appendChild(trackStats);if(layersNote)mapPanel.appendChild(layersNote);
+  function setupAppArchitecture(){if(document.getElementById("irratiAppTabs"))return;const main=document.querySelector("main");if(!main)return;const map=document.getElementById("map"),mapPanel=map?.closest(".panel"),coordPanel=document.querySelector(".coordgrid")?.closest(".panel"),uploadPanel=main.querySelector(".upload")?.closest(".panel"),cards=main.querySelector(".cards"),details=main.querySelector(".file-details-panel"),printReport=document.getElementById("printReport"),footer=main.querySelector(".footer");if(!mapPanel)return;const originalMapHead=mapPanel.querySelector(".maphead"),trackTools=mapPanel.querySelector(".tracktools"),trackStats=mapPanel.querySelector(".trackstats"),layersNote=mapPanel.querySelector(".layers-note");const nav=document.createElement("nav");nav.id="irratiAppTabs";nav.className="irrati-app-tabs";nav.setAttribute("aria-label","IrratiGIS atalak");nav.style.display="none";nav.innerHTML=`<button type="button" class="irrati-tab active" data-view="burns" aria-selected="true">🔥 Baimendutako erreketak</button><button type="button" class="irrati-tab" data-view="tracks" aria-selected="false">📐 GIS tresnak</button>`;const fireView=document.createElement("section");fireView.id="irratiFireView";fireView.className="irrati-view";const burnView=document.createElement("section");burnView.id="irratiBurnView";burnView.className="irrati-view active";const tracksView=document.createElement("section");tracksView.id="irratiTracksView";tracksView.className="irrati-view";const fireIntro=document.createElement("div");fireIntro.className="irrati-section-intro";fireIntro.innerHTML=`<div><div class="irrati-section-kicker">ZAINTZA · SUTEAK</div><h2>🔥 Suteak</h2><p>NASA FIRMS satelite bidezko detekzio termikoak eta Meteosat FRP-PIXEL.</p></div><span class="irrati-status-badge">Suteen ikuspegia</span></div>`;const burnIntro=document.createElement("div");burnIntro.className="irrati-section-intro";burnIntro.innerHTML=`<div><h2>🔥 Baimendutako erreketak</h2><p>Baimendutako erreketa kokapenak eta egoera aktiboak.</p></div>`;mapPanel.classList.add("irrati-map-panel");if(originalMapHead){const h2=originalMapHead.querySelector("h2");if(h2)h2.textContent="Mapa-bisorea";const badges=originalMapHead.querySelector("div div");if(badges)badges.innerHTML=""}main.innerHTML="";main.appendChild(nav);main.appendChild(fireView);main.appendChild(burnView);main.appendChild(tracksView);if(printReport)main.appendChild(printReport);if(footer)main.appendChild(footer);fireView.appendChild(fireIntro);burnView.appendChild(burnIntro);/* «GIS tresnak» txartela kenduta */if(uploadPanel)tracksView.appendChild(uploadPanel);if(cards)tracksView.appendChild(cards);if(details)tracksView.appendChild(details);if(coordPanel)tracksView.appendChild(coordPanel);if(trackTools)mapPanel.appendChild(trackTools);if(trackStats)mapPanel.appendChild(trackStats);if(layersNote)mapPanel.appendChild(layersNote);
     recoverMap();
     setTimeout(buildHistoryPanel,300);
     const setMapMode=mode=>{const fires=mode==="fires",burns=mode==="burns";fireView.classList.toggle("active",fires);burnView.classList.toggle("active",burns);tracksView.classList.toggle("active",!fires&&!burns);nav.querySelectorAll(".irrati-tab").forEach(b=>{const active=b.dataset.view===mode;b.classList.toggle("active",active);b.setAttribute("aria-selected",active?"true":"false")});if(trackTools)trackTools.hidden=!tracksView.classList.contains("active");if(trackStats)trackStats.hidden=!tracksView.classList.contains("active");if(layersNote)layersNote.hidden=!tracksView.classList.contains("active");if(fires||burns)mapPanel.classList.add("irrati-fire-map");const target=fires?fireView:burns?burnView:tracksView;if(mapPanel.parentElement!==target)target.appendChild(mapPanel);
-      try{ const hp=document.getElementById("irratiHistPanel"); if(hp && hp.parentElement===target){ target.appendChild(hp); } }catch(_){}if(fires){setOverlayCheckbox("baimendutako erreketa",false);installFirmsLeafletOverlay();if(window.IrratiGISFirms?.open)window.IrratiGISFirms.open();else runRealBurns()}else if(burns){setOverlayCheckbox("NASA FIRMS",false);setOverlayCheckbox("baimendutako erreketa",false)}else{setOverlayCheckbox("NASA FIRMS",false);}requestAnimationFrame(()=>{if(typeof window.IrratiGISMap?.invalidateSize==="function")window.IrratiGISMap.invalidateSize();setTimeout(()=>window.IrratiGISMap?.invalidateSize?.(),80)})};nav.querySelectorAll(".irrati-tab").forEach(b=>b.addEventListener("click",()=>setMapMode(b.dataset.view)));setMapMode("tracks");const style=document.createElement("style");style.textContent=`.irrati-app-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 14px;padding:5px;background:#e8efeb;border:1px solid var(--line);border-radius:15px;position:sticky;top:8px;z-index:1000;box-shadow:0 4px 16px rgba(0,0,0,.08)}.irrati-tab{min-height:48px;border:0;border-radius:11px;background:transparent;color:#345243;font:800 15px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;cursor:pointer;padding:10px 12px}.irrati-tab.active{background:#fff;color:#176b43;box-shadow:0 2px 8px rgba(0,0,0,.10)}.irrati-view{display:none}.irrati-view.active{display:block}.irrati-section-intro{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:12px;padding:14px 16px;background:#fff;border:1px solid var(--line);border-radius:15px;box-shadow:0 4px 16px rgba(0,0,0,.04)}.irrati-section-intro h2{margin:1px 0 4px;font-size:22px}.irrati-section-intro p{margin:0;color:var(--muted);font-size:13px}.irrati-section-kicker{font-size:10px;font-weight:900;letter-spacing:.14em;color:var(--green)}.irrati-status-badge{flex:none;padding:6px 9px;border-radius:999px;background:#e8f5ed;color:#176b43;font-size:11px;font-weight:900}.irrati-status-badge.blue{background:#e8f2f8;color:#175f8f}.irrati-map-panel{margin-bottom:14px}@media(max-width:800px){.irrati-app-tabs{grid-template-columns:1fr}.irrati-tab{min-height:44px;font-size:13px;padding:8px 7px}}@media(max-width:560px){.irrati-app-tabs{top:4px;margin-bottom:9px;padding:4px}.irrati-section-intro{padding:11px 12px;border-radius:12px;align-items:flex-start}.irrati-section-intro h2{font-size:18px}.irrati-section-intro p{font-size:12px}.irrati-status-badge{display:none}}`;document.head.appendChild(style);const title=document.querySelector("header h1"),subtitle=document.querySelector("header p"),eyebrow=document.querySelector("header .eyebrow");if(title)title.textContent="IrratiGIS";if(eyebrow)eyebrow.textContent="GIS SISTEMA";if(subtitle)subtitle.textContent="Baimendutako erreketak · GIS tresnak";}
+      try{ const hp=document.getElementById("irratiHistPanel"); if(hp && hp.parentElement===target){ target.appendChild(hp); } }catch(_){}if(fires){setOverlayCheckbox("baimendutako erreketa",false);installFirmsLeafletOverlay();if(window.IrratiGISFirms?.open)window.IrratiGISFirms.open();else runRealBurns()}else if(burns){setOverlayCheckbox("NASA FIRMS",false);setOverlayCheckbox("baimendutako erreketa",false)}else{setOverlayCheckbox("NASA FIRMS",false);}requestAnimationFrame(()=>{if(typeof window.IrratiGISMap?.invalidateSize==="function")window.IrratiGISMap.invalidateSize();setTimeout(()=>window.IrratiGISMap?.invalidateSize?.(),80)})};nav.querySelectorAll(".irrati-tab").forEach(b=>b.addEventListener("click",()=>setMapMode(b.dataset.view)));setMapMode("tracks");const style=document.createElement("style");style.textContent=`.irrati-app-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 14px;padding:5px;background:#e8efeb;border:1px solid var(--line);border-radius:15px;position:sticky;top:8px;z-index:1000;box-shadow:0 4px 16px rgba(0,0,0,.08)}.irrati-tab{min-height:48px;border:0;border-radius:11px;background:transparent;color:#345243;font:800 15px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;cursor:pointer;padding:10px 12px}.irrati-tab.active{background:#fff;color:#176b43;box-shadow:0 2px 8px rgba(0,0,0,.10)}.irrati-view{display:none}.irrati-view.active{display:block}.irrati-section-intro{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:12px;padding:14px 16px;background:#fff;border:1px solid var(--line);border-radius:15px;box-shadow:0 4px 16px rgba(0,0,0,.04)}.irrati-section-intro h2{margin:1px 0 4px;font-size:22px}.irrati-section-intro p{margin:0;color:var(--muted);font-size:13px}.irrati-section-kicker{font-size:10px;font-weight:900;letter-spacing:.14em;color:var(--green)}.irrati-status-badge{flex:none;padding:6px 9px;border-radius:999px;background:#e8f5ed;color:#176b43;font-size:11px;font-weight:900}.irrati-status-badge.blue{background:#e8f2f8;color:#175f8f}.irrati-map-panel{margin-bottom:14px}@media(max-width:800px){.irrati-app-tabs{grid-template-columns:1fr}.irrati-tab{min-height:44px;font-size:13px;padding:8px 7px}}@media(max-width:560px){.irrati-app-tabs{top:4px;margin-bottom:9px;padding:4px}.irrati-section-intro{padding:11px 12px;border-radius:12px;align-items:flex-start}.irrati-section-intro h2{font-size:18px}.irrati-section-intro p{font-size:12px}.irrati-status-badge{display:none}}`;document.head.appendChild(style);const title=document.querySelector("header h1"),subtitle=document.querySelector("header p"),eyebrow=document.querySelector("header .eyebrow");if(title)title.textContent="IrratiGIS";if(eyebrow)eyebrow.textContent="GIS SISTEMA";if(subtitle)subtitle.style.display="none";}
   function buildHistoryPanel(){
     if(document.getElementById("irratiHistPanel"))return;
        const burnView=document.getElementById("irratiTracksView")||document.getElementById("irratiBurnView");
@@ -170,7 +171,41 @@
     window.__irratiHistLayer=histLayer;
     let shown=false;
     const flame=L.divIcon({className:"burn-flame-icon",html:'<div style="font-size:22px;line-height:1;text-align:center;filter:drop-shadow(0 1px 1px rgba(0,0,0,.55))">🔥</div>',iconSize:[24,24],iconAnchor:[12,12],popupAnchor:[0,-10]});
+    const histCanvas=L.canvas({padding:.3});
     const R=id=>document.getElementById(id);
+
+    /* ===== 2026ko historikoa (erreketak-2026.json, zifratuta) ===== */
+    const LOCAL_URL="erreketak-2026.json", LOCAL_PW_KEY="irratigis_hist2026_pw";
+    let localCache=null, localErr="";
+    async function decryptLocal(j,pw){
+      const b=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+      const base=await crypto.subtle.importKey("raw",new TextEncoder().encode(pw),"PBKDF2",false,["deriveKey"]);
+      const key=await crypto.subtle.deriveKey({name:"PBKDF2",salt:b(j.salt),iterations:j.iter,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["decrypt"]);
+      const pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:b(j.iv)},key,b(j.data));
+      return JSON.parse(new TextDecoder().decode(pt));
+    }
+    async function getLocal(){
+      if(localCache)return localCache;
+      localErr="";
+      try{
+        const r=await fetch(LOCAL_URL,{cache:"no-cache"});
+        if(r.status===404)return [];
+        if(!r.ok)throw new Error("HTTP "+r.status);
+        let j=await r.json();
+        if(j.data){
+          let pw=null;try{pw=localStorage.getItem(LOCAL_PW_KEY);}catch(_){}
+          for(let i=0;i<3;i++){
+            if(!pw)pw=window.prompt("2026ko erreketen historikoaren pasahitza:");
+            if(!pw){localErr="pasahitzik gabe ezin da 2026ko fitxategia ireki";return [];}
+            try{j=await decryptLocal(j,pw);try{localStorage.setItem(LOCAL_PW_KEY,pw);}catch(_){}break;}
+            catch(_){try{localStorage.removeItem(LOCAL_PW_KEY);}catch(_){}pw=null;if(i===2){localErr="pasahitz okerra";return [];}alert("Pasahitz okerra.");}
+          }
+        }
+        localCache=Array.isArray(j.erreketak)?j.erreketak:[];
+        return localCache;
+      }catch(e){localErr=e.message||String(e);return [];}
+    }
+    const normName=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().split(/[\/-]/)[0].trim();
 
     let lastRows=[], lastFrom="", lastTo="";
     const COLS=[["data","Data"],["kodea","Kodea"],["titularra","Titularra"],["telefonoa","Telefonoa"],["materiala","Erregaia"],["udalerria","Udalerria"],["helbidea","Helbidea"],["lat","Lat"],["lon","Lon"]];
@@ -195,6 +230,8 @@
       if(!token){R("irratiHistResult").textContent="Saioa ez dago aktibo.";return;}
       R("irratiHistResult").textContent="Kontsultatzen…";
       lastRows=[]; lastFrom=from||""; lastTo=to||from||"";
+      // 1) Zerbitzaria
+      let fires=[], serverErr="";
       try{
         let apiUrl;
         if(kode){ apiUrl=`${API}/api/history?codigo=${encodeURIComponent(kode)}`; }
@@ -202,36 +239,63 @@
         const r=await fetch(apiUrl,{headers:{Authorization:`Bearer ${token}`},cache:"no-store"});
         const j=await r.json();
         if(!r.ok)throw new Error(j.error||`HTTP ${r.status}`);
-        const fires=Array.isArray(j.fires)?j.fires:[];
-        histLayer.clearLayers();
-        let n=0; const bounds=[];
-        fires.forEach(row=>{
-          const f=row.data||row;
-          let lat=Number(f.latitudea??f.latitud), lon=Number(f.longitudea??f.longitud);
-          // Si vienen en UTM (valores grandes), convertir a lat/lon con proj4 (ETRS89/30N)
-          if(Number.isFinite(lat)&&Number.isFinite(lon)&&(Math.abs(lat)>90||Math.abs(lon)>180)){
-            try{
-              const xUtm=Number(f.longitudea??f.longitud??f.x??lon);
-              const yUtm=Number(f.latitudea??f.latitud??f.y??lat);
-              if(typeof proj4!=="undefined"){
-                const g=proj4("+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs","+proj=longlat +datum=WGS84 +no_defs",[xUtm,yUtm]);
-                lon=g[0]; lat=g[1];
-              }
-            }catch(_){}
-          }
-          if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return;
-          const rec={data:row.observed_date||"",kodea:f.id||"",titularra:f.titular||"",telefonoa:f.telefono||"",materiala:materialEu(f.tipoQuema||f.descripcionMaterial),udalerria:udalerriaIzena(f.municipio||f.udalerria),helbidea:f.direccion||"",lat:lat.toFixed(6),lon:lon.toFixed(6)};
-          lastRows.push(rec);
-          const m=L.marker([lat,lon],{icon:flame});
-          const uH=toUtm30(lat,lon);const shareH=window.irratiShareButtons?window.irratiShareButtons({titulo:"Erreketa (historikoa)",kodea:rec.kodea,titularra:rec.titularra,telefonoa:rec.telefonoa,erregaia:rec.materiala,herria:rec.udalerria,helbidea:rec.helbidea,lat:lat,lon:lon}):"";m.bindPopup(`<strong>🔥 Erreketa (historikoa)</strong><br><br><strong>Data:</strong> ${esc(rec.data||"—")}<br><strong>Kodea:</strong> ${esc(rec.kodea||"—")}<br><strong>Titularra:</strong> ${esc(rec.titularra||"—")}<br><strong>Telefonoa:</strong> ${esc(rec.telefonoa||"—")}<br><strong>Erregaia:</strong> ${esc(rec.materiala)}<br><strong>Helbidea:</strong> ${esc(rec.helbidea||"—")}<br><strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uH?`<br><strong>UTM (ETRS89 30N):</strong> X ${uH.x} · Y ${uH.y}`:""}${shareH}`);
-          m.addTo(histLayer); bounds.push([lat,lon]); n++;
-        });
-        if(!shown){histLayer.addTo(map);shown=true;}
-        renderTable(lastRows);
-        const criterio = kode ? `Kodea: ${esc(kode)}` : (`${esc(from)}${to!==from?` → ${esc(to)}`:""}`+(herria?` · ${esc(MUNI[herria]||herria)}`:""));
-        if(n){try{map.fitBounds(L.latLngBounds(bounds).pad(0.2));}catch(_){}R("irratiHistResult").innerHTML=`<strong>${n}</strong> erreketa aurkitu dira (${criterio}).`;}
-        else{R("irratiHistResult").textContent=`Ez da erreketarik aurkitu (${criterio}).`;}
-      }catch(e){R("irratiHistResult").textContent="Errorea: "+(e.message||e);R("irratiHistExports").style.display="none";}
+        fires=Array.isArray(j.fires)?j.fires:[];
+      }catch(e){serverErr=e.message||String(e);}
+      // 2) 2026ko fitxategia
+      const herriaName=herria?normName(MUNI[herria]):"";
+      const local=(await getLocal())
+        .filter(o=>kode?String(o.k)===kode:(o.f>=from&&o.f<=to))
+        .filter(o=>!herriaName||normName(o.m)===herriaName);
+
+      histLayer.clearLayers();
+      const many=(fires.length+local.length)>1500;
+      const mk=(lat,lon)=>many
+        ?L.circleMarker([lat,lon],{renderer:histCanvas,radius:5,weight:1,color:"#7a1d00",fillColor:"#ff6a00",fillOpacity:.85})
+        :L.marker([lat,lon],{icon:flame});
+      const seen=new Set();
+      let n=0, nServer=0, nLocal=0; const bounds=[];
+      const addRec=(rec,lat,lon,title)=>{
+        lastRows.push(rec);
+        const uH=toUtm30(lat,lon);
+        const shareH=window.irratiShareButtons?window.irratiShareButtons({titulo:title,kodea:rec.kodea,titularra:rec.titularra,telefonoa:rec.telefonoa,erregaia:rec.materiala,herria:rec.udalerria,helbidea:rec.helbidea,lat:lat,lon:lon}):"";
+        const tel=rec.telefonoa?`<a href="tel:${esc(rec.telefonoa)}">${esc(rec.telefonoa)}</a>`:"—";
+        mk(lat,lon).bindPopup(`<strong>🔥 ${esc(title)}</strong><br><br><strong>Data:</strong> ${esc(rec.data||"—")}<br><strong>Kodea:</strong> ${esc(rec.kodea||"—")}<br><strong>Titularra:</strong> ${esc(rec.titularra||"—")}<br><strong>Telefonoa:</strong> ${tel}<br><strong>Erregaia:</strong> ${esc(rec.materiala)}<br><strong>Herria:</strong> ${esc(rec.udalerria||"—")}<br><strong>Helbidea:</strong> ${esc(rec.helbidea||"—")}<br><strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uH?`<br><strong>UTM (ETRS89 30N):</strong> X ${uH.x} · Y ${uH.y}`:""}${shareH}`).addTo(histLayer);
+        bounds.push([lat,lon]); n++;
+      };
+      fires.forEach(row=>{
+        const f=row.data||row;
+        let lat=Number(f.latitudea??f.latitud), lon=Number(f.longitudea??f.longitud);
+        // Si vienen en UTM (valores grandes), convertir a lat/lon con proj4 (ETRS89/30N)
+        if(Number.isFinite(lat)&&Number.isFinite(lon)&&(Math.abs(lat)>90||Math.abs(lon)>180)){
+          try{
+            const xUtm=Number(f.longitudea??f.longitud??f.x??lon);
+            const yUtm=Number(f.latitudea??f.latitud??f.y??lat);
+            if(typeof proj4!=="undefined"){
+              const g=proj4("+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs","+proj=longlat +datum=WGS84 +no_defs",[xUtm,yUtm]);
+              lon=g[0]; lat=g[1];
+            }
+          }catch(_){}
+        }
+        if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return;
+        seen.add(String(row.observed_date||"").slice(0,10)+"|"+String(f.id||""));
+        const rec={data:row.observed_date||"",kodea:f.id||"",titularra:f.titular||"",telefonoa:f.telefono||"",materiala:materialEu(f.tipoQuema||f.descripcionMaterial),udalerria:udalerriaIzena(f.municipio||f.udalerria),helbidea:f.direccion||"",lat:lat.toFixed(6),lon:lon.toFixed(6)};
+        addRec(rec,lat,lon,"Erreketa (historikoa)"); nServer++;
+      });
+      local.forEach(o=>{
+        if(seen.has(o.f+"|"+o.k))return;   // zerbitzarian badago, ez bikoiztu
+        if(!Number.isFinite(o.lat)||!Number.isFinite(o.lon))return;
+        const rec={data:o.f+(o.h?" "+o.h:""),kodea:o.k||"",titularra:o.t||"",telefonoa:o.tel||"",materiala:o.e||"—",udalerria:o.m||"",helbidea:"",lat:o.lat.toFixed(6),lon:o.lon.toFixed(6)};
+        addRec(rec,o.lat,o.lon,"Erreketa (2026ko historikoa)"); nLocal++;
+      });
+      if(!shown){histLayer.addTo(map);shown=true;}
+      renderTable(lastRows);
+      const criterio = kode ? `Kodea: ${esc(kode)}` : (`${esc(from)}${to!==from?` → ${esc(to)}`:""}`+(herria?` · ${esc(MUNI[herria]||herria)}`:""));
+      let note="";
+      if(nServer||nLocal) note+=`<br><small style="color:#65736b">Zerbitzaria: ${nServer} · 2026ko fitxategia: ${nLocal}</small>`;
+      if(serverErr) note+=`<br><small style="color:#8b5a00">Zerbitzariak ez du erantzun (${esc(serverErr)}).</small>`;
+      if(localErr) note+=`<br><small style="color:#8b2f2f">2026ko fitxategia: ${esc(localErr)}</small>`;
+      if(n){try{map.fitBounds(L.latLngBounds(bounds).pad(0.2));}catch(_){}R("irratiHistResult").innerHTML=`<strong>${n}</strong> erreketa aurkitu dira (${criterio}).`+note;}
+      else{R("irratiHistResult").innerHTML=`Ez da erreketarik aurkitu (${criterio}).`+note;R("irratiHistExports").style.display="none";}
     }
     function fname(ext){return `erreketak_${lastFrom}${lastTo!==lastFrom?"_"+lastTo:""}.${ext}`;}
     function download(blob,name){const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);}

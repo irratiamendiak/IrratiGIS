@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,viewport-fit=cover">
 <title>IrratiGIS</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="auth.js?v=20260904-36" defer></script>
+<script src="auth.js?v=20261011-deno" defer></script>
 <script src="gis-tools.js?v=25" defer></script>
 <style>
 :root{--bg:#f4f7f5;--panel:#fff;--ink:#16231c;--muted:#65736b;--green:#176b43;--line:#dce5df;--blue:#175f8f}
@@ -515,7 +515,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.52</h1>
+    <h1>Azalera eta mapa · V2.11.53</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -663,7 +663,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.52 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.53 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -2494,7 +2494,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.52">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.53">
 ${pts}
 </gpx>`;
 
@@ -2678,7 +2678,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.52"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.53"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3719,7 +3719,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.52 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.53 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
@@ -4114,39 +4114,6 @@ if(window.visualViewport){
     else if(e.target.closest && e.target.closest("#histClear")){ e.preventDefault(); e.stopImmediatePropagation(); clearHistory(); }
   },true);
 })();
-})();
-</script>
-<script>
-/* gis-tools.js-k sortutako goiburu-testu batzuk ezkutatu. */
-(function(){
-  const TEXTS=[
-    "Baimendutako erreketak · GIS tresnak",
-    "GIS tresnak",
-    "Kargatu, editatu, neurtu eta esportatu.",
-    "Lan-eremua"
-  ];
-  const norm=s=>String(s||"").replace(/\s+/g," ").trim();
-  function hideTexts(){
-    document.querySelectorAll("h1,h2,h3,h4,p,span,small,div,strong,a").forEach(el=>{
-      if(el.dataset.igHidden||el.closest("#map,.leaflet-container,.wp-dialog"))return;
-      if(el.children.length)return;                // testu-hostoak bakarrik
-      if(!TEXTS.includes(norm(el.textContent)))return;
-      el.style.display="none"; el.dataset.igHidden="1";
-      // Gurasoa hutsik geratzen bada (eta maparik ez badu), hura ere ezkutatu.
-      let par=el.parentElement;
-      for(let i=0;i<3&&par&&par!==document.body;i++){
-        if(par.querySelector("#map,input,button,select,canvas,img"))break;
-        if(norm(par.innerText))break;
-        par.style.display="none";
-        par=par.parentElement;
-      }
-    });
-  }
-  document.addEventListener("DOMContentLoaded",hideTexts);
-  window.addEventListener("load",hideTexts);
-  const mo=new MutationObserver(hideTexts);
-  mo.observe(document.documentElement,{childList:true,subtree:true});
-  setTimeout(()=>mo.disconnect(),15000);
 })();
 </script>
 </body>
