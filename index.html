@@ -515,7 +515,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.50</h1>
+    <h1>Azalera eta mapa · V2.11.52</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -663,7 +663,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.50 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.52 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -2494,7 +2494,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.50">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.52">
 ${pts}
 </gpx>`;
 
@@ -2678,7 +2678,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.50"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.52"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3719,7 +3719,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.50 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.52 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
@@ -3970,73 +3970,149 @@ if(window.visualViewport){
     iconSize:[24,24], iconAnchor:[12,12], popupAnchor:[0,-10]
   });
 
-  async function queryHistory(){
-    const from = $("histFrom").value;
-    const to = $("histTo").value || from;
-    if(!from){ $("histResult").textContent = "Aukeratu gutxienez data bat."; return; }
+  /* 2026ko historikoa fitxategitik (datu pertsonalik gabe). Zerbitzaria blokeatuta badago ere funtzionatzen du. */
+  const LOCAL_HIST_URL="erreketak-2026.json";
+  let localHist=null;
+  /* Fitxategia zifratuta dago (AES-GCM + PBKDF2): GitHub-en publikoa izan arren, pasahitzik gabe ezin da irakurri. */
+  const HIST_PW_KEY="irratigis_hist2026_pw";
+  let localHistErr="";
+  async function decryptHist(j,pw){
+    const b=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+    const base=await crypto.subtle.importKey("raw",new TextEncoder().encode(pw),"PBKDF2",false,["deriveKey"]);
+    const key=await crypto.subtle.deriveKey({name:"PBKDF2",salt:b(j.salt),iterations:j.iter,hash:"SHA-256"},
+      base,{name:"AES-GCM",length:256},false,["decrypt"]);
+    const pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:b(j.iv)},key,b(j.data));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+  async function getLocalHist(){
+    if(localHist) return localHist;
+    localHistErr="";
+    try{
+      const r=await fetch(LOCAL_HIST_URL,{cache:"no-cache"});
+      if(!r.ok) throw new Error("HTTP "+r.status);
+      let j=await r.json();
+      if(j.data){
+        let pw=null;
+        try{ pw=localStorage.getItem(HIST_PW_KEY); }catch(_){}
+        for(let attempt=0; attempt<3; attempt++){
+          if(!pw) pw=window.prompt("2026ko erreketen historikoaren pasahitza:");
+          if(!pw){ localHistErr="pasahitzik gabe ezin da 2026ko fitxategia ireki"; return []; }
+          try{ j=await decryptHist(j,pw); try{ localStorage.setItem(HIST_PW_KEY,pw); }catch(_){} break; }
+          catch(_){ try{ localStorage.removeItem(HIST_PW_KEY); }catch(_){} pw=null;
+            if(attempt===2){ localHistErr="pasahitz okerra"; return []; } alert("Pasahitz okerra."); }
+        }
+      }
+      localHist=Array.isArray(j.erreketak)?j.erreketak:[];
+    }catch(err){ console.warn("Historiko lokala:",err); localHistErr=err.message||String(err); return []; }
+    return localHist;
+  }
+  const histCanvas=L.canvas({padding:.3});
+  const utmTxt=(lat,lon)=>{
+    try{ const pu=proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[lon,lat]);
+      return `<br><strong>UTM (ETRS89 30N):</strong> X ${Math.round(pu[0])} · Y ${Math.round(pu[1])}`; }catch(_){ return ""; }
+  };
 
+  async function queryHistory(){
+    const from = (document.getElementById("histFrom")||{}).value;
+    const to = (document.getElementById("histTo")||{}).value || from;
+    const out = document.getElementById("histResult")||{set textContent(v){},set innerHTML(v){}};
+    if(!from){ out.textContent = "Aukeratu gutxienez data bat."; return; }
+    out.textContent = "Kontsultatzen…";
+
+    // 1) Zerbitzaria (saioa aktibo badago)
     const token = window.IrratiGISAuth?.getToken?.();
     const api = window.IrratiGISAuth?.API;
-    if(!token || !api){ $("histResult").textContent = "Saioa ez dago aktibo."; return; }
+    let serverRows=[], serverErr=null;
+    if(token && api){
+      try{
+        const r = await fetch(`${api}/api/history?from=${from}&to=${to}`, { headers:{ Authorization:`Bearer ${token}` } });
+        const j = await r.json();
+        if(!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        serverRows = Array.isArray(j.fires) ? j.fires : [];
+      }catch(e){ serverErr = e.message || String(e); }
+    }else{
+      serverErr = "saioa ez dago aktibo";
+    }
+    // 2) Fitxategia
+    const localRows = (await getLocalHist()).filter(o=>o.f>=from && o.f<=to);
 
-    $("histResult").textContent = "Kontsultatzen…";
-    try{
-      const r = await fetch(`${api}/api/history?from=${from}&to=${to}`, { headers:{ Authorization:`Bearer ${token}` } });
-      const j = await r.json();
-      if(!r.ok){ throw new Error(j.error || `HTTP ${r.status}`); }
-      const fires = Array.isArray(j.fires) ? j.fires : [];
+    histLayer.clearLayers();
+    const total = serverRows.length + localRows.length;
+    const many = total > 1500;   // asko badira, puntu arinak (canvas)
+    const mk = (lat,lon)=> many
+      ? L.circleMarker([lat,lon],{renderer:histCanvas,radius:5,weight:1,color:"#7a1d00",fillColor:"#ff6a00",fillOpacity:.85})
+      : L.marker([lat,lon],{icon:flameIconHist});
+    const seen = new Set();
+    const bounds = [];
+    let nServer=0, nLocal=0;
 
-      histLayer.clearLayers();
-      let pintadas = 0;
-      const bounds = [];
-            fires.forEach(row=>{
-        const f = row.data || row;
-        let lat = Number(f.latitudea ?? f.latitud);
-        let lon = Number(f.longitudea ?? f.longitud);
-        if(Number.isFinite(lat) && Number.isFinite(lon) && (Math.abs(lat)>90 || Math.abs(lon)>180)){
-          try{ if(typeof proj4!=="undefined"){ const g=proj4("+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs","+proj=longlat +datum=WGS84 +no_defs",[lon,lat]); lon=g[0]; lat=g[1]; } }catch(_){}
-        }
-        if(!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat)>90 || Math.abs(lon)>180) return;
-        let uTxtH = "";
-        try{ if(typeof proj4!=="undefined"){ const pu=proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[lon,lat]); uTxtH=`<br><strong>UTM (ETRS89 30N):</strong> X ${Math.round(pu[0])} · Y ${Math.round(pu[1])}`; } }catch(_){}
-        const m = L.marker([lat,lon],{icon:flameIconHist});
-        m.bindPopup(
-          `<strong>🔥 Erreketa (historikoa)</strong><br><br>`+
-          `<strong>Data:</strong> ${escapeHtml(row.observed_date || "—")}<br>`+
-          `<strong>Kodea:</strong> ${escapeHtml(f.id || "—")}<br>`+
-          `<strong>Titularra:</strong> ${escapeHtml(f.titular || "—")}<br>`+
-          `<strong>Telefonoa:</strong> ${escapeHtml(f.telefono || "—")}<br>`+
-          `<strong>Materiala:</strong> ${escapeHtml(f.tipoQuema || f.descripcionMaterial || "—")}<br>`+
-          `<strong>Herria:</strong> ${escapeHtml(udalerriaIzena(f.municipio || f.udalerria))}<br>`+
-          `<strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${uTxtH}`
-        );
-        m.addTo(histLayer);
-        bounds.push([lat,lon]);
-        pintadas++;
-      });
-
-      if(!histShown){ histLayer.addTo(map); histShown = true; }
-
-      if(pintadas){
-        try{ map.fitBounds(L.latLngBounds(bounds).pad(0.2)); }catch(_){}
-        $("histResult").innerHTML = `<strong>${pintadas}</strong> erreketa aurkitu dira (${escapeHtml(from)}${to!==from?` → ${escapeHtml(to)}`:""}).`;
-      }else{
-        $("histResult").textContent = `Ez da erreketarik aurkitu (${from}${to!==from?` → ${to}`:""}).`;
+    serverRows.forEach(row=>{
+      const f = row.data || row;
+      let lat = Number(f.latitudea ?? f.latitud);
+      let lon = Number(f.longitudea ?? f.longitud);
+      if(Number.isFinite(lat) && Number.isFinite(lon) && (Math.abs(lat)>90 || Math.abs(lon)>180)){
+        try{ const g=proj4("+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs","+proj=longlat +datum=WGS84 +no_defs",[lon,lat]); lon=g[0]; lat=g[1]; }catch(_){}
       }
-    }catch(e){
-      $("histResult").textContent = "Errorea: " + (e.message || e);
+      if(!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat)>90 || Math.abs(lon)>180) return;
+      const day = String(row.observed_date||"").slice(0,10);
+      seen.add(day+"|"+String(f.id||""));
+      mk(lat,lon).bindPopup(
+        `<strong>🔥 Erreketa (historikoa)</strong><br><br>`+
+        `<strong>Data:</strong> ${escapeHtml(row.observed_date || "—")}<br>`+
+        `<strong>Kodea:</strong> ${escapeHtml(f.id || "—")}<br>`+
+        `<strong>Titularra:</strong> ${escapeHtml(f.titular || "—")}<br>`+
+        `<strong>Telefonoa:</strong> ${escapeHtml(f.telefono || "—")}<br>`+
+        `<strong>Materiala:</strong> ${escapeHtml(f.tipoQuema || f.descripcionMaterial || "—")}<br>`+
+        `<strong>Herria:</strong> ${escapeHtml(udalerriaIzena(f.municipio || f.udalerria))}<br>`+
+        `<strong>Geografikoak:</strong> ${lat.toFixed(6)}, ${lon.toFixed(6)}${utmTxt(lat,lon)}`
+      ).addTo(histLayer);
+      bounds.push([lat,lon]); nServer++;
+    });
+
+    localRows.forEach(o=>{
+      if(seen.has(o.f+"|"+o.k)) return;   // zerbitzarian badago, ez bikoiztu
+      if(!Number.isFinite(o.lat)||!Number.isFinite(o.lon)) return;
+      mk(o.lat,o.lon).bindPopup(
+        `<strong>🔥 Erreketa (2026ko historikoa)</strong><br><br>`+
+        `<strong>Data:</strong> ${escapeHtml(o.f)} ${escapeHtml(o.h||"")}<br>`+
+        `<strong>Kodea:</strong> ${escapeHtml(o.k||"—")}<br>`+
+        `<strong>Titularra:</strong> ${escapeHtml(o.t||"—")}<br>`+
+        `<strong>Telefonoa:</strong> ${o.tel?`<a href="tel:${escapeHtml(o.tel)}">${escapeHtml(o.tel)}</a>`:"—"}<br>`+
+        `<strong>Erregaia:</strong> ${escapeHtml(o.e||"—")}<br>`+
+        `<strong>Herria:</strong> ${escapeHtml(o.m||"—")}<br>`+
+        `<strong>Geografikoak:</strong> ${o.lat.toFixed(5)}, ${o.lon.toFixed(5)}${utmTxt(o.lat,o.lon)}`
+      ).addTo(histLayer);
+      bounds.push([o.lat,o.lon]); nLocal++;
+    });
+
+    if(!histShown){ histLayer.addTo(map); histShown = true; }
+    const range = `${escapeHtml(from)}${to!==from?` → ${escapeHtml(to)}`:""}`;
+    const n = nServer+nLocal;
+    let note = "";
+    if(localHistErr) note += `<br><small style="color:#8b2f2f">2026ko fitxategia: ${escapeHtml(localHistErr)}</small>`;
+    if(serverErr && nLocal) note += `<br><small style="color:#8b5a00">Zerbitzariak ez du erantzun (${escapeHtml(serverErr)}); 2026ko fitxategiko datuak bakarrik.</small>`;
+    else if(serverErr && !nLocal) note += `<br><small style="color:#8b2f2f">Zerbitzaria: ${escapeHtml(serverErr)}</small>`;
+    if(n){
+      try{ map.fitBounds(L.latLngBounds(bounds).pad(0.2)); }catch(_){}
+      out.innerHTML = `<strong>${n}</strong> erreketa aurkitu dira (${range}).`+
+        `<br><small style="color:#65736b">Zerbitzaria: ${nServer} · 2026ko fitxategia: ${nLocal}</small>`+note;
+    }else{
+      out.innerHTML = `Ez da erreketarik aurkitu (${range}).`+note;
     }
   }
 
   function clearHistory(){
     histLayer.clearLayers();
     if(histShown){ map.removeLayer(histLayer); histShown = false; }
-    $("histResult").textContent = "Aukeratu data bat eta sakatu «Kontsultatu».";
+    const out=document.getElementById("histResult");
+    if(out) out.textContent = "Aukeratu data bat eta sakatu «Kontsultatu».";
   }
 
-  const qBtn = $("histQuery"), cBtn = $("histClear");
-  if(qBtn) qBtn.addEventListener("click", queryHistory);
-  if(cBtn) cBtn.addEventListener("click", clearHistory);
+  /* Botoiak: beste script batek panela berreraiki dezakeenez, dokumentu-mailan entzun. */
+  document.addEventListener("click",e=>{
+    if(e.target.closest && e.target.closest("#histQuery")){ e.preventDefault(); e.stopImmediatePropagation(); queryHistory(); }
+    else if(e.target.closest && e.target.closest("#histClear")){ e.preventDefault(); e.stopImmediatePropagation(); clearHistory(); }
+  },true);
 })();
 })();
 </script>
