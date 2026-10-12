@@ -515,7 +515,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.53</h1>
+    <h1>Azalera eta mapa · V2.11.54</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -563,12 +563,11 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
       <button id="drawTrack" title="Track-a marraztu">✏️</button>
       <button id="closeTrack" title="Track-a itxi / azalera">⬠</button>
       <button id="undoTrack" title="Azken puntua desegin">↩️</button>
-      <button id="clearTrack" title="Track-a ezabatu">🗑️</button>
+      <button id="clearTrack" title="Garbitu">🗑️</button>
       <button id="exportTrack" title="GPX esportatu">📥<small>GPX</small></button>
       <button id="exportShp" title="SHP esportatu">📥<small>SHP</small></button>
       <button id="exportPdf" title="PDF sortu">📄<small>PDF</small></button>
       <button id="addWaypoint" title="Waypoint gehitu">📍</button>
-      <button id="clearMapWaypoints" type="button" title="Waypoint-ak ezabatu">📍🗑️</button>
       <button id="exportWaypoints" type="button" title="Waypoint GPX esportatu">📥<small>WP</small></button>
     </div>
     <div class="trackstats">
@@ -663,7 +662,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.53 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.54 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -2494,7 +2493,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.53">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.54">
 ${pts}
 </gpx>`;
 
@@ -2636,7 +2635,19 @@ $("clearTrack").addEventListener("click",()=>{
   if($("fileInfo"))$("fileInfo").textContent="Ez da fitxategirik hautatu.";
 
   updateManualTrack();
-  $("message").textContent="Track-a, perimetroa, azalerak eta fitxategiaren xehetasunak ezabatu dira.";
+
+  // Waypoint-ak eta koordenatu-puntua.
+  clearMapCreatedWaypoints();
+  // Bilaketaren markatzailea eta katastroko partzela.
+  try{ searchResultLayer.clearLayers(); }catch(_){}
+  try{ parcelLayer.clearLayers(); }catch(_){}
+  // Erreketen historikoaren kontsulta (geruza aktibo mantentzen da).
+  const hc=document.getElementById("irratiHistClear")||document.getElementById("histClear");
+  if(hc) hc.click();
+  else if(window.__irratiHistLayer) window.__irratiHistLayer.clearLayers();
+  map.closePopup();
+
+  $("message").textContent="Mapa garbitu da: track-a, GPX/KML, waypoint-ak eta kontsultak.";
 });
 
 function closeManualTrackAsSurface(){
@@ -2678,7 +2689,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.53"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.54"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3719,7 +3730,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.53 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.54 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
