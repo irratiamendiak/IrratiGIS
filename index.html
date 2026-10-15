@@ -515,7 +515,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.55</h1>
+    <h1>Azalera eta mapa · V2.11.56</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -662,7 +662,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.55 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.56 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1479,11 +1479,11 @@ const sektoreakLayer=L.geoJSON(null,{
   onEachFeature:(f,l)=>{
     const p=f.properties||{};
     const row=(k,v)=>v!==undefined&&v!==null&&v!==""?`<tr><td style="color:#65736b;padding-right:8px;vertical-align:top">${k}</td><td><strong>${escapeHtml(v)}</strong></td></tr>`:"";
-    l.bindTooltip(escapeHtml(p.SEKTORE_IZ||"—"),{sticky:true,direction:"top",opacity:.9});
+    const ehizaleku=(p.UXAL_IZENA||"—")+(p.UXAL_KODEA?" ("+p.UXAL_KODEA+")":"");
+    l.bindTooltip(escapeHtml(ehizaleku),{sticky:true,direction:"top",opacity:.9});
     l.bindPopup(
-      `<strong>🐗 ${escapeHtml(p.SEKTORE_IZ||"Sektorea")}</strong>`+
+      `<strong>🐗 ${escapeHtml(ehizaleku)}</strong>`+
       `<table style="font-size:12px;margin-top:5px">`+
-        row("Ehizalekua",p.UXAL_IZENA&&(p.UXAL_IZENA+(p.UXAL_KODEA?" ("+p.UXAL_KODEA+")":"")))+
         row("Udalerria",p.UDALERRIA)+
         row("Kategoria",p.KATEGORIA)+
         row("Mota",p.MOTA)+
@@ -2493,7 +2493,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.55">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.56">
 ${pts}
 </gpx>`;
 
@@ -2689,7 +2689,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.55"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.56"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3730,7 +3730,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.55 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.56 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
