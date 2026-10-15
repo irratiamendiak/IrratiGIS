@@ -515,7 +515,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.57</h1>
+    <h1>Azalera eta mapa · V2.11.58</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -569,6 +569,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
       <button id="exportPdf" title="PDF sortu">📄<small>PDF</small></button>
       <button id="addWaypoint" title="Waypoint gehitu">📍</button>
       <button id="exportWaypoints" type="button" title="Waypoint GPX esportatu">📥<small>WP</small></button>
+      <button id="helpBtn" type="button" title="Laguntza / Ayuda">❓</button>
     </div>
     <div class="trackstats">
       <span>Puntuak: <strong id="trackPointCount">0</strong></span>
@@ -662,7 +663,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.57 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.58 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -2493,7 +2494,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.57">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.58">
 ${pts}
 </gpx>`;
 
@@ -2689,7 +2690,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.57"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.58"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3730,7 +3731,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.57 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.58 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
@@ -4125,6 +4126,242 @@ if(window.visualViewport){
     else if(e.target.closest && e.target.closest("#histClear")){ e.preventDefault(); e.stopImmediatePropagation(); clearHistory(); }
   },true);
 })();
+})();
+</script>
+<!-- ===== Laguntza / Ayuda ===== -->
+<div id="helpBackdrop" class="help-backdrop" hidden>
+  <div class="help-box" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <div class="help-head">
+      <h2 id="helpTitle">❓ Laguntza · Ayuda</h2>
+      <div class="help-lang">
+        <button type="button" data-lang="eu" class="on">EU</button>
+        <button type="button" data-lang="es">ES</button>
+      </div>
+      <button type="button" class="help-close" aria-label="Itxi">✕</button>
+    </div>
+    <div class="help-body">
+
+<!-- ================= EUSKARA ================= -->
+<div class="help-lang-eu">
+<p class="help-intro">IrratiGIS barne-erabilerako GIS bisorea da: baimendutako erreketak, suteen historia, kartografia eta landa-lanerako tresnak. Atal bakoitza zabaltzeko, sakatu bere izenburuan.</p>
+
+<details open><summary>🗺️ Mapa eta oinarrizko kartografia</summary>
+<p>Goian eskuinean dagoen <b>geruzen botoian</b> (⧉) aukeratzen da oinarrizko mapa (bat bakarrik aldi berean):</p>
+<ul>
+<li><b>OpenStreetMap</b>: mapa orokorra.</li>
+<li><b>GeoGipuzkoa · mapa</b>: Diputazioaren udal-mugak.</li>
+<li><b>B5M · Topografikoa</b>: Diputazioaren mapa topografikoa.</li>
+<li><b>PNOA</b>: IGNren azken ortoargazkia.</li>
+<li><b>SP IGM Raster · IGN</b>: IGNren mapa topografiko klasikoa.</li>
+<li><b>EU Huts</b>: mendi-mapa, aterpe eta bideekin.</li>
+</ul>
+<p><b>⛶</b> botoiak mapa pantaila osora zabaltzen du (ESC edo ✕ itzultzeko). <b>Saioa itxi</b> goian eskuinean dago.</p>
+</details>
+
+<details><summary>📚 Geruzak (Edizioa eta Geruzak)</summary>
+<p><b>✏️ EDIZIOA</b> — zuk sortutako datuak. Bakarrik aktibatzen eta desaktibatzen dira; eskuz ezkutatu daitezke ezabatu gabe.</p>
+<ul>
+<li><b>Eskuz marraztutako track-a</b>, <b>GPX / KML</b> (kargatutako fitxategia) eta <b>Waypoint-ak</b>.</li>
+</ul>
+<p><b>🗺️ GERUZAK</b></p>
+<ul>
+<li><b>🔥 Baimendutako erreketak</b>: gaurko erreketa aktiboak (Diputazioa). Sakatu erreketa batean fitxa ikusteko (kodea, titularra, telefonoa, erregaia, herria, koordenatuak) eta <i>Kopiatu / Partekatu</i>. Aktibatzean «Erreketen historikoa» atala agertzen da.</li>
+<li><b>🔥 Suteak 2010-2025 (EGIF)</b>: suteen erregistro ofiziala; zirkuluaren tamaina eta kolorea azaleraren araberakoa.</li>
+<li><b>🟥 Arrisku-eremuak (EGIF)</b>: sute historikoen dentsitatetik kalkulatutako zonak (Nulua → Oso altua). Ez da ZAR ofiziala.</li>
+<li><b>⛰️ Campbell · lerrokadura</b>: malda (≥ %20), orientazioa eta haizea. 3/3: haizea H/HM/HE eta malda H/HM/HE; 2/3: haizea I/IM/IE eta malda I/IM/IE; 1/3: haizea hegoaldekoa eta malda I/IM/IE. Haizea automatikoa (Open-Meteo) edo eskuz; ordua eta ikusgarritasuna aukeran. Zoom 11tik aurrera.</li>
+<li><b>Katastroko partzelak · WMS</b>: partzelak; sakatu partzela batean bere datuak ikusteko.</li>
+<li><b>🛡️ Suteen aurkako babesa (geoEuskadi)</b>, <b>🌿 Natura 2000</b> eta <b>🏷️ Toponimia (B5M)</b>.</li>
+<li><b>🐗 Ehizalekuak (batidak)</b>: ehiza-batiden sektoreak, kategoriaren arabera koloreztatuta; sakatu fitxa ikusteko.</li>
+<li><b>🚨 NASA FIRMS</b>: sateliteko detekzio termikoak.</li>
+</ul>
+<p>Geruza batzuek <b>legenda</b> erakusten dute behean ezkerrean.</p>
+</details>
+
+<details><summary>🧩 B5M geruzak</summary>
+<p>Behean eskuinean dagoen <b>B5M geruzak</b> botoiak Diputazioaren katalogo osoa irekitzen du:</p>
+<ul>
+<li><b>Kartografia-geruzak</b> (gainjarriak): landaredia, altimetria, bideak, hidrografia, kilometro-puntuak, mugak… Batzuk zoom jakin batetik aurrera bakarrik ikusten dira: orduan «(zoom egin)» agertzen da.</li>
+<li><b>Ortoargazkiak</b>: oinarrizko mapa gisa jartzen dira.</li>
+</ul>
+<p>Geruza aktibo batean <b>klik eginez</b> elementuaren datuak ikusten dira (adib. kilometro-puntuaren zenbakia).</p>
+</details>
+
+<details><summary>🔍 Bilatzailea</summary>
+<ul>
+<li><b>Lekuak</b>: mendiak, auzoak, helbideak, ibaiak… (adib. <i>Txindoki</i>).</li>
+<li><b>Errepideak eta PKak</b>: <i>GI-2131</i>, <i>GI-2131 3</i>.</li>
+<li><b>Katastroko partzelak</b> (landa-partzelak): <i>071-04-109</i>, <i>Tolosa 4 109</i>, <i>Donostia pol 3 par 20</i>. Partzela horiz marrazten da.</li>
+</ul>
+</details>
+
+<details><summary>🛠️ Tresna-barra (maparen azpian)</summary>
+<ul class="help-tools">
+<li><b>📂</b> GPX edo KML fitxategia kargatu.</li>
+<li><b>✏️</b> Track-a marraztu (klik mapan puntu bakoitzeko); <b>✋</b> marraztea gelditu.</li>
+<li><b>⬠</b> Track-a itxi eta azalera kalkulatu.</li>
+<li><b>↩️</b> Azken puntua desegin.</li>
+<li><b>🗑️ Garbitu</b>: dena kentzen du (track-a, GPX/KML, waypoint-ak, bilaketak, historikoaren kontsulta). Geruza aktiboak ez ditu ukitzen.</li>
+<li><b>📥 GPX</b> / <b>📥 SHP</b>: track-a edo azalera esportatu.</li>
+<li><b>📄 PDF</b>: mapa-txostena (mapa, UTM sareta, azalera, perimetroa, waypoint-ak eta helbide hurbilena).</li>
+<li><b>📍</b> Waypoint-a gehitu (izena, ikonoa, koordenatuak). <b>📥 WP</b>: waypoint-ak GPX gisa esportatu.</li>
+<li><b>🖐️</b> Puntuak mugitu, <b>➕·</b> puntuak gehitu, <b>✖️·</b> puntuak ezabatu (kargatutako GPX/KML editatzeko).</li>
+<li><b>📍↗️</b> Kokapena partekatu: klik mapan → koordenatuak kopiatu edo WhatsApp bidez bidali.</li>
+<li><b>📏</b> Distantzia neurtu (bi puntu); berriro sakatuta desnibela eta malda.</li>
+<li><b>📐</b> Koordenatu bihurgailua (UTM ↔ geografikoak, mapatik hartu, Google Maps).</li>
+</ul>
+</details>
+
+<details><summary>📋 Erreketen historikoa</summary>
+<p><i>Baimendutako erreketak</i> geruza aktibatzean agertzen da.</p>
+<ul>
+<li>Bilatu <b>data</b> edo <b>data-tarte</b> baten arabera, <b>kodearen</b> arabera, edo <b>herria</b> iragazki gisa.</li>
+<li>Emaitzak mapan, taulan, eta <b>Excel (CSV)</b> edo <b>PDF</b> gisa esportatu daitezke.</li>
+<li>2026ko datuak fitxategi zifratu batetik datoz: lehen aldiz pasahitza eskatzen du (gailu bakoitzean behin).</li>
+<li><b>Garbitu</b> botoiak edo tresna-barrako 🗑️ ikonoak emaitzak kentzen dituzte.</li>
+</ul>
+</details>
+
+<details><summary>ℹ️ Oharrak</summary>
+<ul>
+<li>Datu pertsonalak (titularra, telefonoa) barne-erabilerarako dira.</li>
+<li>Zerbitzaria Deno Deploy-n dago: LaLigaren IP-blokeoek ez lukete eragin behar.</li>
+<li>Bertsioa orriaren behealdean ageri da.</li>
+</ul>
+</details>
+</div>
+
+<!-- ================= CASTELLANO ================= -->
+<div class="help-lang-es" hidden>
+<p class="help-intro">IrratiGIS es un visor GIS de uso interno: quemas autorizadas, histórico de incendios, cartografía y herramientas de campo. Pulsa el título de cada apartado para desplegarlo.</p>
+
+<details open><summary>🗺️ Mapa y cartografía base</summary>
+<p>Con el <b>botón de capas</b> (⧉), arriba a la derecha, se elige el mapa base (solo uno a la vez):</p>
+<ul>
+<li><b>OpenStreetMap</b>: mapa general.</li>
+<li><b>GeoGipuzkoa · mapa</b>: límites municipales de la Diputación.</li>
+<li><b>B5M · Topografikoa</b>: mapa topográfico de la Diputación.</li>
+<li><b>PNOA</b>: última ortofoto del IGN.</li>
+<li><b>SP IGM Raster · IGN</b>: mapa topográfico clásico del IGN.</li>
+<li><b>EU Huts</b>: mapa de montaña con refugios y caminos.</li>
+</ul>
+<p>El botón <b>⛶</b> pone el mapa a pantalla completa (ESC o ✕ para volver). <b>Saioa itxi</b> (cerrar sesión) está arriba a la derecha.</p>
+</details>
+
+<details><summary>📚 Capas (Edizioa y Geruzak)</summary>
+<p><b>✏️ EDIZIOA</b> — datos creados por ti. Se activan y desactivan solos; puedes ocultarlos sin borrarlos.</p>
+<ul>
+<li><b>Track dibujado a mano</b>, <b>GPX / KML</b> (archivo cargado) y <b>Waypoints</b>.</li>
+</ul>
+<p><b>🗺️ GERUZAK (capas)</b></p>
+<ul>
+<li><b>🔥 Baimendutako erreketak</b>: quemas autorizadas activas hoy (Diputación). Pulsa una para ver su ficha (código, titular, teléfono, material, municipio, coordenadas) y <i>Kopiatu / Partekatu</i>. Al activarla aparece el apartado «Erreketen historikoa».</li>
+<li><b>🔥 Suteak 2010-2025 (EGIF)</b>: registro oficial de incendios; tamaño y color del círculo según superficie quemada.</li>
+<li><b>🟥 Arrisku-eremuak (EGIF)</b>: zonas calculadas por densidad de incendios históricos (Nulua → Oso altua). No es una ZAR oficial.</li>
+<li><b>⛰️ Campbell · lerrokadura</b>: pendiente (≥ 20%), orientación y viento. 3/3: viento S/SO/SE y ladera S/SO/SE; 2/3: viento N/NO/NE y ladera N/NO/NE; 1/3: viento del sur y ladera N/NO/NE. Viento automático (Open-Meteo) o manual; hora y visibilidad ajustables. Desde zoom 11.</li>
+<li><b>Katastroko partzelak · WMS</b>: parcelas catastrales; pulsa una para ver sus datos.</li>
+<li><b>🛡️ Protección contra incendios (geoEuskadi)</b>, <b>🌿 Natura 2000</b> y <b>🏷️ Toponimia (B5M)</b>.</li>
+<li><b>🐗 Ehizalekuak (batidas)</b>: sectores de batida coloreados por categoría; pulsa para ver la ficha.</li>
+<li><b>🚨 NASA FIRMS</b>: detecciones térmicas por satélite.</li>
+</ul>
+<p>Algunas capas muestran su <b>leyenda</b> abajo a la izquierda.</p>
+</details>
+
+<details><summary>🧩 Capas B5M</summary>
+<p>El botón <b>B5M geruzak</b>, abajo a la derecha, abre el catálogo completo de la Diputación:</p>
+<ul>
+<li><b>Capas cartográficas</b> (superpuestas): vegetación, altimetría, viales, hidrografía, puntos kilométricos, límites… Algunas solo se ven a partir de cierto zoom: entonces aparece «(zoom egin)».</li>
+<li><b>Ortofotos</b>: se ponen como mapa base.</li>
+</ul>
+<p>Haciendo <b>clic</b> sobre una capa activa se ven los datos del elemento (p. ej. el número de punto kilométrico).</p>
+</details>
+
+<details><summary>🔍 Buscador</summary>
+<ul>
+<li><b>Lugares</b>: montes, barrios, direcciones, ríos… (p. ej. <i>Txindoki</i>).</li>
+<li><b>Carreteras y PK</b>: <i>GI-2131</i>, <i>GI-2131 3</i>.</li>
+<li><b>Parcelas catastrales</b> (rústicas): <i>071-04-109</i>, <i>Tolosa 4 109</i>, <i>Donostia pol 3 par 20</i>. La parcela se dibuja en amarillo.</li>
+</ul>
+</details>
+
+<details><summary>🛠️ Barra de herramientas (debajo del mapa)</summary>
+<ul class="help-tools">
+<li><b>📂</b> Cargar archivo GPX o KML.</li>
+<li><b>✏️</b> Dibujar track (clic en el mapa por cada punto); <b>✋</b> dejar de dibujar.</li>
+<li><b>⬠</b> Cerrar el track y calcular la superficie.</li>
+<li><b>↩️</b> Deshacer el último punto.</li>
+<li><b>🗑️ Garbitu</b>: lo limpia todo (track, GPX/KML, waypoints, búsquedas, consulta del histórico). No toca las capas activas.</li>
+<li><b>📥 GPX</b> / <b>📥 SHP</b>: exportar el track o la superficie.</li>
+<li><b>📄 PDF</b>: informe con mapa, cuadrícula UTM, superficie, perímetro, waypoints y dirección más cercana.</li>
+<li><b>📍</b> Añadir waypoint (nombre, icono, coordenadas). <b>📥 WP</b>: exportar waypoints en GPX.</li>
+<li><b>🖐️</b> Mover puntos, <b>➕·</b> añadir puntos, <b>✖️·</b> borrar puntos (para editar el GPX/KML cargado).</li>
+<li><b>📍↗️</b> Compartir ubicación: clic en el mapa → copiar coordenadas o enviar por WhatsApp.</li>
+<li><b>📏</b> Medir distancia (dos puntos); pulsando otra vez, desnivel y pendiente.</li>
+<li><b>📐</b> Conversor de coordenadas (UTM ↔ geográficas, tomar del mapa, Google Maps).</li>
+</ul>
+</details>
+
+<details><summary>📋 Histórico de quemas</summary>
+<p>Aparece al activar la capa <i>Baimendutako erreketak</i>.</p>
+<ul>
+<li>Busca por <b>fecha</b> o <b>rango de fechas</b>, por <b>código</b>, y filtra por <b>municipio</b>.</li>
+<li>Los resultados se ven en el mapa y en una tabla, y se pueden exportar a <b>Excel (CSV)</b> o <b>PDF</b>.</li>
+<li>Los datos de 2026 vienen de un archivo cifrado: la primera vez pide la contraseña (una vez por dispositivo).</li>
+<li>El botón <b>Garbitu</b> o el icono 🗑️ de la barra quitan los resultados.</li>
+</ul>
+</details>
+
+<details><summary>ℹ️ Notas</summary>
+<ul>
+<li>Los datos personales (titular, teléfono) son de uso interno.</li>
+<li>El servidor está en Deno Deploy: los bloqueos de IP de LaLiga no deberían afectarle.</li>
+<li>La versión aparece al pie de la página.</li>
+</ul>
+</details>
+</div>
+
+    </div>
+  </div>
+</div>
+<style>
+.help-backdrop{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:14px}
+.help-backdrop[hidden]{display:none}
+.help-box{width:min(760px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.3);color:#16231c;font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.help-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid #dce5df}
+.help-head h2{margin:0;font-size:18px;flex:1}
+.help-lang{display:flex;gap:4px}
+.help-lang button,.help-close{border:0;border-radius:8px;padding:6px 10px;min-height:0;font-weight:800;cursor:pointer;background:#edf3ef;color:#234233}
+.help-lang button.on{background:#176b43;color:#fff}
+.help-body{overflow:auto;padding:6px 16px 16px}
+.help-intro{color:#65736b;margin:10px 0}
+.help-body details{border:1px solid #dce5df;border-radius:11px;margin:8px 0;padding:0 12px;background:#f7faf8}
+.help-body details[open]{background:#fff}
+.help-body summary{cursor:pointer;font-weight:800;padding:10px 0;color:#184c34}
+.help-body ul{margin:4px 0 10px;padding-left:20px}
+.help-body li{margin:3px 0}
+.help-body p{margin:6px 0}
+</style>
+<script>
+(function(){
+  const back=document.getElementById("helpBackdrop");
+  if(!back)return;
+  const open=()=>{back.hidden=false;};
+  const close=()=>{back.hidden=true;};
+  back.querySelector(".help-close").addEventListener("click",close);
+  back.addEventListener("click",e=>{if(e.target===back)close();});
+  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!back.hidden)close();});
+  back.querySelectorAll(".help-lang button").forEach(b=>b.addEventListener("click",()=>{
+    const es=b.dataset.lang==="es";
+    back.querySelector(".help-lang-es").hidden=!es;
+    back.querySelector(".help-lang-eu").hidden=es;
+    back.querySelectorAll(".help-lang button").forEach(x=>x.classList.toggle("on",x===b));
+  }));
+  const btn=document.getElementById("helpBtn");
+  if(btn)btn.addEventListener("click",open);
+  // gis-tools.js-k botoiak gehitu ondoren, ❓ azkenera eraman.
+  [800,2000,4000].forEach(ms=>setTimeout(()=>{
+    const bar=document.querySelector(".icon-tools");
+    if(bar&&btn&&bar.lastElementChild!==btn) bar.appendChild(btn);
+  },ms));
 })();
 </script>
 </body>
