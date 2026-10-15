@@ -515,7 +515,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <header>
   <div class="wrap">
     <div class="eyebrow">GPX · KML · AZALERA</div>
-    <h1>Azalera eta mapa · V2.11.54</h1>
+    <h1>Azalera eta mapa · V2.11.55</h1>
     <p>GPX/KML · B5M KARTOGRAFIA-GERUZAK · B5M ORTOARGAZKIAK · PNOA · Katastro WMS · IGN Raster · EU Huts · Track marrazketa</p>
   </div>
 </header>
@@ -662,7 +662,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 
   <div id="printReport" class="print-report"></div>
 
-  <div class="footer">V2.11.54 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
+  <div class="footer">V2.11.55 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1483,7 +1483,7 @@ const sektoreakLayer=L.geoJSON(null,{
     l.bindPopup(
       `<strong>🐗 ${escapeHtml(p.SEKTORE_IZ||"Sektorea")}</strong>`+
       `<table style="font-size:12px;margin-top:5px">`+
-        row("Uxala",p.UXAL_IZENA&&(p.UXAL_IZENA+(p.UXAL_KODEA?" ("+p.UXAL_KODEA+")":"")))+
+        row("Ehizalekua",p.UXAL_IZENA&&(p.UXAL_IZENA+(p.UXAL_KODEA?" ("+p.UXAL_KODEA+")":"")))+
         row("Udalerria",p.UDALERRIA)+
         row("Kategoria",p.KATEGORIA)+
         row("Mota",p.MOTA)+
@@ -1502,17 +1502,17 @@ const sektoreakLayer=L.geoJSON(null,{
   }
 });
 let sektoreakLoaded=false;
-layersControl.addOverlay(sektoreakLayer,"🐗 Uxal-sektoreak (batidak)");
+layersControl.addOverlay(sektoreakLayer,"🐗 Ehizalekuak (batidak)");
 
 function sektoreakLegend(n){
   const sw=(c,t)=>`<div><span style="display:inline-block;width:12px;height:12px;border:2px solid ${c};background:${c}33;margin-right:5px;vertical-align:-3px"></span>${t}</div>`;
-  legendControl.showHtml(`<strong>🐗 Uxal-sektoreak</strong><div style="margin-top:4px"></div>`+
+  legendControl.showHtml(`<strong>🐗 Ehizalekuak</strong><div style="margin-top:4px"></div>`+
     sw(SEK_COLORS.A,"A kategoria")+sw(SEK_COLORS.B,"B kategoria")+sw(SEK_COLORS.C,"C kategoria")+sw("#555","Kategoriarik gabe")+
-    `<div style="color:#65736b;margin-top:4px;font-size:11px">${n} sektore · sakatu sektore batean fitxa ikusteko</div>`);
+    `<div style="color:#65736b;margin-top:4px;font-size:11px">${n} ehizaleku · sakatu batean fitxa ikusteko</div>`);
 }
 async function loadSektoreak(){
   if(sektoreakLoaded){ sektoreakLegend(sektoreakLayer.getLayers().length); return; }
-  legendControl.showHtml(`<strong>🐗 Uxal-sektoreak</strong><div style="margin-top:4px;color:#65736b">Kargatzen…</div>`);
+  legendControl.showHtml(`<strong>🐗 Ehizalekuak</strong><div style="margin-top:4px;color:#65736b">Kargatzen…</div>`);
   try{
     const r=await fetch(SEKTOREAK_URL,{cache:"no-cache"});
     if(!r.ok) throw new Error("HTTP "+r.status);
@@ -1520,8 +1520,8 @@ async function loadSektoreak(){
     sektoreakLoaded=true;
     sektoreakLegend(sektoreakLayer.getLayers().length);
   }catch(err){
-    console.error("Uxal-sektoreak:",err);
-    legendControl.showHtml(`<strong>🐗 Uxal-sektoreak</strong><div style="margin-top:4px;color:#8b2f2f;font-size:12px">Ezin izan da «sektoreak.geojson» irakurri (${escapeHtml(err.message)}). Egiaztatu fitxategia IrratiGIS biltegian dagoela.</div>`);
+    console.error("Ehizalekuak:",err);
+    legendControl.showHtml(`<strong>🐗 Ehizalekuak</strong><div style="margin-top:4px;color:#8b2f2f;font-size:12px">Ezin izan da «sektoreak.geojson» irakurri (${escapeHtml(err.message)}). Egiaztatu fitxategia IrratiGIS biltegian dagoela.</div>`);
   }
 }
 map.on("overlayadd",e=>{ if(e.layer===sektoreakLayer) loadSektoreak(); });
@@ -2493,7 +2493,7 @@ $("exportWaypoints").addEventListener("click",()=>{
     }
 
     const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.54">
+<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="GPX KML AZALERA V2.11.55">
 ${pts}
 </gpx>`;
 
@@ -2689,7 +2689,7 @@ $("exportTrack").addEventListener("click",()=>{
     p=>`      <trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}"></trkpt>`
   ).join("\n");
   const gpx=`<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX KML AZALERA V2.11.54"
+<gpx version="1.1" creator="GPX KML AZALERA V2.11.55"
  xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>Eskuz marraztutako track-a</name>
@@ -3730,7 +3730,7 @@ async function generateMapPdf(){
     pdf.line(10,196,287,196);
     pdf.setFontSize(6.5);
     pdf.setTextColor(95,95,95);
-    pdf.text("V2.11.54 · GPX KML AZALERA",margin,201);
+    pdf.text("V2.11.55 · GPX KML AZALERA",margin,201);
     pdf.text("Track ireki baten azalera puntu-segida itxiz kalkulatzen da.",W-margin,201,{align:"right"});
 
     const base=(geom.name||"mapa").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"_").slice(0,50)||"mapa";
