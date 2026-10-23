@@ -1528,6 +1528,152 @@ async function loadSektoreak(){
 map.on("overlayadd",e=>{ if(e.layer===sektoreakLayer) loadSektoreak(); });
 map.on("overlayremove",e=>{ if(e.layer===sektoreakLayer) legendControl.hide(); });
 
+/* ===== 🚚 Ibilgailuak denbora errealean (PALVIEW · GMV) =====
+   Nabigatzailea ez da PALVIEW-ra zuzenean konektatzen: Deno zerbitzariari eskatzen dio
+   (API + VEH_PATH) eta zerbitzariak gordetzen ditu PALVIEW kredentzialak.
+   Markatzaileak lekuan eguneratzen dira (ez dira berriz sortzen) VEH_POLL_MS segundoro. */
+const VEH_PATH="/api/vehicles";
+const VEH_POLL_MS=15000;          // eguneratze-tartea
+const VEH_STALE_MS=5*60*1000;     // 5 min baino gehiago seinalerik gabe -> grisa
+const vehicleLayer=L.layerGroup();
+const vehicleMarkers=new Map();
+let vehTimer=null, vehBusy=false, vehFitted=false;
+
+(function(){
+  const st=document.createElement("style");
+  st.textContent=
+    ".veh-dot{width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);"+
+    "display:flex;align-items:center;justify-content:center;color:#fff;font:700 13px/1 system-ui}"+
+    ".veh-dot span{display:block;line-height:1}"+
+    ".veh-label{font:700 11px system-ui;padding:1px 5px;border-radius:6px}"+
+    ".veh-nolabels .veh-label{display:none}";
+  document.head.appendChild(st);
+})();
+map.on("zoomend",()=>{ map.getContainer().classList.toggle("veh-nolabels",map.getZoom()<12); });
+map.getContainer().classList.toggle("veh-nolabels",map.getZoom()<12);
+
+const VehCounter=L.Control.extend({
+  options:{position:"topleft"},
+  onAdd:function(){
+    const d=L.DomUtil.create("div");
+    d.id="vehCounter";
+    d.style.cssText="display:none;background:#fff;border-radius:10px;padding:8px 12px;box-shadow:0 2px 10px rgba(0,0,0,.25);font:800 13px system-ui;color:#175f8f;pointer-events:none";
+    return d;
+  }
+});
+map.addControl(new VehCounter());
+
+function vehNum(v){ const n=typeof v==="string"?parseFloat(v.replace(",",".")):Number(v); return Number.isFinite(n)?n:null; }
+function vehPick(o,keys){ for(const k of keys){ const v=o[k]; if(v!==undefined&&v!==null&&v!=="") return v; } return null; }
+
+/* PALVIEW-ren erantzun-formatua egiaztatu gabe dago: hemen onartzen dira aldaera ohikoenak
+   (array soila, {vehicles|data|items|results}, GeoJSON). Beharrezkoa bada, doitu hemen. */
+function vehNormalize(raw){
+  const arr=Array.isArray(raw)?raw:((raw&&(raw.vehicles||raw.data||raw.items||raw.results||raw.features))||[]);
+  const out=[];
+  arr.forEach((o,i)=>{
+    if(!o||typeof o!=="object") return;
+    const p=Object.assign({},o.properties||{},o.position||{},o.location||{},o.lastPosition||{},o);
+    let lat=vehNum(vehPick(p,["lat","latitude","latitud","latitudea"]));
+    let lon=vehNum(vehPick(p,["lon","lng","long","longitude","longitud","longitudea"]));
+    if((lat===null||lon===null)&&o.geometry&&Array.isArray(o.geometry.coordinates)){
+      lon=vehNum(o.geometry.coordinates[0]); lat=vehNum(o.geometry.coordinates[1]);
+    }
+    if(lat===null||lon===null) return;
+    const id=String(vehPick(p,["id","vehicleId","vehicle_id","deviceId","imei","plate","matricula"])??("v"+i));
+    const ts=vehPick(p,["timestamp","time","datetime","date","lastUpdate","updatedAt","fecha"]);
+    let t=null;
+    if(ts!==null){ t=typeof ts==="number"?(ts<1e12?ts*1000:ts):Date.parse(ts); if(!Number.isFinite(t)) t=null; }
+    out.push({
+      id,
+      name:String(vehPick(p,["name","alias","label","nombre","description"])||id),
+      plate:vehPick(p,["plate","matricula","licensePlate"]),
+      lat,lon,
+      speed:vehNum(vehPick(p,["speed","velocidad","speedKmh"])),
+      heading:vehNum(vehPick(p,["heading","course","bearing","direction","rumbo"])),
+      t
+    });
+  });
+  return out;
+}
+
+function vehIcon(v,stale){
+  const moving=v.speed!==null&&v.speed>3;
+  const c=stale?"#7a8580":(moving?"#176b43":"#175f8f");
+  const inner=v.heading!==null?`<span style="transform:rotate(${Math.round(v.heading)}deg)">▲</span>`:`<span>●</span>`;
+  return L.divIcon({className:"",html:`<div class="veh-dot" style="background:${c}">${inner}</div>`,iconSize:[26,26],iconAnchor:[13,13],popupAnchor:[0,-12]});
+}
+
+function vehPopup(v,stale){
+  let uTxt="";
+  try{ if(typeof proj4!=="undefined"){ const pu=proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[v.lon,v.lat]); uTxt=`<br><strong>UTM (ETRS89 30N):</strong> X ${Math.round(pu[0])} · Y ${Math.round(pu[1])}`; } }catch(e){}
+  const when=v.t?new Date(v.t).toLocaleString("eu-ES"):"—";
+  return `<strong>🚚 ${escapeHtml(v.name)}</strong>${stale?' <span style="color:#8b2f2f">(seinalerik gabe)</span>':""}<br><br>`+
+    (v.plate?`<strong>Matrikula:</strong> ${escapeHtml(String(v.plate))}<br>`:"")+
+    `<strong>Abiadura:</strong> ${v.speed!==null?Math.round(v.speed)+" km/h":"—"}<br>`+
+    `<strong>Norabidea:</strong> ${v.heading!==null?Math.round(v.heading)+"°":"—"}<br>`+
+    `<strong>Azken seinalea:</strong> ${escapeHtml(when)}<br>`+
+    `<strong>Geografikoak:</strong> ${v.lat.toFixed(6)}, ${v.lon.toFixed(6)}${uTxt}`;
+}
+
+async function updateVehicles(){
+  if(vehBusy||!map.hasLayer(vehicleLayer)) return;
+  const token=window.IrratiGISAuth?.getToken?.();
+  const api=window.IrratiGISAuth?.API;
+  if(!token||!api){ console.warn("IrratiGIS: autentifikazio-tokena falta da."); return; }
+  vehBusy=true;
+  try{
+    const r=await fetch(api+VEH_PATH,{headers:{"Authorization":`Bearer ${token}`},cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const list=vehNormalize(await r.json());
+    const now=Date.now(), seen=new Set();
+    list.forEach(v=>{
+      seen.add(v.id);
+      const stale=v.t!==null&&(now-v.t)>VEH_STALE_MS;
+      let m=vehicleMarkers.get(v.id);
+      if(!m){
+        m=L.marker([v.lat,v.lon],{icon:vehIcon(v,stale),zIndexOffset:500});
+        m.bindTooltip(escapeHtml(v.name),{permanent:true,direction:"right",offset:[12,0],className:"veh-label"});
+        m.bindPopup(vehPopup(v,stale));
+        m.addTo(vehicleLayer);
+        vehicleMarkers.set(v.id,m);
+      }else{
+        m.setLatLng([v.lat,v.lon]);
+        m.setIcon(vehIcon(v,stale));
+        m.setPopupContent(vehPopup(v,stale));
+      }
+    });
+    vehicleMarkers.forEach((m,id)=>{ if(!seen.has(id)){ vehicleLayer.removeLayer(m); vehicleMarkers.delete(id); } });
+    if(!vehFitted&&vehicleMarkers.size){
+      vehFitted=true;
+      map.fitBounds(L.featureGroup([...vehicleMarkers.values()]).getBounds().pad(0.2),{maxZoom:13});
+    }
+    const c=document.getElementById("vehCounter");
+    if(c){ c.textContent=`🚚 ${list.length} ibilgailu · ${new Date().toLocaleTimeString("eu-ES")}`; c.style.display="block"; }
+  }catch(err){
+    console.error("Ibilgailuak:",err);
+    $("message").textContent="Ezin izan dira ibilgailuen posizioak eguneratu ("+err.message+").";
+  }finally{
+    vehBusy=false;
+  }
+}
+function startVehicles(){ stopVehicles(); updateVehicles(); vehTimer=setInterval(updateVehicles,VEH_POLL_MS); }
+function stopVehicles(){ if(vehTimer){ clearInterval(vehTimer); vehTimer=null; } }
+
+layersControl.addOverlay(vehicleLayer,"🚚 Ibilgailuak (PALVIEW · denbora errealean)");
+map.on("overlayadd",e=>{ if(e.layer===vehicleLayer) startVehicles(); });
+map.on("overlayremove",e=>{
+  if(e.layer!==vehicleLayer) return;
+  stopVehicles();
+  vehicleLayer.clearLayers(); vehicleMarkers.clear(); vehFitted=false;
+  const c=document.getElementById("vehCounter"); if(c) c.style.display="none";
+});
+/* Fitxa atzeko planoan dagoenean ez da eskaerarik egiten. */
+document.addEventListener("visibilitychange",()=>{
+  if(!map.hasLayer(vehicleLayer)) return;
+  if(document.hidden) stopVehicles(); else startVehicles();
+});
+
 /* ===== Natura 2000 (geoEuskadi; ordezkoa: MITECO) =====
    Geruza-izena GetCapabilities-etik bilatzen da (zerbitzuaren egitura aldatu ohi da). */
 const natura2000Layer=L.layerGroup();
