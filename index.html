@@ -1270,8 +1270,13 @@ async function queryB5mFeatureInfo(latlng){
   }
 }
 
+let streetViewMode=false;
+/* Google Street View: Maps URLs (gakorik gabe eta doan). Fitxa berrian irekitzen da. */
+function streetViewUrl(lat,lon){
+  return "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint="+Number(lat).toFixed(7)+","+Number(lon).toFixed(7);
+}
 map.on("click",e=>{
-  if(waypointMode||drawingTrack||coordPickMode)return;
+  if(waypointMode||drawingTrack||coordPickMode||streetViewMode)return;
   queryB5mFeatureInfo(e.latlng);
 });
 
@@ -1563,34 +1568,44 @@ const VehCounter=L.Control.extend({
 });
 map.addControl(new VehCounter());
 
-function vehNum(v){ const n=typeof v==="string"?parseFloat(v.replace(",",".")):Number(v); return Number.isFinite(n)?n:null; }
+function vehNum(v){ if(v===null||v===undefined||v==="") return null; const n=typeof v==="string"?parseFloat(v.replace(",",".")):Number(v); return Number.isFinite(n)?n:null; }
 function vehPick(o,keys){ for(const k of keys){ const v=o[k]; if(v!==undefined&&v!==null&&v!=="") return v; } return null; }
 
-/* PALVIEW-ren erantzun-formatua egiaztatu gabe dago: hemen onartzen dira aldaera ohikoenak
-   (array soila, {vehicles|data|items|results}, GeoJSON). Beharrezkoa bada, doitu hemen. */
+/* PALVIEW LastPosition: Data[] con {VehicleId, Plate, FleetName, SubfleetName, LastPositionDateUTC, Description, Point:{X,Y}}
+   X = longitudea, Y = latitudea. Gako-izenak minuskulatan jartzen dira (letra larri/xehea ez da axola). */
 function vehNormalize(raw){
-  const arr=Array.isArray(raw)?raw:((raw&&(raw.vehicles||raw.data||raw.items||raw.results||raw.features))||[]);
+  const arr=Array.isArray(raw)?raw:((raw&&(raw.Data||raw.data||raw.vehicles||raw.items||raw.results||raw.features))||[]);
   const out=[];
   arr.forEach((o,i)=>{
     if(!o||typeof o!=="object") return;
-    const p=Object.assign({},o.properties||{},o.position||{},o.location||{},o.lastPosition||{},o);
+    const flat=Object.assign({},o.properties||{},o.position||{},o.Position||{},o);
+    const p={}; Object.keys(flat).forEach(k=>{ p[k.toLowerCase()]=flat[k]; });
     let lat=vehNum(vehPick(p,["lat","latitude","latitud","latitudea"]));
     let lon=vehNum(vehPick(p,["lon","lng","long","longitude","longitud","longitudea"]));
-    if((lat===null||lon===null)&&o.geometry&&Array.isArray(o.geometry.coordinates)){
-      lon=vehNum(o.geometry.coordinates[0]); lat=vehNum(o.geometry.coordinates[1]);
+    const pt=p.point||o.geometry&&{x:o.geometry.coordinates&&o.geometry.coordinates[0],y:o.geometry.coordinates&&o.geometry.coordinates[1]};
+    if((lat===null||lon===null)&&pt){
+      const q={}; Object.keys(pt).forEach(k=>{ q[k.toLowerCase()]=pt[k]; });
+      lon=vehNum(q.x!==undefined?q.x:q.lon); lat=vehNum(q.y!==undefined?q.y:q.lat);
     }
-    if(lat===null||lon===null) return;
-    const id=String(vehPick(p,["id","vehicleId","vehicle_id","deviceId","imei","plate","matricula"])??("v"+i));
-    const ts=vehPick(p,["timestamp","time","datetime","date","lastUpdate","updatedAt","fecha"]);
+    if(lat===null||lon===null||(lat===0&&lon===0)) return;
+    const id=String(vehPick(p,["vehicleid","id","deviceid","plate"])??("v"+i));
+    const ts=vehPick(p,["lastpositiondateutc","timestamp","time","datetime","lastupdate","updatedat"]);
     let t=null;
-    if(ts!==null){ t=typeof ts==="number"?(ts<1e12?ts*1000:ts):Date.parse(ts); if(!Number.isFinite(t)) t=null; }
+    if(ts!==null){
+      if(typeof ts==="number") t=ts<1e12?ts*1000:ts;
+      else{ let str=String(ts); if(!/[zZ]|[+-]\d\d:?\d\d$/.test(str)) str+="Z"; t=Date.parse(str); } // UTC
+      if(!Number.isFinite(t)) t=null;
+    }
+    const plate=vehPick(p,["plate","matricula"]);
+    const desc=vehPick(p,["description","name","alias","acronym"]);
     out.push({
       id,
-      name:String(vehPick(p,["name","alias","label","nombre","description"])||id),
-      plate:vehPick(p,["plate","matricula","licensePlate"]),
+      name:String(plate||desc||id),
+      plate:plate, desc:desc,
+      fleet:vehPick(p,["fleetname"]), subfleet:vehPick(p,["subfleetname"]),
       lat,lon,
-      speed:vehNum(vehPick(p,["speed","velocidad","speedKmh"])),
-      heading:vehNum(vehPick(p,["heading","course","bearing","direction","rumbo"])),
+      speed:vehNum(vehPick(p,["speed","velocidad"])),
+      heading:vehNum(vehPick(p,["heading","course","bearing","rumbo"])),
       t
     });
   });
@@ -1609,9 +1624,10 @@ function vehPopup(v,stale){
   try{ if(typeof proj4!=="undefined"){ const pu=proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[v.lon,v.lat]); uTxt=`<br><strong>UTM (ETRS89 30N):</strong> X ${Math.round(pu[0])} · Y ${Math.round(pu[1])}`; } }catch(e){}
   const when=v.t?new Date(v.t).toLocaleString("eu-ES"):"—";
   return `<strong>🚚 ${escapeHtml(v.name)}</strong>${stale?' <span style="color:#8b2f2f">(seinalerik gabe)</span>':""}<br><br>`+
-    (v.plate?`<strong>Matrikula:</strong> ${escapeHtml(String(v.plate))}<br>`:"")+
-    `<strong>Abiadura:</strong> ${v.speed!==null?Math.round(v.speed)+" km/h":"—"}<br>`+
-    `<strong>Norabidea:</strong> ${v.heading!==null?Math.round(v.heading)+"°":"—"}<br>`+
+    (v.desc&&String(v.desc)!==v.name?`<strong>Deskribapena:</strong> ${escapeHtml(String(v.desc))}<br>`:"")+
+    (v.fleet?`<strong>Flota:</strong> ${escapeHtml(String(v.fleet))}${v.subfleet?" · "+escapeHtml(String(v.subfleet)):""}<br>`:"")+
+    (v.speed!==null?`<strong>Abiadura:</strong> ${Math.round(v.speed)} km/h<br>`:"")+
+    (v.heading!==null?`<strong>Norabidea:</strong> ${Math.round(v.heading)}°<br>`:"")+
     `<strong>Azken seinalea:</strong> ${escapeHtml(when)}<br>`+
     `<strong>Geografikoak:</strong> ${v.lat.toFixed(6)}, ${v.lon.toFixed(6)}${uTxt}`;
 }
@@ -1624,7 +1640,7 @@ async function updateVehicles(){
   vehBusy=true;
   try{
     const r=await fetch(api+VEH_PATH,{headers:{"Authorization":`Bearer ${token}`},cache:"no-store"});
-    if(!r.ok) throw new Error("HTTP "+r.status);
+    if(!r.ok){ let d=""; try{ d=(await r.json()).detail||""; }catch(e){} throw new Error("HTTP "+r.status+(d?" · "+d:"")); }
     const list=vehNormalize(await r.json());
     const now=Date.now(), seen=new Set();
     list.forEach(v=>{
@@ -2156,7 +2172,7 @@ const SearchControl=L.Control.extend({
     L.DomEvent.disableScrollPropagation(box);
     const input=box.querySelector("input");
     const res=box.querySelector(".srch-res");
-    let timer=null, lastDocs=[], seq=0, parcelPending=null, parcelPendingMuni="";
+    let timer=null, lastDocs=[], seq=0, parcelPending=null, parcelPendingMuni="", lastQ="";
 
     const showDoc=d=>{
       const lat=parseFloat(d.lat), lon=parseFloat(d.lon);
@@ -2178,7 +2194,8 @@ const SearchControl=L.Control.extend({
         `<strong>${escapeHtml(d.display_name||"—")}</strong><br>`+
         `${escapeHtml(extra)}<br>`+
         `${lat.toFixed(6)}, ${lon.toFixed(6)}<br>`+
-        (d.map_link?`<a href="${escapeHtml(d.map_link)}" target="_blank" rel="noopener">B5M mapan ikusi</a>`:"")
+        (d.map_link?`<a href="${escapeHtml(d.map_link)}" target="_blank" rel="noopener">B5M mapan ikusi</a> · `:"")+
+        `<a href="${streetViewUrl(lat,lon)}" target="_blank" rel="noopener">🧍 Street View</a>`
       ).addTo(searchResultLayer).openPopup();
     };
 
@@ -2198,8 +2215,9 @@ const SearchControl=L.Control.extend({
       });
     };
 
-    const search=async q=>{
+    const search=async (q,go=false)=>{
       const my=++seq;
+      lastQ="";
       res.innerHTML='<div style="padding:6px;color:#65736b">Bilatzen…</div>';
       const pq=parseParcelQuery(q);
       if(pq){
@@ -2222,7 +2240,8 @@ const SearchControl=L.Control.extend({
             it.onclick=()=>{ res.innerHTML=""; showParcel(p,muniName); };
             res.appendChild(it);
           });
-          parcelPending=found[0]; parcelPendingMuni=muniName;
+          parcelPending=found[0]; parcelPendingMuni=muniName; lastQ=q;
+          if(go){ res.innerHTML=""; showParcel(found[0],muniName); }
         }catch(err){
           if(my!==seq)return;
           console.error("Partzela-bilaketa:",err);
@@ -2237,7 +2256,10 @@ const SearchControl=L.Control.extend({
         if(!r.ok)throw new Error("HTTP "+r.status);
         const j=await r.json();
         if(my!==seq)return;
-        render((j.response&&j.response.docs)||[]);
+        const docs=(j.response&&j.response.docs)||[];
+        render(docs);
+        lastQ=q;
+        if(go&&docs.length) showDoc(docs[0]);
       }catch(err){
         if(my!==seq)return;
         console.error("B5M bilatzailea:",err);
@@ -2252,8 +2274,18 @@ const SearchControl=L.Control.extend({
       timer=setTimeout(()=>search(q),350);
     });
     input.addEventListener("keydown",e=>{
-      if(e.key==="Enter"&&parcelPending){e.preventDefault();res.innerHTML="";showParcel(parcelPending,parcelPendingMuni);return;}
-      if(e.key==="Enter"&&lastDocs.length){e.preventDefault();showDoc(lastDocs[0]);}
+      if(e.key==="Enter"){
+        e.preventDefault();
+        clearTimeout(timer);
+        const q=input.value.trim();
+        if(q.length<3) return;
+        /* Emaitzak testu honentzat badaude, zuzenean joan; bestela, bilatu orain eta joan lehen emaitzara. */
+        if(q===lastQ&&parcelPending){ res.innerHTML=""; showParcel(parcelPending,parcelPendingMuni); }
+        else if(q===lastQ&&lastDocs.length){ showDoc(lastDocs[0]); }
+        else search(q,true);
+        if(window.matchMedia&&matchMedia("(pointer:coarse)").matches) input.blur(); /* mugikorrean teklatua itxi */
+        return;
+      }
       if(e.key==="Escape"){res.innerHTML="";}
     });
     input.addEventListener("search",()=>{ if(!input.value){res.innerHTML="";searchResultLayer.clearLayers();parcelLayer.clearLayers();} });
@@ -2433,6 +2465,36 @@ const ExpandMapControl=L.Control.extend({
   }
 });
 map.addControl(new ExpandMapControl());
+
+/* 🧍 Street View botoia: aktibatu eta egin klik mapan puntu horretako Google Street View irekitzeko. */
+const StreetViewControl=L.Control.extend({
+  options:{position:"topleft"},
+  onAdd:function(){
+    const btn=L.DomUtil.create("button","map-expand-control");
+    btn.type="button";
+    btn.innerHTML="🧍";
+    btn.style.fontSize="18px";
+    const setMode=on=>{
+      streetViewMode=on;
+      btn.style.background=on?"#ffd60a":"";
+      map.getContainer().style.cursor=on?"crosshair":"";
+      btn.title=on?"Street View: egin klik mapan (berriro sakatuz bertan behera)":"Google Street View";
+      btn.setAttribute("aria-label",btn.title);
+      $("message").textContent=on?"Street View aktibatuta: egin klik mapan puntu horretako Google Street View irekitzeko.":"Street View geldituta.";
+    };
+    btn.title="Google Street View"; btn.setAttribute("aria-label",btn.title);
+    L.DomEvent.disableClickPropagation(btn);
+    L.DomEvent.on(btn,"click",e=>{ L.DomEvent.stop(e); setMode(!streetViewMode); });
+    map.on("click",e=>{
+      if(!streetViewMode) return;
+      window.open(streetViewUrl(e.latlng.lat,e.latlng.lng),"_blank","noopener");
+      setTimeout(()=>setMode(false),0); /* geroko click-kudeatzaileek modua oraindik aktibo ikus dezaten */
+    });
+    document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&streetViewMode) setMode(false); });
+    return btn;
+  }
+});
+map.addControl(new StreetViewControl());
 
 /* ESC teklarekin ere hasierako tamainara itzuli. */
 document.addEventListener("keydown",e=>{
@@ -2858,6 +2920,7 @@ ${pts}
 });
 
 map.on("click",async e=>{
+  if(streetViewMode)return;
   if(waypointMode){
     const data=await askWaypointData(
       "WP "+(waypoints.length+1),
@@ -2988,7 +3051,7 @@ $("pickCoord").addEventListener("click",()=>{
 });
 
 map.on("click",e=>{
-  if(!coordPickMode)return;
+  if(!coordPickMode||streetViewMode)return;
   try{
     setGeo(e.latlng.lat,e.latlng.lng,true);
     coordPickMode=false;
