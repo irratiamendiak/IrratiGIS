@@ -1641,7 +1641,9 @@ async function updateVehicles(){
   try{
     const r=await fetch(api+VEH_PATH,{headers:{"Authorization":`Bearer ${token}`},cache:"no-store"});
     if(!r.ok){ let d=""; try{ d=(await r.json()).detail||""; }catch(e){} throw new Error("HTTP "+r.status+(d?" · "+d:"")); }
-    const list=vehNormalize(await r.json());
+    const jr=await r.json();
+    const list=vehNormalize(jr);
+    if(!list.length&&jr&&jr.debug){ $("message").textContent="PALVIEW: 0 ibilgailu · "+JSON.stringify(jr.debug); console.warn("PALVIEW debug:",jr.debug); }
     const now=Date.now(), seen=new Set();
     list.forEach(v=>{
       seen.add(v.id);
