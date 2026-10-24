@@ -2179,16 +2179,20 @@ const SearchControl=L.Control.extend({
       if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
       res.innerHTML="";
       searchResultLayer.clearLayers();
-      const bb=(d.boundingbox||[]).map(Number);
+      /* Helbideak/portalak: zuzenean puntura, zoom handiarekin. Bestelakoetan, muga-kutxa baliozkoa bada bakarrik ("ubera 58" bezalakoetan
+         muga-kutxa okerrak mapa mundu osora zoom-out egiten zuen). Kutxaren balioak neurri-ordena edozein dela ere irakurtzen dira. */
+      const isAddr=!!(d.street||d.door_number);
       let fitted=false;
-      if(bb.length===4&&bb.every(Number.isFinite)){
-        const b=L.latLngBounds([[bb[0],bb[1]],[bb[3],bb[2]]]);
-        if(b.isValid()&&!b.getNorthEast().equals(b.getSouthWest())&&
-           b.getNorthEast().distanceTo(b.getSouthWest())>150){
-          map.fitBounds(b.pad(.2),{maxZoom:17}); fitted=true;
+      if(!isAddr){
+        const vals=(d.boundingbox||[]).map(Number).filter(Number.isFinite);
+        const las=vals.filter(v=>v>=40&&v<=46), los=vals.filter(v=>v>=-5&&v<=1);
+        if(las.length===2&&los.length===2){
+          const bb2=L.latLngBounds([[Math.min(...las),Math.min(...los)],[Math.max(...las),Math.max(...los)]]);
+          const diag=bb2.getNorthEast().distanceTo(bb2.getSouthWest());
+          if(diag>150&&diag<40000){ map.fitBounds(bb2.pad(.2),{maxZoom:17}); fitted=true; }
         }
       }
-      if(!fitted)map.setView([lat,lon],16);
+      if(!fitted)map.setView([lat,lon],isAddr?18:16);
       const extra=[d.type,d.city,d.street&&(d.street+(d.door_number?" "+d.door_number:""))].filter(Boolean).join(" · ");
       L.marker([lat,lon]).bindPopup(
         `<strong>${escapeHtml(d.display_name||"—")}</strong><br>`+
