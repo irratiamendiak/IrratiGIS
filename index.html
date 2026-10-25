@@ -1637,7 +1637,7 @@ function vehShareText(v){
   const when=v.t?new Date(v.t).toLocaleString("eu-ES"):"";
   return "🚙 "+v.name+(when?" · "+when:"");
 }
-/* Kokapena partekatu. Mugikorrean: gailuaren partekatze-menua. Ordenagailuan: esteka arbelera kopiatu (botoian ikusten da emaitza). */
+/* Kokapena kopiatu: izena + ordua + Google Maps esteka arbelera (emaitza botoian ikusten da). */
 async function vehCopy(text){
   try{ if(navigator.clipboard&&window.isSecureContext){ await navigator.clipboard.writeText(text); return true; } }catch(e){}
   try{
@@ -1647,24 +1647,19 @@ async function vehCopy(text){
     const ok=document.execCommand("copy"); ta.remove(); return ok;
   }catch(e){ return false; }
 }
-async function vehShareAction(btn){
+async function vehCopyAction(btn){
   const v=vehLast.get(String(btn.dataset.vehId)); if(!v) return;
   const url=vehMapsUrl(v), text=vehShareText(v), old=btn.textContent;
-  const mobile=window.matchMedia&&matchMedia("(pointer:coarse)").matches;
-  if(mobile&&navigator.share){
-    try{ await navigator.share({title:"Ibilgailuaren kokapena",text,url}); return; }
-    catch(e){ if(e&&e.name==="AbortError") return; }
-  }
   const ok=await vehCopy(text+"\n"+url);
-  if(ok){ btn.textContent="✔ Esteka kopiatuta"; setTimeout(()=>{ btn.textContent=old; },2500); }
+  if(ok){ btn.textContent="✔ Kopiatuta"; setTimeout(()=>{ btn.textContent=old; },2500); }
   else window.prompt("Kopiatu kokapena (Ctrl+C):",text+"\n"+url);
 }
 /* Popup-aren barruko klikak ez dira document-era iristen (Leaflet-ek geldiarazten ditu); beraz, "capture" fasean entzuten da. */
 document.addEventListener("click",e=>{
-  const btn=e.target&&e.target.closest?e.target.closest("[data-veh-act='share']"):null;
+  const btn=e.target&&e.target.closest?e.target.closest("[data-veh-act='copy']"):null;
   if(!btn) return;
   e.preventDefault(); e.stopPropagation();
-  vehShareAction(btn);
+  vehCopyAction(btn);
 },true);
 
 function vehPopup(v,stale){
@@ -1687,9 +1682,7 @@ function vehPopup(v,stale){
     `<strong>Azken seinalea:</strong> ${escapeHtml(when)}<br>`+
     `<strong>Geografikoak:</strong> ${v.lat.toFixed(6)}, ${v.lon.toFixed(6)}${uTxt}<br>`+
     `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">`+
-      `<button type="button" data-veh-act="share" data-veh-id="${idJ}" style="${btn}background:#175f8f">📍 Partekatu kokapena</button>`+
-      `<a href="https://wa.me/?text=${encodeURIComponent(vehShareText(v)+"\n"+vehMapsUrl(v))}" target="_blank" rel="noopener" style="${btn}background:#1f9d55;text-decoration:none">WhatsApp</a>`+
-      `<a href="mailto:?subject=${encodeURIComponent("Ibilgailuaren kokapena: "+v.name)}&body=${encodeURIComponent(vehShareText(v)+"\n"+vehMapsUrl(v))}" style="${btn}background:#7a5c14;text-decoration:none">✉️ Posta</a>`+
+      `<button type="button" data-veh-act="copy" data-veh-id="${idJ}" style="${btn}background:#175f8f">📋 Kopiatu kokapena</button>`+
       `<a href="${streetViewUrl(v.lat,v.lon)}" target="_blank" rel="noopener" style="${btn}background:#6b4fa0;text-decoration:none">🧍 Street View</a>`+
     `</div>`;
 }
