@@ -1637,19 +1637,35 @@ function vehShareText(v){
   const when=v.t?new Date(v.t).toLocaleString("eu-ES"):"";
   return "🚙 "+v.name+(when?" · "+when:"");
 }
-/* Kokapena partekatu: gailuaren partekatze-menua (mugikorra), bestela esteka arbelera kopiatu. */
-window.vehShare=async function(id){
-  const v=vehLast.get(String(id)); if(!v) return;
-  const url=vehMapsUrl(v), text=vehShareText(v);
-  try{ if(navigator.share){ await navigator.share({title:"Ibilgailuaren kokapena",text,url}); return; } }
-  catch(e){ if(e&&e.name==="AbortError") return; }
-  try{ await navigator.clipboard.writeText(text+"\n"+url); $("message").textContent="Kokapenaren esteka arbelera kopiatu da."; }
-  catch(e){ window.prompt("Kopiatu kokapena:",text+"\n"+url); }
-};
-window.vehWhatsApp=function(id){
-  const v=vehLast.get(String(id)); if(!v) return;
-  window.open("https://wa.me/?text="+encodeURIComponent(vehShareText(v)+"\n"+vehMapsUrl(v)),"_blank","noopener");
-};
+/* Kokapena partekatu. Mugikorrean: gailuaren partekatze-menua. Ordenagailuan: esteka arbelera kopiatu (botoian ikusten da emaitza). */
+async function vehCopy(text){
+  try{ if(navigator.clipboard&&window.isSecureContext){ await navigator.clipboard.writeText(text); return true; } }catch(e){}
+  try{
+    const ta=document.createElement("textarea");
+    ta.value=text; ta.setAttribute("readonly",""); ta.style.cssText="position:fixed;top:0;left:0;opacity:0";
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0,text.length);
+    const ok=document.execCommand("copy"); ta.remove(); return ok;
+  }catch(e){ return false; }
+}
+async function vehShareAction(btn){
+  const v=vehLast.get(String(btn.dataset.vehId)); if(!v) return;
+  const url=vehMapsUrl(v), text=vehShareText(v), old=btn.textContent;
+  const mobile=window.matchMedia&&matchMedia("(pointer:coarse)").matches;
+  if(mobile&&navigator.share){
+    try{ await navigator.share({title:"Ibilgailuaren kokapena",text,url}); return; }
+    catch(e){ if(e&&e.name==="AbortError") return; }
+  }
+  const ok=await vehCopy(text+"\n"+url);
+  if(ok){ btn.textContent="✔ Esteka kopiatuta"; setTimeout(()=>{ btn.textContent=old; },2500); }
+  else window.prompt("Kopiatu kokapena (Ctrl+C):",text+"\n"+url);
+}
+/* Popup-aren barruko klikak ez dira document-era iristen (Leaflet-ek geldiarazten ditu); beraz, "capture" fasean entzuten da. */
+document.addEventListener("click",e=>{
+  const btn=e.target&&e.target.closest?e.target.closest("[data-veh-act='share']"):null;
+  if(!btn) return;
+  e.preventDefault(); e.stopPropagation();
+  vehShareAction(btn);
+},true);
 
 function vehPopup(v,stale){
   let uTxt="";
@@ -1671,8 +1687,9 @@ function vehPopup(v,stale){
     `<strong>Azken seinalea:</strong> ${escapeHtml(when)}<br>`+
     `<strong>Geografikoak:</strong> ${v.lat.toFixed(6)}, ${v.lon.toFixed(6)}${uTxt}<br>`+
     `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">`+
-      `<button type="button" style="${btn}background:#175f8f" onclick="vehShare('${idJ}')">📍 Partekatu kokapena</button>`+
-      `<button type="button" style="${btn}background:#1f9d55" onclick="vehWhatsApp('${idJ}')">WhatsApp</button>`+
+      `<button type="button" data-veh-act="share" data-veh-id="${idJ}" style="${btn}background:#175f8f">📍 Partekatu kokapena</button>`+
+      `<a href="https://wa.me/?text=${encodeURIComponent(vehShareText(v)+"\n"+vehMapsUrl(v))}" target="_blank" rel="noopener" style="${btn}background:#1f9d55;text-decoration:none">WhatsApp</a>`+
+      `<a href="mailto:?subject=${encodeURIComponent("Ibilgailuaren kokapena: "+v.name)}&body=${encodeURIComponent(vehShareText(v)+"\n"+vehMapsUrl(v))}" style="${btn}background:#7a5c14;text-decoration:none">✉️ Posta</a>`+
       `<a href="${streetViewUrl(v.lat,v.lon)}" target="_blank" rel="noopener" style="${btn}background:#6b4fa0;text-decoration:none">🧍 Street View</a>`+
     `</div>`;
 }
