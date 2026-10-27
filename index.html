@@ -1271,12 +1271,13 @@ async function queryB5mFeatureInfo(latlng){
 }
 
 let streetViewMode=false;
+let fsArmed=false;   // suteen simulazioa: su-hasiera hautatzeko zain
 /* Google Street View: Maps URLs (gakorik gabe eta doan). Fitxa berrian irekitzen da. */
 function streetViewUrl(lat,lon){
   return "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint="+Number(lat).toFixed(7)+","+Number(lon).toFixed(7);
 }
 map.on("click",e=>{
-  if(waypointMode||drawingTrack||coordPickMode||streetViewMode)return;
+  if(waypointMode||drawingTrack||coordPickMode||streetViewMode||fsArmed)return;
   queryB5mFeatureInfo(e.latlng);
 });
 
@@ -2135,6 +2136,310 @@ map.on("overlayremove",e=>{
   if(e.layer===campbellLayer){ legendControl.hide(); clearInterval(campbellTimer); }
 });
 
+/* ===== 🔥 Suteen bilakaera: hedapena + defentsa-lerroak + leku seguruak + estrategia + OACEL =====
+   Eredu sinplifikatua (Rothermel motakoa): malda eta haizea bektore gisa batzen dira, elipsea (Anderson 1983),
+   Byram intentsitatea eta garaiera. Lur-eredua: Terrarium (Campbell geruzaren berbera). Lerroak/lekuak: OpenStreetMap (Overpass).
+   Laguntza-tresna bat da: EZ du mandua ordezkatzen. Ez ditu kontuan hartzen: erupzioak, gaineko sua, focos secundarios. */
+const FS_Z=13, FS_H=18600, FS_DT=2, FS_T=360;
+const FS_FUELS={
+  belarra:{n:"Pasto / herbazal (modelos 1-2)",R0:1.7,sig:3500,beta:.002,waf:.45,w:.17,Mx:.12,Rmax:60},
+  garoa:{n:"Matorral atlántico: argoma, brezal (modelos 4-6)",R0:.5,sig:1800,beta:.006,waf:.4,w:.9,Mx:.20,Rmax:40},
+  iratzea:{n:"Helechal (modelos 5-6)",R0:.6,sig:2200,beta:.004,waf:.35,w:.5,Mx:.20,Rmax:30},
+  pinudia:{n:"Pinar / plantación con acículas (modelos 9-10)",R0:.25,sig:2000,beta:.02,waf:.2,w:.6,Mx:.25,Rmax:15},
+  hostozabala:{n:"Hayedo / robledal, hojarasca (modelos 8-9)",R0:.2,sig:2200,beta:.03,waf:.15,w:.35,Mx:.30,Rmax:8}
+};
+const fsCfg={fuel:"garoa",moist:8,wind:"auto",dir:225,spd:20};
+let fsIgn=null, fsBusy=0;
+const fsGroup=L.layerGroup(), fsDem=new Map();
+const fsCard=d=>["N","NE","E","SE","S","SO","O","NO"][Math.round((((d%360)+360)%360)/45)%8];
+const fsRad=Math.PI/180;
+
+/* --- terreno (Terrarium z13, ~14 m/px) --- */
+function fsPix(lat,lon){ const n=256*Math.pow(2,FS_Z), s=Math.sin(lat*fsRad); return [(lon+180)/360*n,(0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n]; }
+async function fsLoadDem(lat,lng,rad){
+  const dLat=rad/111320, dLon=rad/(111320*Math.cos(lat*fsRad));
+  const [x0,y0]=fsPix(lat+dLat,lng-dLon), [x1,y1]=fsPix(lat-dLat,lng+dLon), jobs=[];
+  for(let tx=Math.floor(x0/256);tx<=Math.floor(x1/256);tx++) for(let ty=Math.floor(y0/256);ty<=Math.floor(y1/256);ty++){
+    const key=tx+"/"+ty; if(fsDem.has(key)) continue;
+    jobs.push(new Promise(res=>{
+      const img=new Image(); img.crossOrigin="anonymous";
+      img.onload=()=>{ const c=document.createElement("canvas"); c.width=c.height=256; const cx=c.getContext("2d"); cx.drawImage(img,0,0);
+        const d=cx.getImageData(0,0,256,256).data, a=new Float32Array(65536);
+        for(let i=0;i<65536;i++) a[i]=d[i*4]*256+d[i*4+1]+d[i*4+2]/256-32768;
+        fsDem.set(key,a); res(); };
+      img.onerror=()=>res();
+      img.src=TERRARIUM.replace("{z}",FS_Z).replace("{x}",tx).replace("{y}",ty);
+    }));
+  }
+  await Promise.all(jobs);
+}
+function fsElev(lat,lon){
+  const [px,py]=fsPix(lat,lon), tx=Math.floor(px/256), ty=Math.floor(py/256), t=fsDem.get(tx+"/"+ty);
+  if(!t) return NaN;
+  const fx=Math.min(254.999,Math.max(0,px-tx*256-.5)), fy=Math.min(254.999,Math.max(0,py-ty*256-.5));
+  const x=Math.floor(fx), y=Math.floor(fy), ax=fx-x, ay=fy-y, g=(i,j)=>t[(y+j)*256+x+i];
+  return g(0,0)*(1-ax)*(1-ay)+g(1,0)*ax*(1-ay)+g(0,1)*(1-ax)*ay+g(1,1)*ax*ay;
+}
+function fsTerrain(lat,lon){   // malda (tan) eta orientazioa (maldan behera, gradu)
+  const d=40, dl=d/111320, dn=d/(111320*Math.cos(lat*fsRad));
+  const E=fsElev(lat,lon+dn), W=fsElev(lat,lon-dn), N=fsElev(lat+dl,lon), S=fsElev(lat-dl,lon);
+  if(![E,W,N,S].every(Number.isFinite)) return {tan:0,asp:0};
+  const gx=(E-W)/(2*d), gy=(N-S)/(2*d);
+  return {tan:Math.hypot(gx,gy), asp:(Math.atan2(-gx,-gy)/fsRad+360)%360};
+}
+
+/* --- portaera: Rothermel sinplifikatua --- */
+function fsMoist(fu,pct){
+  const M=pct/100, r=M/fu.Mx; if(r>=1) return 0;
+  const eta=x=>1-2.59*x+5.11*x*x-3.52*x*x*x, q=m=>250+1116*m;
+  return Math.max(0,eta(r)/eta(.06/fu.Mx))*q(.06)/q(M);
+}
+function fsBehavior(fu,tan,asp,windFrom,u10){
+  const R0=fu.R0*fsMoist(fu,fsCfg.moist), down=(windFrom+180)%360;
+  if(R0<=0) return {Rh:0,head:down,e:0,LB:1,phiE:0};
+  const C=7.47*Math.exp(-.133*Math.pow(fu.sig,.55)), B=.02526*Math.pow(fu.sig,.54);
+  const phiW=u10>.5?C*Math.pow(u10*54.68*fu.waf,B):0;               // haizea erdi-garretan (ft/min)
+  const t=Math.min(tan,1.73), phiS=5.275*Math.pow(fu.beta,-.3)*t*t;   // malda ≤ 60°
+  const up=(asp+180)%360, dd=(down-up)*fsRad;
+  const X=phiS+phiW*Math.cos(dd), Y=phiW*Math.sin(dd), phiE=Math.hypot(X,Y);
+  const head=phiE<1e-6?down:(up+Math.atan2(Y,X)/fsRad+360)%360;
+  const Rh=Math.min(fu.Rmax,R0*(1+phiE));
+  const Ue=Math.min(60,Math.pow(phiE/C,1/B)/88);                       // mph
+  const LB=Math.min(8,.936*Math.exp(.2566*Ue)+.461*Math.exp(-.1548*Ue)-.397);
+  return {Rh,head,e:Math.sqrt(Math.max(0,LB*LB-1))/LB,LB,phiE};
+}
+const fsR=(b,th)=>b.Rh*(1-b.e)/(1-b.e*Math.cos(th*fsRad));          // elipsea: R (m/min) buruarekiko th graduan
+const fsInt=(fu,r)=>FS_H*fu.w*r/60;                                  // Byram, kW/m
+const fsFlame=I=>.0775*Math.pow(I,.46);                              // m
+
+function fsSimulate(fu,wind){
+  const rays=[];
+  for(let bg=0;bg<360;bg+=5){
+    let lat=fsIgn.lat, lon=fsIgn.lng, dist=0; const br=bg*fsRad, mLon=111320*Math.cos(fsIgn.lat*fsRad), pts=[[0,0,lat,lon]];
+    for(let t=FS_DT;t<=FS_T;t+=FS_DT){
+      const ter=fsTerrain(lat,lon), b=fsBehavior(fu,ter.tan,ter.asp,wind.dir,wind.spd);
+      const d=b.Rh>0?fsR(b,angDiff(bg,b.head))*FS_DT:0;
+      lat+=d*Math.cos(br)/111320; lon+=d*Math.sin(br)/mLon; dist+=d; pts.push([t,dist,lat,lon]);
+    }
+    rays.push({bg,pts});
+  }
+  return rays;
+}
+const fsPerim=(rays,t)=>rays.map(r=>{ const p=r.pts[t/FS_DT]; return [p[2],p[3]]; });
+function fsHa(pts){
+  const o=pts[0], k=111320*Math.cos(o[0]*fsRad); let s=0;
+  for(let i=0;i<pts.length;i++){ const a=pts[i], b=pts[(i+1)%pts.length];
+    s+=((a[1]-o[1])*k)*((b[0]-o[0])*111320)-((b[1]-o[1])*k)*((a[0]-o[0])*111320); }
+  return Math.abs(s)/2/1e4;
+}
+function fsIn(p,poly){ let c=false; for(let i=0,j=poly.length-1;i<poly.length;j=i++){ const a=poly[i],b=poly[j];
+  if((a[0]>p[0])!==(b[0]>p[0])&&p[1]<(b[1]-a[1])*(p[0]-a[0])/(b[0]-a[0])+a[1]) c=!c; } return c; }
+const fsM=(a,b)=>[(b.lon-a.lon)*111320*Math.cos(a.lat*fsRad),(b.lat-a.lat)*111320];
+function fsBear(a,b){ const [e,n]=fsM(a,b); const x=Math.atan2(e,n)/fsRad; return x<0?x+360:x; }
+function fsArrival(rays,lat,lon){   // minutuak, edo Infinity
+  const o={lat:fsIgn.lat,lon:fsIgn.lng}, [e,n]=fsM(o,{lat,lon}), d=Math.hypot(e,n);
+  let bg=Math.atan2(e,n)/fsRad; if(bg<0) bg+=360;
+  const r=rays[Math.round(bg/5)%72].pts;
+  for(let i=1;i<r.length;i++) if(r[i][1]>=d){ const f=(d-r[i-1][1])/Math.max(1e-6,r[i][1]-r[i-1][1]); return r[i-1][0]+f*(r[i][0]-r[i-1][0]); }
+  return Infinity;
+}
+
+/* --- OpenStreetMap: defentsa-lerroak, leku seguruak, ihes-bideak --- */
+async function fsOverpass(bb){
+  const f=k=>`way${k}(${bb});`;
+  const q=`[out:json][timeout:25];(`+
+    f(`["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|track)$"]`)+
+    f(`["waterway"~"^(river|stream|canal)$"]`)+
+    f(`["landuse"~"^(farmland|meadow|grass|residential|industrial|quarry|cemetery|retail|commercial|recreation_ground|village_green)$"]`)+
+    f(`["natural"~"^(water|bare_rock|scree|sand|beach|shingle)$"]`)+
+    f(`["leisure"~"^(pitch|park|golf_course)$"]`)+`);out geom;`;
+  const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"data="+encodeURIComponent(q)});
+  if(!r.ok) throw new Error("Overpass HTTP "+r.status);
+  return r.json();
+}
+function fsRuns(g,ok){ const runs=[]; let cur=[]; g.forEach(v=>{ if(ok(v)) cur.push(v); else{ if(cur.length>1) runs.push(cur); cur=[]; } }); if(cur.length>1) runs.push(cur); return runs; }
+function fsLen(run){ let s=0; for(let i=1;i<run.length;i++){ const [e,n]=fsM(run[i-1],run[i]); s+=Math.hypot(e,n); } return s; }
+const FS_TYPE={farmland:"cultivo",meadow:"prado",grass:"césped/prado",residential:"zona urbana",industrial:"zona industrial",quarry:"cantera",cemetery:"cementerio",retail:"zona comercial",commercial:"zona comercial",recreation_ground:"zona recreativa",village_green:"zona verde",water:"agua",bare_rock:"roca desnuda",scree:"pedrera",sand:"arenal",beach:"arenal",shingle:"grava",pitch:"campo deportivo",park:"parque",golf_course:"campo de golf"};
+
+async function fsOsm(ctx){
+  const {rays,head,Lh,per60}=ctx, o={lat:fsIgn.lat,lon:fsIgn.lng};
+  let la=[fsIgn.lat-.014,fsIgn.lat+.014], lo=[fsIgn.lng-.019,fsIgn.lng+.019];
+  rays.forEach(r=>{ const p=r.pts[r.pts.length-1]; la.push(p[2]); lo.push(p[3]); });
+  const bb=[Math.max(fsIgn.lat-.055,Math.min(...la)-.008),Math.max(fsIgn.lng-.075,Math.min(...lo)-.01),
+            Math.min(fsIgn.lat+.055,Math.max(...la)+.008),Math.min(fsIgn.lng+.075,Math.max(...lo)+.01)].map(x=>x.toFixed(5)).join(",");
+  const j=await fsOverpass(bb);
+  const els=(j.elements||[]).filter(w=>w.type==="way"&&w.geometry&&w.geometry.length>1);
+  const ann=v=>{ const [e,n]=fsM(o,v), d=Math.hypot(e,n); let b=Math.atan2(e,n)/fsRad; if(b<0) b+=360;
+    return {lat:v.lat,lon:v.lon,d,b,dh:angDiff(b,head),ta:fsArrival(rays,v.lat,v.lon)}; };
+  const nm=w=>(w.tags.name||w.tags.ref||FS_TYPE[w.tags.landuse||w.tags.natural||w.tags.leisure]||w.tags.highway||w.tags.waterway||"");
+  const linear=els.filter(w=>w.tags&&(w.tags.highway||w.tags.waterway));
+
+  /* defentsa-lerroak: aurrealdeko sektorean (±75°), 20-360 min barruan iristen dena, hedapenarekiko perpendikularra */
+  const cand=[];
+  linear.forEach(w=>{
+    const g=w.geometry.map(ann);
+    const tw=w.tags.highway?({track:.85,service:.6}[w.tags.highway]??1):({river:.9,stream:.5,canal:.7}[w.tags.waterway]??.5);
+    fsRuns(g,v=>v.dh<=75&&v.ta>=20&&v.ta<=FS_T&&v.d>=150).forEach(run=>{
+      const len=fsLen(run); if(len<80) return;
+      const mid=run[Math.floor(run.length/2)], dir=fsBear(run[0],run[run.length-1]);
+      const perp=Math.abs(Math.sin(angDiff(dir,mid.b)*fsRad)), tim=mid.ta<30?.6:(mid.ta>240?.6:(mid.ta>120?.8:1));
+      cand.push({w,run,len,mid,score:Math.min(len,1000)*perp*tw*tim});
+    });
+  });
+  const seen=new Set(), lines=cand.sort((a,b)=>b.score-a.score).filter(c=>c.score>20&&!seen.has(c.w.id)&&seen.add(c.w.id)).slice(0,5);
+  lines.forEach((c,i)=>L.polyline(c.run.map(v=>[v.lat,v.lon]),{color:"#1565c0",weight:5,dashArray:"9 6",opacity:.9})
+    .bindTooltip(`Defensa #${i+1} · llega en ~${Math.round(c.mid.ta)} min`,{sticky:true}).addTo(fsGroup));
+
+  /* leku seguruak: erregai gutxiko eremuak, erradio baliokidea ≥ 4 × garaiera; 60 minutuko perimetroaz kanpo */
+  const rreq=Math.max(4*Lh,10), safe=[];
+  els.filter(w=>w.tags&&!(w.tags.highway||w.tags.waterway)&&w.geometry.length>3&&
+    w.geometry[0].lat===w.geometry[w.geometry.length-1].lat&&w.geometry[0].lon===w.geometry[w.geometry.length-1].lon).forEach(w=>{
+    const pts=w.geometry.map(v=>[v.lat,v.lon]), r=Math.sqrt(fsHa(pts)*1e4/Math.PI);
+    if(r<rreq) return;
+    const c=[pts.reduce((s,p)=>s+p[0],0)/pts.length,pts.reduce((s,p)=>s+p[1],0)/pts.length];
+    if(fsIn(c,per60)) return;
+    const a=ann({lat:c[0],lon:c[1]}); if(a.d>3500) return;
+    safe.push({w,pts,r,a,key:a.d+(a.dh<60?1500:0)});
+  });
+  safe.sort((x,y)=>x.key-y.key); safe.length=Math.min(safe.length,6);
+  safe.forEach((s,i)=>L.polygon(s.pts,{color:"#1b8a3a",weight:2,fillColor:"#34c759",fillOpacity:.35})
+    .bindTooltip(`Lugar seguro #${i+1} · ${FS_TYPE[s.w.tags.landuse||s.w.tags.natural||s.w.tags.leisure]||"zona"} · r≈${Math.round(s.r)} m`,{sticky:true}).addTo(fsGroup));
+
+  /* ihes-bideak: atzealdeko/hegaletako bideak, 1,5 km-ra arte */
+  const esc=[];
+  linear.filter(w=>w.tags.highway).forEach(w=>{
+    const g=w.geometry.map(ann);
+    fsRuns(g,v=>v.dh>=100&&v.d<=1500).forEach(run=>esc.push({w,run,dmin:Math.min(...run.map(v=>v.d))}));
+  });
+  const seenE=new Set(), escape=esc.sort((a,b)=>a.dmin-b.dmin).filter(c=>!seenE.has(c.w.id)&&seenE.add(c.w.id)).slice(0,2);
+  escape.forEach((c,i)=>L.polyline(c.run.map(v=>[v.lat,v.lon]),{color:"#00a3a3",weight:4,opacity:.9})
+    .bindTooltip(`Ruta de escape #${i+1}`,{sticky:true}).addTo(fsGroup));
+  return {lines:lines.map(c=>({name:nm(c.w),type:c.w.tags.highway||c.w.tags.waterway,ta:c.mid.ta,d:c.mid.d,len:c.len})),
+          safe:safe.map(s=>({name:FS_TYPE[s.w.tags.landuse||s.w.tags.natural||s.w.tags.leisure]||"zona",r:s.r,d:s.a.d,b:s.a.b})),
+          escape:escape.map(c=>({name:nm(c.w),d:c.dmin})),rreq,total:els.length};
+}
+
+/* --- haizea --- */
+async function fsWind(){
+  if(fsCfg.wind==="man") return {dir:fsCfg.dir,spd:fsCfg.spd,src:"manual"};
+  if(map.hasLayer(campbellLayer)&&campbellWind&&Number.isFinite(campbellWind.speed))
+    return {dir:campbellWind.dir,spd:campbellWind.speed,gust:campbellWind.gust,src:"capa Campbell ("+(campbellWind.source||"auto")+")"};
+  const r=await fetch("https://api.open-meteo.com/v1/forecast?"+new URLSearchParams({latitude:fsIgn.lat.toFixed(3),longitude:fsIgn.lng.toFixed(3),
+    current:"wind_speed_10m,wind_direction_10m,wind_gusts_10m",wind_speed_unit:"kmh",timezone:"Europe/Madrid"}));
+  if(!r.ok) throw new Error("No se pudo obtener el viento automático (HTTP "+r.status+"). Usa el modo manual.");
+  const c=(await r.json()).current||{};
+  return {dir:Number(c.wind_direction_10m),spd:Number(c.wind_speed_10m),gust:Number(c.wind_gusts_10m),src:"Open-Meteo"};
+}
+
+/* --- estrategia (garaiera → Fireline Handbook motako atalaseak) --- */
+function fsStrategy(L){
+  if(L<1.2) return ["#1b8a3a","ATAQUE DIRECTO","Llama < 1,2 m: personal a pie con herramienta manual y mangueras, trabajando sobre el borde del fuego."];
+  if(L<2.4) return ["#c98a00","ATAQUE DIRECTO CON MEDIOS","Llama 1,2–2,4 m: línea a pie en el borde peligrosa; usar autobombas, maquinaria pesada y apoyo aéreo."];
+  if(L<3.4) return ["#d9480f","ATAQUE INDIRECTO","Llama 2,4–3,4 m: no atacar la cabeza. Línea de defensa a distancia, quema de ensanche/contrafuego y apoyo aéreo; ataque directo solo en flancos y cola."];
+  return ["#b00020","INDIRECTO A DISTANCIA · PRIORIDAD: PERSONAS","Llama > 3,4 m: frente incontrolable con medios convencionales; riesgo de focos secundarios y fuego de copa. Proteger vidas y bienes, defender desde líneas anchas."];
+}
+
+/* --- panel --- */
+const fsPanel=L.DomUtil.create("div","",map.getContainer());
+fsPanel.style.cssText="display:none;position:absolute;left:12px;bottom:30px;z-index:1000;width:min(350px,calc(100% - 24px));max-height:70%;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.35);padding:10px 12px;font:12px/1.4 system-ui;color:#1d2b24";
+L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation(fsPanel);
+{
+  const bs="border:0;border-radius:8px;padding:6px 10px;font:700 12px system-ui;cursor:pointer;color:#fff;";
+  fsPanel.innerHTML=
+   `<div style="display:flex;justify-content:space-between;align-items:center"><strong style="font-size:13px">🔥 Evolución del incendio · simulación</strong><button type="button" class="fs-x" style="border:0;background:none;font-size:16px;cursor:pointer">✕</button></div>`+
+   `<div style="color:#8b2f2f;font-size:11px;margin:3px 0 6px">Apoyo a la decisión con modelo simplificado (tipo Rothermel). No sustituye al mando ni a las herramientas operativas. No modela focos secundarios ni fuego de copa.</div>`+
+   `<div style="margin-bottom:4px">Combustible <select class="fs-fuel" style="max-width:100%">${Object.keys(FS_FUELS).map(k=>`<option value="${k}"${k===fsCfg.fuel?" selected":""}>${FS_FUELS[k].n}</option>`).join("")}</select></div>`+
+   `<div style="margin-bottom:4px">Humedad comb. fino muerto <input type="range" class="fs-m" min="3" max="25" value="${fsCfg.moist}" style="width:90px;vertical-align:middle"> <b class="fs-mv">${fsCfg.moist}%</b></div>`+
+   `<div style="margin-bottom:4px">Viento <select class="fs-ws"><option value="auto">Automático (Campbell / Open-Meteo)</option><option value="man">Manual</option></select></div>`+
+   `<div class="fs-man" style="display:none;margin-bottom:4px">Sopla del <input type="number" class="fs-dir" min="0" max="360" step="5" value="${fsCfg.dir}" style="width:52px">° · <input type="number" class="fs-spd" min="0" max="100" value="${fsCfg.spd}" style="width:46px"> km/h</div>`+
+   `<div style="display:flex;gap:6px;margin:6px 0"><button type="button" class="fs-set" style="${bs}background:#d9480f">📍 Marcar inicio</button><button type="button" class="fs-clr" style="${bs}background:#65736b">Limpiar</button></div>`+
+   `<div class="fs-out" style="color:#65736b">Pulsa «Marcar inicio» y haz clic en el mapa.</div>`;
+  const q=s=>fsPanel.querySelector(s), rerun=()=>{ if(fsIgn) fsRun(); };
+  q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
+  q(".fs-fuel").onchange=e=>{ fsCfg.fuel=e.target.value; rerun(); };
+  q(".fs-m").oninput=e=>{ q(".fs-mv").textContent=e.target.value+"%"; };
+  q(".fs-m").onchange=e=>{ fsCfg.moist=Number(e.target.value); rerun(); };
+  q(".fs-ws").onchange=e=>{ fsCfg.wind=e.target.value; q(".fs-man").style.display=fsCfg.wind==="man"?"block":"none"; rerun(); };
+  q(".fs-dir").onchange=e=>{ fsCfg.dir=((Number(e.target.value)||0)%360+360)%360; rerun(); };
+  q(".fs-spd").onchange=e=>{ fsCfg.spd=Math.max(0,Number(e.target.value)||0); rerun(); };
+  q(".fs-set").onclick=()=>{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio."; };
+  q(".fs-clr").onclick=()=>{ fsGroup.clearLayers(); fsIgn=null; fsBusy++; q(".fs-out").textContent="Pulsa «Marcar inicio» y haz clic en el mapa."; };
+}
+map.on("click",e=>{
+  if(!fsArmed||!map.hasLayer(fsGroup)) return;
+  setTimeout(()=>{ fsArmed=false; },0);               // beste click-kudeatzaileek oraindik aktibo ikus dezaten
+  map.getContainer().style.cursor=""; fsIgn=e.latlng; fsRun();
+});
+layersControl.addOverlay(fsGroup,"🔥 Suteen bilakaera (simulazioa)");
+map.on("overlayadd",e=>{
+  if(e.layer!==fsGroup) return;
+  fsPanel.style.display="block";
+  if(fsIgn) fsRun(); else{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio."; }
+});
+map.on("overlayremove",e=>{ if(e.layer===fsGroup){ fsPanel.style.display="none"; fsArmed=false; fsBusy++; map.getContainer().style.cursor=""; } });
+
+/* --- exekuzioa --- */
+async function fsRun(){
+  if(!fsIgn) return;
+  const my=++fsBusy, out=fsPanel.querySelector(".fs-out"), fu=FS_FUELS[fsCfg.fuel];
+  fsGroup.clearLayers();
+  L.marker(fsIgn,{icon:L.divIcon({className:"",html:"<div style='font-size:22px;filter:drop-shadow(0 1px 2px #000)'>🔥</div>",iconSize:[24,24],iconAnchor:[12,12]})}).addTo(fsGroup);
+  out.textContent="⏳ Calculando…";
+  let wind;
+  try{
+    wind=await fsWind(); await fsLoadDem(fsIgn.lat,fsIgn.lng,6500);
+    if(!Number.isFinite(fsElev(fsIgn.lat,fsIgn.lng))) throw new Error("No se pudo cargar el terreno (modelo digital de elevación).");
+  }catch(err){ if(my===fsBusy) out.innerHTML="⚠️ "+escapeHtml(err.message||String(err)); return; }
+  if(my!==fsBusy) return;
+  const ter=fsTerrain(fsIgn.lat,fsIgn.lng), b0=fsBehavior(fu,ter.tan,ter.asp,wind.dir,wind.spd);
+  if(b0.Rh<=0){ out.innerHTML="Con esa humedad del combustible fino (por encima de la de extinción) el fuego <b>no se propaga</b> en este modelo."; return; }
+  const rays=fsSimulate(fu,wind);
+  const cols={30:"#d7191c",60:"#fd8d3c",120:"#ffd45a"}, ha={};
+  [120,60,30].forEach(t=>{ const p=fsPerim(rays,t); ha[t]=fsHa(p);
+    L.polygon(p,{color:cols[t],weight:2,fillColor:cols[t],fillOpacity:.25}).bindTooltip(`${t} min · ${ha[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup); });
+  const hp=rays[Math.round(b0.head/5)%72].pts[30];
+  L.polyline([[fsIgn.lat,fsIgn.lng],[hp[2],hp[3]]],{color:"#7a0000",weight:4}).bindTooltip(`Cabeza → ${fsCard(b0.head)} · ${b0.Rh.toFixed(1)} m/min`,{permanent:true,direction:"top"}).addTo(fsGroup);
+
+  const Ih=fsInt(fu,b0.Rh), Lh=fsFlame(Ih), Lf=fsFlame(fsInt(fu,fsR(b0,90))), Lb=fsFlame(fsInt(fu,fsR(b0,180)));
+  const st=fsStrategy(Lh), stf=fsStrategy(Lf);
+  const per60=fsPerim(rays,60);
+  const warn=[]; if(wind.spd>=40||Ih>3460) warn.push("Viento/intensidad altos: puede haber focos secundarios y fuego de copa (no modelados); la propagación real puede ser mayor.");
+  if(wind.gust>wind.spd*1.4) warn.push(`Rachas de ${Math.round(wind.gust)} km/h: la velocidad puntual puede superar la estimada.`);
+  const head=`<b>${fsCard(b0.head)} (${Math.round(b0.head)}°)</b>`;
+  const summary=
+    `<div style="border-left:4px solid ${st[0]};padding:2px 8px;margin:4px 0"><b style="color:${st[0]}">${st[1]}</b><br>${st[2]}</div>`+
+    `<b>Propagación</b>: cabeza hacia ${head} · <b>${b0.Rh.toFixed(1)} m/min</b> (${(b0.Rh*.06).toFixed(2)} km/h)<br>`+
+    `Flancos ${fsR(b0,90).toFixed(1)} m/min · cola ${fsR(b0,180).toFixed(1)} m/min · relación L/A ${b0.LB.toFixed(1)}<br>`+
+    `Intensidad ${Math.round(Ih)} kW/m · llama ≈ ${Lh.toFixed(1)} m (flancos ${Lf.toFixed(1)} m · cola ${Lb.toFixed(1)} m)<br>`+
+    `Flancos: <span style="color:${stf[0]}">${stf[1].toLowerCase()}</span><br>`+
+    `Viento ${fsCard(wind.dir)} ${Math.round(wind.dir)}° · ${Math.round(wind.spd)} km/h <span style="color:#65736b">(${escapeHtml(wind.src)})</span> · pendiente ${Math.round(ter.tan*100)}% (ladera hacia ${fsCard(ter.asp)})<br>`+
+    `Superficie: <span style="color:#d7191c">30 min ${ha[30].toFixed(1)} ha</span> · <span style="color:#e8590c">60 min ${ha[60].toFixed(1)} ha</span> · <span style="color:#c98a00">120 min ${ha[120].toFixed(1)} ha</span>`+
+    warn.map(w=>`<div style="color:#8b2f2f;margin-top:4px">⚠️ ${w}</div>`).join("");
+  out.innerHTML=summary+`<div class="fs-osm" style="margin-top:6px;color:#65736b">⏳ Buscando líneas de defensa, zonas seguras y rutas de escape (OpenStreetMap)…</div>`;
+
+  let osm=null, osmErr=null;
+  try{ osm=await fsOsm({rays,head:b0.head,Lh,per60}); }catch(err){ osmErr=err.message||String(err); }
+  if(my!==fsBusy) return;
+  const li=(a,f)=>a.length?`<ol style="margin:2px 0 4px 18px;padding:0">${a.map(f).map(x=>`<li>${x}</li>`).join("")}</ol>`:"<div>— ninguna encontrada</div>";
+  let osmHtml="";
+  if(osmErr) osmHtml=`<div style="color:#8b2f2f;margin-top:6px">⚠️ No se pudieron consultar líneas de defensa ni zonas seguras (${escapeHtml(osmErr)}).</div>`;
+  else{
+    osmHtml=`<div style="margin-top:6px"><b style="color:#1565c0">Líneas de defensa propuestas</b> (azul, a trazos) — pistas, carreteras o ríos transversales al avance, en el sector de la cabeza:${
+      li(osm.lines,l=>`${escapeHtml(l.name||l.type)} · llegada ~${Math.round(l.ta)} min · a ${Math.round(l.d)} m · ${Math.round(l.len)} m de longitud`)}</div>`+
+      `<div><b style="color:#1b8a3a">Zonas seguras candidatas</b> (verdes): sin combustible, radio ≥ ${Math.round(osm.rreq)} m (4 × llama)${
+      li(osm.safe,s=>`${escapeHtml(s.name)} · r≈${Math.round(s.r)} m · a ${Math.round(s.d)} m hacia ${fsCard(s.b)}`)}</div>`+
+      `<div style="color:#65736b;font-size:11px">Basado en OpenStreetMap (${osm.total} elementos); puede estar incompleto. Valida siempre sobre el terreno. La mejor zona segura suele ser la ya quemada sin potencial de retorno.</div>`;
+  }
+  const oacel=`<details style="margin-top:6px" open><summary style="cursor:pointer;font-weight:700">🛡️ Protocolo OACEL</summary>`+
+    `<div><b>O · Observación</b>: observador en posición segura con visión del frente (cabeza hacia ${fsCard(b0.head)}) y de los flancos; si no hay visión directa, comunicación con quien la tenga.</div>`+
+    `<div><b>A · Atención</b>: vigilar giros de viento (previsto ${fsCard(wind.dir)} ${Math.round(wind.spd)} km/h), cambios de pendiente y de combustible, humo y focos; si cambia, reevaluar.</div>`+
+    `<div><b>C · Comunicación</b>: canal operativo comprobado entre observador, mando y equipo. Sin comunicaciones aseguradas se entra en situación de peligro.</div>`+
+    `<div><b>E · ruta de Escape</b>: ${osm&&osm.escape.length?"candidatas hacia atrás/flanco: "+osm.escape.map(x=>`${escapeHtml(x.name||"vía")} (a ${Math.round(x.d)} m)`).join("; ")+" — la ruta debe ser transitable y llegar a una zona segura antes de que llegue el fuego.":"definir y reconocer antes de entrar (hacia la cola o zona quemada)."}</div>`+
+    `<div><b>L · Lugar seguro</b>: ${osm&&osm.safe.length?osm.safe.length+" candidato(s) en el mapa; ":""}separación ≥ ${Math.round(Math.max(4*Lh,10))} m (4 × llama); designar y comunicar a todos, reevaluar cada vez que cambie la situación.</div>`+
+    `<div style="color:#65736b;font-size:11px">Si falta cualquiera de los cinco puntos, no trabajar en ese sector. Fuente: protocolo OACEL, Comité de Lucha contra Incendios Forestales (MITECO).</div></details>`;
+  out.innerHTML=summary+osmHtml+oacel;
+}
+
 /* ===== Bilatzaile geografikoa (B5M toposearch2 APIa) ===== */
 const B5M_SEARCH="https://b5m.gipuzkoa.eus/api/2.0/toposearch2";
 const searchResultLayer=L.layerGroup().addTo(map);
@@ -2992,7 +3297,7 @@ ${pts}
 });
 
 map.on("click",async e=>{
-  if(streetViewMode)return;
+  if(streetViewMode||fsArmed)return;
   if(waypointMode){
     const data=await askWaypointData(
       "WP "+(waypoints.length+1),
@@ -3123,7 +3428,7 @@ $("pickCoord").addEventListener("click",()=>{
 });
 
 map.on("click",e=>{
-  if(!coordPickMode||streetViewMode)return;
+  if(!coordPickMode||streetViewMode||fsArmed)return;
   try{
     setGeo(e.latlng.lat,e.latlng.lng,true);
     coordPickMode=false;
