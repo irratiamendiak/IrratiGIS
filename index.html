@@ -2244,11 +2244,51 @@ function fsArrival(rays,lat,lon){   // minutuak, edo Infinity
   return Infinity;
 }
 
-/* --- OpenStreetMap: defentsa-lerroak, leku seguruak, ihes-bideak --- */
+/* --- Campbell lerrokadura (haizea simulazioko berbera) eta ibilbide-profila --- */
+const FS_LC={3:"#d7191c",2:"#fd8d3c",1:"#ffd45a"};
+function fsCampbell(az,tan,wind){
+  if(!(wind.spd>=WIND_MIN_KMH)||tan<Math.tan(campbellCfg.minSlope*fsRad)) return 0;
+  const wS=inSouth(wind.dir), wN=inNorth(wind.dir), sS=inSouth(az), sN=inNorth(az);
+  if(wS&&sS) return 3; if(wN&&sN) return 2; if(wS&&sN) return 1; return 0;
+}
+function fsProfile(ray,wind){
+  const p=[];
+  for(const q of ray.pts){
+    const z=fsElev(q[2],q[3]); if(!Number.isFinite(z)) break;
+    const ter=fsTerrain(q[2],q[3]);
+    p.push({t:q[0],d:q[1],lat:q[2],lon:q[3],z,tan:ter.tan,asp:ter.asp,lvl:fsCampbell(ter.asp,ter.tan,wind)});
+  }
+  return p;
+}
+function fsChart(p){
+  if(p.length<3||p[p.length-1].d<50) return "";
+  const W=330,H=196,ml=36,mr=8,mt=14,hz=96,sy=120,sh=46,pw=W-ml-mr, D=p[p.length-1].d, X=d=>ml+d/D*pw;
+  const zs=p.map(q=>q.z), z0=Math.min(...zs), z1=Math.max(...zs), zr=Math.max(10,z1-z0);
+  const Y=z=>mt+hz-((z-z0)/zr*.84+.08)*hz;
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;background:#fafcfb;border:1px solid #dfe6e2;border-radius:6px" font-family="system-ui" font-size="9">`;
+  for(let i=1;i<p.length;i++) if(p[i].lvl) s+=`<rect x="${X(p[i-1].d).toFixed(1)}" y="${mt}" width="${(X(p[i].d)-X(p[i-1].d)+.6).toFixed(1)}" height="${sy+sh-mt}" fill="${FS_LC[p[i].lvl]}" opacity=".3"/>`;
+  s+=`<polygon points="${ml},${mt+hz} ${p.map(q=>X(q.d).toFixed(1)+","+Y(q.z).toFixed(1)).join(" ")} ${X(D).toFixed(1)},${mt+hz}" fill="#b9d3c4" opacity=".8"/>`+
+     `<polyline points="${p.map(q=>X(q.d).toFixed(1)+","+Y(q.z).toFixed(1)).join(" ")}" fill="none" stroke="#2f5d44" stroke-width="1.5"/>`;
+  for(let i=1;i<p.length;i++){
+    const sl=Math.min(p[i].tan,1), h=sl*sh, col=p[i].lvl?FS_LC[p[i].lvl]:(p[i].tan>=.2?"#6c8ebf":"#c9d1cd");
+    s+=`<rect x="${X(p[i-1].d).toFixed(1)}" y="${(sy+sh-h).toFixed(1)}" width="${(X(p[i].d)-X(p[i-1].d)+.4).toFixed(1)}" height="${h.toFixed(1)}" fill="${col}"/>`;
+  }
+  s+=`<line x1="${ml}" x2="${W-mr}" y1="${(sy+sh-.2*sh).toFixed(1)}" y2="${(sy+sh-.2*sh).toFixed(1)}" stroke="#666" stroke-dasharray="3 3" stroke-width=".7"/>`+
+     `<text x="${ml-3}" y="${(sy+sh-.2*sh+3).toFixed(1)}" text-anchor="end" fill="#555">20%</text><text x="${ml-3}" y="${sy+sh}" text-anchor="end" fill="#555">0</text><text x="${ml-3}" y="${sy+6}" text-anchor="end" fill="#555">100%</text>`+
+     `<text x="${ml-3}" y="${mt+8}" text-anchor="end" fill="#555">${Math.round(z1)} m</text><text x="${ml-3}" y="${mt+hz}" text-anchor="end" fill="#555">${Math.round(z0)} m</text>`+
+     `<text x="${ml}" y="${sy-3}" fill="#555">Pendiente (%)</text>`;
+  const step=D>4000?1000:(D>1800?500:(D>700?200:100));
+  for(let d=0;d<=D;d+=step) s+=`<line x1="${X(d).toFixed(1)}" x2="${X(d).toFixed(1)}" y1="${sy+sh}" y2="${sy+sh+3}" stroke="#555"/><text x="${X(d).toFixed(1)}" y="${sy+sh+12}" text-anchor="middle" fill="#555">${d>=1000?(d/1000)+" km":d+" m"}</text>`;
+  [30,60,120,240,360].forEach(T=>{ const i=p.findIndex(q=>q.t>=T); if(i<0) return; const x=X(p[i].d).toFixed(1);
+    s+=`<line x1="${x}" x2="${x}" y1="${mt}" y2="${sy+sh}" stroke="#7a0000" stroke-width=".8" stroke-dasharray="4 3"/><text x="${x}" y="${mt-3}" text-anchor="middle" fill="#7a0000" font-weight="700">${T<60?T+"'":(T/60)+" h"}</text>`; });
+  return s+`</svg>`;
+}
+
+/* --- OpenStreetMap: defentsa-lerroak (errepide/pista/ibai), kontrol-lerroak (bidexka/bide), leku seguruak, ihes-bideak --- */
 async function fsOverpass(bb){
   const f=k=>`way${k}(${bb});`;
-  const q=`[out:json][timeout:25];(`+
-    f(`["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|track)$"]`)+
+  const q=`[out:json][timeout:40];(`+
+    f(`["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|track|path|footway|bridleway|cycleway)$"]`)+
     f(`["waterway"~"^(river|stream|canal)$"]`)+
     f(`["landuse"~"^(farmland|meadow|grass|residential|industrial|quarry|cemetery|retail|commercial|recreation_ground|village_green)$"]`)+
     f(`["natural"~"^(water|bare_rock|scree|sand|beach|shingle)$"]`)+
@@ -2260,6 +2300,8 @@ async function fsOverpass(bb){
 function fsRuns(g,ok){ const runs=[]; let cur=[]; g.forEach(v=>{ if(ok(v)) cur.push(v); else{ if(cur.length>1) runs.push(cur); cur=[]; } }); if(cur.length>1) runs.push(cur); return runs; }
 function fsLen(run){ let s=0; for(let i=1;i<run.length;i++){ const [e,n]=fsM(run[i-1],run[i]); s+=Math.hypot(e,n); } return s; }
 const FS_TYPE={farmland:"cultivo",meadow:"prado",grass:"césped/prado",residential:"zona urbana",industrial:"zona industrial",quarry:"cantera",cemetery:"cementerio",retail:"zona comercial",commercial:"zona comercial",recreation_ground:"zona recreativa",village_green:"zona verde",water:"agua",bare_rock:"roca desnuda",scree:"pedrera",sand:"arenal",beach:"arenal",shingle:"grava",pitch:"campo deportivo",park:"parque",golf_course:"campo de golf"};
+const FS_HW={motorway:"Autopista",trunk:"Carretera",primary:"Carretera",secondary:"Carretera",tertiary:"Carretera",unclassified:"Carretera/camino local",residential:"Vía urbana",service:"Vía de servicio",track:"Pista / camino",path:"Senda",footway:"Senda",bridleway:"Camino de herradura",cycleway:"Vía ciclista"};
+const FS_CTL=new Set(["path","footway","bridleway","cycleway"]);
 
 async function fsOsm(ctx){
   const {rays,head,Lh,per60}=ctx, o={lat:fsIgn.lat,lon:fsIgn.lng};
@@ -2271,26 +2313,31 @@ async function fsOsm(ctx){
   const els=(j.elements||[]).filter(w=>w.type==="way"&&w.geometry&&w.geometry.length>1);
   const ann=v=>{ const [e,n]=fsM(o,v), d=Math.hypot(e,n); let b=Math.atan2(e,n)/fsRad; if(b<0) b+=360;
     return {lat:v.lat,lon:v.lon,d,b,dh:angDiff(b,head),ta:fsArrival(rays,v.lat,v.lon)}; };
-  const nm=w=>(w.tags.name||w.tags.ref||FS_TYPE[w.tags.landuse||w.tags.natural||w.tags.leisure]||w.tags.highway||w.tags.waterway||"");
+  const lineType=w=>w.tags.waterway?({river:"Río",stream:"Arroyo",canal:"Canal"}[w.tags.waterway]||"Curso de agua"):(FS_HW[w.tags.highway]||w.tags.highway);
+  const nm=w=>w.tags.name||w.tags.ref||"";
   const linear=els.filter(w=>w.tags&&(w.tags.highway||w.tags.waterway));
 
-  /* defentsa-lerroak: aurrealdeko sektorean (±75°), 20-360 min barruan iristen dena, hedapenarekiko perpendikularra */
+  /* Lerroak: aurrealdeko sektorean (±75°), 20-360 min artean iristen dena, hedapenarekiko perpendikularra.
+     "def" = errepidea, pista, ibaia (makinaria/ataque indirectoa); "ctl" = bidexka/bidea (eskuzko kontrol-lerroa). */
   const cand=[];
   linear.forEach(w=>{
-    const g=w.geometry.map(ann);
-    const tw=w.tags.highway?({track:.85,service:.6}[w.tags.highway]??1):({river:.9,stream:.5,canal:.7}[w.tags.waterway]??.5);
+    const g=w.geometry.map(ann), ctl=!w.tags.waterway&&FS_CTL.has(w.tags.highway);
+    const tw=w.tags.highway?({track:.85,service:.6}[w.tags.highway]??(ctl?.7:1)):({river:.9,stream:.5,canal:.7}[w.tags.waterway]??.5);
     fsRuns(g,v=>v.dh<=75&&v.ta>=20&&v.ta<=FS_T&&v.d>=150).forEach(run=>{
       const len=fsLen(run); if(len<80) return;
       const mid=run[Math.floor(run.length/2)], dir=fsBear(run[0],run[run.length-1]);
       const perp=Math.abs(Math.sin(angDiff(dir,mid.b)*fsRad)), tim=mid.ta<30?.6:(mid.ta>240?.6:(mid.ta>120?.8:1));
-      cand.push({w,run,len,mid,score:Math.min(len,1000)*perp*tw*tim});
+      cand.push({w,run,len,mid,kind:ctl?"ctl":"def",score:Math.min(len,1000)*perp*tw*tim});
     });
   });
-  const seen=new Set(), lines=cand.sort((a,b)=>b.score-a.score).filter(c=>c.score>20&&!seen.has(c.w.id)&&seen.add(c.w.id)).slice(0,5);
-  lines.forEach((c,i)=>L.polyline(c.run.map(v=>[v.lat,v.lon]),{color:"#1565c0",weight:5,dashArray:"9 6",opacity:.9})
-    .bindTooltip(`Defensa #${i+1} · llega en ~${Math.round(c.mid.ta)} min`,{sticky:true}).addTo(fsGroup));
+  const pick=(kind,n)=>{ const seen=new Set(); return cand.filter(c=>c.kind===kind&&c.score>20).sort((a,b)=>b.score-a.score).filter(c=>!seen.has(c.w.id)&&seen.add(c.w.id)).slice(0,n); };
+  const def=pick("def",5), ctl=pick("ctl",4);
+  def.forEach((c,i)=>L.polyline(c.run.map(v=>[v.lat,v.lon]),{color:"#1565c0",weight:5,dashArray:"9 6",opacity:.9})
+    .bindTooltip(`Defensa #${i+1} · ${lineType(c.w)}${nm(c.w)?" "+nm(c.w):""} · llega en ~${Math.round(c.mid.ta)} min`,{sticky:true}).addTo(fsGroup));
+  ctl.forEach((c,i)=>L.polyline(c.run.map(v=>[v.lat,v.lon]),{color:"#7b2cbf",weight:3,dashArray:"2 5",opacity:.95})
+    .bindTooltip(`Control #${i+1} · ${lineType(c.w)}${nm(c.w)?" "+nm(c.w):""} · llega en ~${Math.round(c.mid.ta)} min`,{sticky:true}).addTo(fsGroup));
 
-  /* leku seguruak: erregai gutxiko eremuak, erradio baliokidea ≥ 4 × garaiera; 60 minutuko perimetroaz kanpo */
+  /* Leku seguruak: erregai gutxiko eremuak, erradio baliokidea ≥ 4 × garaiera; 60 minutuko perimetroaz kanpo */
   const rreq=Math.max(4*Lh,10), safe=[];
   els.filter(w=>w.tags&&!(w.tags.highway||w.tags.waterway)&&w.geometry.length>3&&
     w.geometry[0].lat===w.geometry[w.geometry.length-1].lat&&w.geometry[0].lon===w.geometry[w.geometry.length-1].lon).forEach(w=>{
@@ -2305,7 +2352,7 @@ async function fsOsm(ctx){
   safe.forEach((s,i)=>L.polygon(s.pts,{color:"#1b8a3a",weight:2,fillColor:"#34c759",fillOpacity:.35})
     .bindTooltip(`Lugar seguro #${i+1} · ${FS_TYPE[s.w.tags.landuse||s.w.tags.natural||s.w.tags.leisure]||"zona"} · r≈${Math.round(s.r)} m`,{sticky:true}).addTo(fsGroup));
 
-  /* ihes-bideak: atzealdeko/hegaletako bideak, 1,5 km-ra arte */
+  /* Ihes-bideak: atzealdeko/hegaletako bideak, 1,5 km-ra arte */
   const esc=[];
   linear.filter(w=>w.tags.highway).forEach(w=>{
     const g=w.geometry.map(ann);
@@ -2313,10 +2360,11 @@ async function fsOsm(ctx){
   });
   const seenE=new Set(), escape=esc.sort((a,b)=>a.dmin-b.dmin).filter(c=>!seenE.has(c.w.id)&&seenE.add(c.w.id)).slice(0,2);
   escape.forEach((c,i)=>L.polyline(c.run.map(v=>[v.lat,v.lon]),{color:"#00a3a3",weight:4,opacity:.9})
-    .bindTooltip(`Ruta de escape #${i+1}`,{sticky:true}).addTo(fsGroup));
-  return {lines:lines.map(c=>({name:nm(c.w),type:c.w.tags.highway||c.w.tags.waterway,ta:c.mid.ta,d:c.mid.d,len:c.len})),
+    .bindTooltip(`Ruta de escape #${i+1} · ${lineType(c.w)}`,{sticky:true}).addTo(fsGroup));
+  const info=c=>({name:nm(c.w),type:lineType(c.w),ta:c.mid.ta,d:c.mid.d,len:c.len});
+  return {def:def.map(info),ctl:ctl.map(info),
           safe:safe.map(s=>({name:FS_TYPE[s.w.tags.landuse||s.w.tags.natural||s.w.tags.leisure]||"zona",r:s.r,d:s.a.d,b:s.a.b})),
-          escape:escape.map(c=>({name:nm(c.w),d:c.dmin})),rreq,total:els.length};
+          escape:escape.map(c=>({name:nm(c.w)||lineType(c.w),d:c.dmin})),rreq,total:els.length};
 }
 
 /* --- haizea --- */
@@ -2363,6 +2411,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-dir").onchange=e=>{ fsCfg.dir=((Number(e.target.value)||0)%360+360)%360; rerun(); };
   q(".fs-spd").onchange=e=>{ fsCfg.spd=Math.max(0,Number(e.target.value)||0); rerun(); };
   q(".fs-set").onclick=()=>{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio."; };
+  fsPanel.addEventListener("click",e=>{ const b=e.target.closest&&e.target.closest("[data-fs-fuel]"); if(!b) return; fsCfg.fuel=b.dataset.fsFuel; q(".fs-fuel").value=fsCfg.fuel; rerun(); });
   q(".fs-clr").onclick=()=>{ fsGroup.clearLayers(); fsIgn=null; fsBusy++; q(".fs-out").textContent="Pulsa «Marcar inicio» y haz clic en el mapa."; };
 }
 map.on("click",e=>{
@@ -2377,6 +2426,46 @@ map.on("overlayadd",e=>{
   if(fsIgn) fsRun(); else{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio."; }
 });
 map.on("overlayremove",e=>{ if(e.layer===fsGroup){ fsPanel.style.display="none"; fsArmed=false; fsBusy++; map.getContainer().style.cursor=""; } });
+
+/* --- Estaldura / erregaia: geoEuskadi baso-mapa (WMS GetFeatureInfo). Iradokizuna bakarrik; ez da automatikoki aplikatzen. --- */
+const FS_FOREST_WMS="https://www.geo.euskadi.eus/WMS_NEKAZARITZA";
+function fsFuelFromText(t){
+  t=(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  const r=[["pinudia",/pinus|pino|pinar|conifer|eukali|eucalip|picea|larix|alerce|abeto/],["hostozabala",/haya|fagus|hayedo|roble|quercus|robledal|frondos|castan|fresno|aliso|abedul|bosque|arbolado/],
+           ["iratzea",/helech|pteridium|iratz/],["garoa",/matorral|brezal|argoma|ulex|erica|landa|zuhaixka|arbust/],["belarra",/pasto|prado|herbaz|pradera|belard|larre|cultivo|agrari/]];
+  for(const [k,re] of r) if(re.test(t)) return k;
+  return null;
+}
+async function fsCover(ll){
+  const info=await getWmsCapabilities(FS_FOREST_WMS);
+  const cand=info.layers.filter(l=>/forest|uso|especie|conifer|frondos|cubiert|vegeta|mfe|arbol/i.test(l.name+" "+l.title)).slice(0,4);
+  if(!cand.length) throw new Error("sin capas de usos/especies");
+  const [E,N]=proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[ll.lng,ll.lat]);
+  const fmt=pickInfoFormat(info.infoFormats), v=info.version||"1.3.0", is13=v.startsWith("1.3"), out=[];
+  for(const l of cand){
+    const p=new URLSearchParams({SERVICE:"WMS",VERSION:v,REQUEST:"GetFeatureInfo",LAYERS:l.name,QUERY_LAYERS:l.name,STYLES:"",FORMAT:info.format||"image/png",
+      INFO_FORMAT:fmt,FEATURE_COUNT:"3",WIDTH:"101",HEIGHT:"101",BBOX:[E-50,N-50,E+50,N+50].join(",")});
+    p.set(is13?"CRS":"SRS","EPSG:25830"); p.set(is13?"I":"X","50"); p.set(is13?"J":"Y","50");
+    try{
+      const r=await fetch(FS_FOREST_WMS+"?"+p.toString()); if(!r.ok) continue;
+      const txt=await r.text(), html=featureInfoToHtml(txt,fmt);
+      if(html) out.push({title:l.title||l.name,html,text:txt.replace(/<[^>]+>/g," ")});
+    }catch(_){ /* hurrengo geruza */ }
+  }
+  return out;
+}
+
+/* --- OACEL --- */
+function fsOacel(b0,wind,Lh,osm){
+  const esc=osm&&osm.escape.length?"candidatas hacia atrás/flanco: "+osm.escape.map(x=>`${escapeHtml(x.name)} (a ${Math.round(x.d)} m)`).join("; ")+" — debe ser transitable y llegar a una zona segura antes de que llegue el fuego.":"definir y reconocer antes de entrar (hacia la cola o zona quemada).";
+  return `<details style="margin-top:6px" open><summary style="cursor:pointer;font-weight:700">🛡️ Protocolo OACEL</summary>`+
+    `<div><b>O · Observación</b>: observador en posición segura con visión del frente (cabeza hacia ${fsCard(b0.head)}) y de los flancos; si no hay visión directa, comunicación con quien la tenga.</div>`+
+    `<div><b>A · Atención</b>: vigilar giros de viento (previsto ${fsCard(wind.dir)} ${Math.round(wind.spd)} km/h), cambios de pendiente, tramos con alineación Campbell y de combustible, humo y focos; si algo cambia, reevaluar.</div>`+
+    `<div><b>C · Comunicación</b>: canal operativo comprobado entre observador, mando y equipo. Sin comunicaciones aseguradas se entra en situación de peligro.</div>`+
+    `<div><b>E · ruta de Escape</b>: ${esc}</div>`+
+    `<div><b>L · Lugar seguro</b>: ${osm&&osm.safe.length?osm.safe.length+" candidato(s) en el mapa; ":""}separación ≥ ${Math.round(Math.max(4*Lh,10))} m (4 × llama); designar y comunicar a todos, y reevaluar cada vez que cambie la situación.</div>`+
+    `<div style="color:#65736b;font-size:11px">Si falta cualquiera de los cinco puntos, no trabajar en ese sector. Fuente: protocolo OACEL, Comité de Lucha contra Incendios Forestales (MITECO).</div></details>`;
+}
 
 /* --- exekuzioa --- */
 async function fsRun(){
@@ -2397,47 +2486,67 @@ async function fsRun(){
   const cols={30:"#d7191c",60:"#fd8d3c",120:"#ffd45a"}, ha={};
   [120,60,30].forEach(t=>{ const p=fsPerim(rays,t); ha[t]=fsHa(p);
     L.polygon(p,{color:cols[t],weight:2,fillColor:cols[t],fillOpacity:.25}).bindTooltip(`${t} min · ${ha[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup); });
-  const hp=rays[Math.round(b0.head/5)%72].pts[30];
-  L.polyline([[fsIgn.lat,fsIgn.lng],[hp[2],hp[3]]],{color:"#7a0000",weight:4}).bindTooltip(`Cabeza → ${fsCard(b0.head)} · ${b0.Rh.toFixed(1)} m/min`,{permanent:true,direction:"top"}).addTo(fsGroup);
+
+  /* Burua(ren) ibilbidea: profila + Campbell lerrokadura mailak (kolorez) */
+  const hr=rays[Math.round(b0.head/5)%72], prof=fsProfile(hr,wind);
+  let seg=[], segLv=null;
+  const flush=()=>{ if(seg.length>1) L.polyline(seg,{color:segLv?FS_LC[segLv]:"#555",weight:segLv?7:3,opacity:segLv?.85:.6}).addTo(fsGroup); };
+  prof.forEach((q,i)=>{ if(i===0){ seg=[[q.lat,q.lon]]; return; } if(i===1) segLv=q.lvl;
+    if(q.lvl!==segLv){ seg.push([q.lat,q.lon]); flush(); seg=[[q.lat,q.lon]]; segLv=q.lvl; } else seg.push([q.lat,q.lon]); });
+  flush();
+  const hp=hr.pts[30];
+  L.polyline([[fsIgn.lat,fsIgn.lng],[hp[2],hp[3]]],{color:"#7a0000",weight:2}).bindTooltip(`Cabeza → ${fsCard(b0.head)} · ${b0.Rh.toFixed(1)} m/min`,{permanent:true,direction:"top"}).addTo(fsGroup);
+  const within=prof.filter(q=>q.t<=120), tot=Math.max(1,within.length-1), pc=l=>Math.round(100*within.slice(1).filter(q=>q.lvl===l).length/tot);
+  const maxSl=Math.round(100*Math.max(0,...within.map(q=>q.tan)));
 
   const Ih=fsInt(fu,b0.Rh), Lh=fsFlame(Ih), Lf=fsFlame(fsInt(fu,fsR(b0,90))), Lb=fsFlame(fsInt(fu,fsR(b0,180)));
-  const st=fsStrategy(Lh), stf=fsStrategy(Lf);
-  const per60=fsPerim(rays,60);
+  const st=fsStrategy(Lh), stf=fsStrategy(Lf), per60=fsPerim(rays,60);
   const warn=[]; if(wind.spd>=40||Ih>3460) warn.push("Viento/intensidad altos: puede haber focos secundarios y fuego de copa (no modelados); la propagación real puede ser mayor.");
   if(wind.gust>wind.spd*1.4) warn.push(`Rachas de ${Math.round(wind.gust)} km/h: la velocidad puntual puede superar la estimada.`);
-  const head=`<b>${fsCard(b0.head)} (${Math.round(b0.head)}°)</b>`;
   const summary=
     `<div style="border-left:4px solid ${st[0]};padding:2px 8px;margin:4px 0"><b style="color:${st[0]}">${st[1]}</b><br>${st[2]}</div>`+
-    `<b>Propagación</b>: cabeza hacia ${head} · <b>${b0.Rh.toFixed(1)} m/min</b> (${(b0.Rh*.06).toFixed(2)} km/h)<br>`+
+    `<b>Propagación</b>: cabeza hacia <b>${fsCard(b0.head)} (${Math.round(b0.head)}°)</b> · <b>${b0.Rh.toFixed(1)} m/min</b> (${(b0.Rh*.06).toFixed(2)} km/h)<br>`+
     `Flancos ${fsR(b0,90).toFixed(1)} m/min · cola ${fsR(b0,180).toFixed(1)} m/min · relación L/A ${b0.LB.toFixed(1)}<br>`+
     `Intensidad ${Math.round(Ih)} kW/m · llama ≈ ${Lh.toFixed(1)} m (flancos ${Lf.toFixed(1)} m · cola ${Lb.toFixed(1)} m)<br>`+
     `Flancos: <span style="color:${stf[0]}">${stf[1].toLowerCase()}</span><br>`+
     `Viento ${fsCard(wind.dir)} ${Math.round(wind.dir)}° · ${Math.round(wind.spd)} km/h <span style="color:#65736b">(${escapeHtml(wind.src)})</span> · pendiente ${Math.round(ter.tan*100)}% (ladera hacia ${fsCard(ter.asp)})<br>`+
     `Superficie: <span style="color:#d7191c">30 min ${ha[30].toFixed(1)} ha</span> · <span style="color:#e8590c">60 min ${ha[60].toFixed(1)} ha</span> · <span style="color:#c98a00">120 min ${ha[120].toFixed(1)} ha</span>`+
     warn.map(w=>`<div style="color:#8b2f2f;margin-top:4px">⚠️ ${w}</div>`).join("");
-  out.innerHTML=summary+`<div class="fs-osm" style="margin-top:6px;color:#65736b">⏳ Buscando líneas de defensa, zonas seguras y rutas de escape (OpenStreetMap)…</div>`;
+  const sw=(c,t)=>`<span style="display:inline-block;width:10px;height:10px;background:${c};margin:0 3px 0 6px;vertical-align:middle"></span>${t}`;
+  const chart=fsChart(prof);
+  const profHtml=chart?`<div style="margin-top:8px"><b>Evolución a lo largo del avance de la cabeza</b> (${fsCard(b0.head)}): perfil del terreno, pendiente y alineaciones de Campbell. Líneas rojas = tiempo.`+
+    `<div style="margin:3px 0">${chart}</div>`+
+    `<div style="font-size:11px">${sw(FS_LC[3],"Campbell 3/3")}${sw(FS_LC[2],"2/3")}${sw(FS_LC[1],"1/3")}${sw("#6c8ebf","pend. ≥ 20%")}${sw("#c9d1cd","< 20%")}</div>`+
+    `<div style="font-size:11px;margin-top:2px">Primeros 120 min: en alineación Campbell 3/3 el ${pc(3)}% del recorrido · 2/3 ${pc(2)}% · 1/3 ${pc(1)}% · pendiente máx. ${maxSl}%. En el mapa, la ruta de la cabeza se colorea igual.</div></div>`:"";
+  out.innerHTML=`<div class="fs-sum">${summary}</div><div class="fs-cov" style="margin-top:6px;color:#65736b">⏳ Consultando el mapa forestal (geoEuskadi)…</div>`+
+    `<div class="fs-prof">${profHtml}</div><div class="fs-osm" style="margin-top:6px;color:#65736b">⏳ Buscando líneas de defensa y control, zonas seguras y rutas de escape (OpenStreetMap)…</div>`+
+    `<div class="fs-oacel">${fsOacel(b0,wind,Lh,null)}</div>`;
+  const q=s=>out.querySelector(s);
+
+  fsCover(fsIgn).then(res=>{
+    if(my!==fsBusy||!q(".fs-cov")) return;
+    if(!res.length){ q(".fs-cov").innerHTML=`<span style="color:#65736b">Mapa forestal: sin datos en este punto.</span>`; return; }
+    const sug=fsFuelFromText(res.map(r=>r.text).join(" ")), cur=fsCfg.fuel;
+    q(".fs-cov").innerHTML=`<details><summary style="cursor:pointer"><b>🌲 Cubierta en el punto de inicio</b> (mapa forestal, geoEuskadi)</summary><div style="max-height:130px;overflow:auto">${res.map(r=>`<div><b>${escapeHtml(r.title)}</b>${r.html}</div>`).join("")}</div></details>`+
+      (sug&&sug!==cur?`<div style="margin-top:3px">Sugerencia de combustible: <b>${escapeHtml(FS_FUELS[sug].n)}</b> <button type="button" data-fs-fuel="${sug}" style="border:0;border-radius:6px;padding:3px 8px;background:#1b8a3a;color:#fff;font-weight:700;cursor:pointer">Aplicar</button></div>`:
+       (sug?`<div style="margin-top:3px;color:#1b8a3a">Coincide con el combustible elegido.</div>`:`<div style="margin-top:3px;color:#65736b">No he podido deducir el combustible del texto; elígelo a mano.</div>`));
+  }).catch(err=>{ if(my===fsBusy&&q(".fs-cov")) q(".fs-cov").innerHTML=`<span style="color:#65736b">Mapa forestal no disponible (${escapeHtml(err.message||String(err))}).</span>`; });
 
   let osm=null, osmErr=null;
   try{ osm=await fsOsm({rays,head:b0.head,Lh,per60}); }catch(err){ osmErr=err.message||String(err); }
-  if(my!==fsBusy) return;
-  const li=(a,f)=>a.length?`<ol style="margin:2px 0 4px 18px;padding:0">${a.map(f).map(x=>`<li>${x}</li>`).join("")}</ol>`:"<div>— ninguna encontrada</div>";
-  let osmHtml="";
-  if(osmErr) osmHtml=`<div style="color:#8b2f2f;margin-top:6px">⚠️ No se pudieron consultar líneas de defensa ni zonas seguras (${escapeHtml(osmErr)}).</div>`;
+  if(my!==fsBusy||!q(".fs-osm")) return;
+  const li=(a,f)=>a.length?`<ol style="margin:2px 0 4px 18px;padding:0">${a.map(f).map(x=>`<li>${x}</li>`).join("")}</ol>`:"<div>— ninguna encontrada en el sector</div>";
+  const ln=l=>`${escapeHtml(l.type)}${l.name?" «"+escapeHtml(l.name)+"»":""} · llegada ~${Math.round(l.ta)} min · a ${Math.round(l.d)} m · ${Math.round(l.len)} m de trazado`;
+  if(osmErr) q(".fs-osm").innerHTML=`<div style="color:#8b2f2f">⚠️ No se pudieron consultar líneas ni zonas seguras (${escapeHtml(osmErr)}).</div>`;
   else{
-    osmHtml=`<div style="margin-top:6px"><b style="color:#1565c0">Líneas de defensa propuestas</b> (azul, a trazos) — pistas, carreteras o ríos transversales al avance, en el sector de la cabeza:${
-      li(osm.lines,l=>`${escapeHtml(l.name||l.type)} · llegada ~${Math.round(l.ta)} min · a ${Math.round(l.d)} m · ${Math.round(l.len)} m de longitud`)}</div>`+
-      `<div><b style="color:#1b8a3a">Zonas seguras candidatas</b> (verdes): sin combustible, radio ≥ ${Math.round(osm.rreq)} m (4 × llama)${
-      li(osm.safe,s=>`${escapeHtml(s.name)} · r≈${Math.round(s.r)} m · a ${Math.round(s.d)} m hacia ${fsCard(s.b)}`)}</div>`+
-      `<div style="color:#65736b;font-size:11px">Basado en OpenStreetMap (${osm.total} elementos); puede estar incompleto. Valida siempre sobre el terreno. La mejor zona segura suele ser la ya quemada sin potencial de retorno.</div>`;
+    q(".fs-osm").style.color="";
+    q(".fs-osm").innerHTML=
+      `<div><b style="color:#1565c0">Líneas de defensa</b> (azul, a trazos): carreteras, pistas y ríos transversales al avance, para ataque indirecto y maquinaria:${li(osm.def,ln)}</div>`+
+      `<div><b style="color:#7b2cbf">Líneas de control</b> (morado, punteado): sendas y caminos para línea manual; válidas sobre todo con llama &lt; 1,2 m:${li(osm.ctl,ln)}</div>`+
+      `<div><b style="color:#1b8a3a">Zonas seguras candidatas</b> (verdes): sin combustible, radio ≥ ${Math.round(osm.rreq)} m (4 × llama):${li(osm.safe,s=>`${escapeHtml(s.name)} · r≈${Math.round(s.r)} m · a ${Math.round(s.d)} m hacia ${fsCard(s.b)}`)}</div>`+
+      `<div style="color:#65736b;font-size:11px">Basado en OpenStreetMap (${osm.total} elementos); puede estar incompleto. Para comprobar anchuras, estado de las pistas y que las zonas seguras son reales, cambia el mapa base a la <b>ortofoto</b> (B5M o PNOA) en el control de capas. Valida siempre sobre el terreno.</div>`;
   }
-  const oacel=`<details style="margin-top:6px" open><summary style="cursor:pointer;font-weight:700">🛡️ Protocolo OACEL</summary>`+
-    `<div><b>O · Observación</b>: observador en posición segura con visión del frente (cabeza hacia ${fsCard(b0.head)}) y de los flancos; si no hay visión directa, comunicación con quien la tenga.</div>`+
-    `<div><b>A · Atención</b>: vigilar giros de viento (previsto ${fsCard(wind.dir)} ${Math.round(wind.spd)} km/h), cambios de pendiente y de combustible, humo y focos; si cambia, reevaluar.</div>`+
-    `<div><b>C · Comunicación</b>: canal operativo comprobado entre observador, mando y equipo. Sin comunicaciones aseguradas se entra en situación de peligro.</div>`+
-    `<div><b>E · ruta de Escape</b>: ${osm&&osm.escape.length?"candidatas hacia atrás/flanco: "+osm.escape.map(x=>`${escapeHtml(x.name||"vía")} (a ${Math.round(x.d)} m)`).join("; ")+" — la ruta debe ser transitable y llegar a una zona segura antes de que llegue el fuego.":"definir y reconocer antes de entrar (hacia la cola o zona quemada)."}</div>`+
-    `<div><b>L · Lugar seguro</b>: ${osm&&osm.safe.length?osm.safe.length+" candidato(s) en el mapa; ":""}separación ≥ ${Math.round(Math.max(4*Lh,10))} m (4 × llama); designar y comunicar a todos, reevaluar cada vez que cambie la situación.</div>`+
-    `<div style="color:#65736b;font-size:11px">Si falta cualquiera de los cinco puntos, no trabajar en ese sector. Fuente: protocolo OACEL, Comité de Lucha contra Incendios Forestales (MITECO).</div></details>`;
-  out.innerHTML=summary+osmHtml+oacel;
+  if(q(".fs-oacel")) q(".fs-oacel").innerHTML=fsOacel(b0,wind,Lh,osm);
 }
 
 /* ===== Bilatzaile geografikoa (B5M toposearch2 APIa) ===== */
