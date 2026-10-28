@@ -21,6 +21,7 @@ const required = [
   ["off-network connector checks", "const connectorSafe="],
   ["route diagnostic status", "no_connected_route_passed_checks"],
   ["diagnostic in exported metadata", "route_status:fsLast.osm?.routeStatus"],
+  ["GeoJSON point latitude and longitude bounds", "Math.abs(lat)<=90&&Math.abs(lon)<=180"],
   ["WGS84 GeoJSON export", "application/geo+json;charset=utf-8"],
   ["safety disclaimer", "no certifica seguridad"],
 ];
