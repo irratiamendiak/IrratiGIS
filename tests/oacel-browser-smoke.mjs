@@ -77,6 +77,10 @@ try {
   assert.match(await page.locator("#message").textContent(), /marcar el punto de inicio del fuego/i,
     "Fire-start control should arm fire placement and explain the action");
 
+  await page.locator(".fs-export").click();
+  assert.equal(await page.locator(".fs-export").textContent(), "Primero calcula",
+    "GeoJSON export should explain that simulation results are required before export");
+
   await checkbox.evaluate(el => el.click());
   await page.waitForFunction(() => {
     const panel = document.querySelector(".fs-panel");
