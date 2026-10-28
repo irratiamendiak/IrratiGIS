@@ -64,6 +64,16 @@ try {
   await checkbox.evaluate(el => el.click());
   await page.locator(".fs-panel").waitFor({ state: "visible", timeout: 5000 });
   await assertPanelControls(page);
+
+  await page.locator(".fs-team").click();
+  assert.match(await page.locator("#message").textContent(), /posición actual del equipo/i,
+    "Team-position control should arm map placement and explain the action");
+  assert.equal(await page.locator("#map").evaluate(el => el.style.cursor), "crosshair",
+    "Team-position mode should switch the map cursor to crosshair");
+  await page.locator(".fs-set").click();
+  assert.match(await page.locator("#message").textContent(), /marcar el punto de inicio del fuego/i,
+    "Fire-start control should arm fire placement and explain the action");
+
   await checkbox.evaluate(el => el.click());
   await page.waitForFunction(() => {
     const panel = document.querySelector(".fs-panel");
