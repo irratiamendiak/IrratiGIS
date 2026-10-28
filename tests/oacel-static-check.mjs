@@ -24,6 +24,7 @@ const required = [
   ["GeoJSON point latitude and longitude bounds", "Math.abs(lat)<=90&&Math.abs(lon)<=180"],
   ["GeoJSON coordinates reversed from lat/lon to lon/lat", "const xy=pts=>pts.map(p=>[Number(p[1]),Number(p[0])])"],
   ["GeoJSON polygon rings closed", "if(a[0]!==b[0]||a[1]!==b[1]) ring.push([...a])"],
+  ["GeoJSON rejects degenerate polygon rings", "if(!Number.isFinite(twiceArea)||Math.abs(twiceArea)<1e-12) return"],
   ["GeoJSON line coordinate validation", "const line=(pts,properties)=>{ if(validPts(pts))"],
   ["reject null and empty GeoJSON coordinates", 'const validCoord=v=>v!==null&&v!==""&&v!==undefined&&Number.isFinite(Number(v))'],
   ["GeoJSON polygon coordinate bounds", "Math.abs(Number(p[0]))<=90&&Math.abs(Number(p[1]))<=180"],
@@ -77,6 +78,10 @@ helpers.polygon([[91, -2], [43, -3], [44, -4]], {kind: "invalid_polygon"});
 assert.equal(emitted.length, 0, "Invalid polygon coordinates must be rejected");
 helpers.polygon([[null, -2], [43, -3], [44, -4]], {kind: "invalid_polygon"});
 assert.equal(emitted.length, 0, "Null polygon coordinates must be rejected");
+helpers.polygon([[42, -2], [42, -2], [42, -2]], {kind: "degenerate_polygon"});
+assert.equal(emitted.length, 0, "Polygon with fewer than three distinct vertices must be rejected");
+helpers.polygon([[42, -2], [43, -3], [44, -4]], {kind: "collinear_polygon"});
+assert.equal(emitted.length, 0, "Zero-area polygon must be rejected");
 helpers.point(91, -2, {kind: "invalid_point"});
 helpers.point(42, 181, {kind: "invalid_point"});
 assert.equal(emitted.length, 0, "Out-of-range points must be rejected");
