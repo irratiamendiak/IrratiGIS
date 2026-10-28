@@ -70,6 +70,9 @@ try {
     "Team-position control should arm map placement and explain the action");
   assert.equal(await page.locator("#map").evaluate(el => el.style.cursor), "crosshair",
     "Team-position mode should switch the map cursor to crosshair");
+  await page.locator("#map").click({ position: { x: 700, y: 450 } });
+  assert.notEqual(await page.locator("#map").evaluate(el => el.style.cursor), "crosshair",
+    "Selecting the team position on the map should disarm placement and restore the cursor");
   await page.locator(".fs-set").click();
   assert.match(await page.locator("#message").textContent(), /marcar el punto de inicio del fuego/i,
     "Fire-start control should arm fire placement and explain the action");
