@@ -2608,7 +2608,9 @@ async function fsOsm(ctx){
       .bindTooltip(`${a.role}${near?` · control más cercano: ${escapeHtml(near.name)} (${Math.round(near.d)} m)`:" · sin control cercano identificado"} · validar en campo`,{sticky:true}).addTo(fsGroup);
   });
   const info=c=>({name:nm(c.w),type:lineType(c.w),ta:c.mid.ta,d:c.mid.d,len:c.len,riv:!!c.w.tags.waterway});
-  return {teamPositionSet:!!fsTeamPos,ctl:ctl.map(info),
+  const routeStatus=!fsTeamPos?"team_position_missing":!safe.length?"no_candidate_zones":!escapeRoutes.length?"no_connected_route_passed_checks":"candidate_routes_found";
+  const routeStatusMessage=({team_position_missing:"No se marcó la posición del equipo.",no_candidate_zones:"No se detectaron zonas candidatas con los filtros cartográficos actuales.",no_connected_route_passed_checks:"No se encontró una ruta conectada que superase los filtros de conexión y llegada modelada del fuego; esto no demuestra que no exista una ruta real.",candidate_routes_found:"Se encontraron rutas conectadas candidatas; requieren comprobación operativa."})[routeStatus];
+  return {teamPositionSet:!!fsTeamPos,routeStatus,routeStatusMessage,ctl:ctl.map(info),
     safe:safe.map(s=>({name:FS_TYPE[s.w.tags.landuse||s.w.tags.natural||s.w.tags.leisure]||"zona",r:s.r,d:s.a.d,b:s.a.b})),
     escape:escape.map(c=>({name:nm(c.w)||lineType(c.w),d:c.dmin})),escapeRoutes:escapeRoutes.map(r=>({zone_name:r.zone_name,length_m:r.length_m,eta_min:r.eta_min,fire_margin_min:r.fire_margin_min})),rreq,ends,
     bld:{n:blds.length,first:blds[0],b60:blds.filter(x=>x.ta<=60).length,b120:blds.filter(x=>x.ta<=120).length,b240:blds.filter(x=>x.ta<=240).length},
@@ -2678,6 +2680,7 @@ function fsOacel(b0,w0,Lh,osm){
     `<div><b>A · Atención</b>: vigilar los puntos críticos marcados (cambios de viento y pendiente, alineaciones Campbell), giros de viento (previsto ${fsCard(w0.dir)} ${Math.round(w0.spd)} km/h), humo y focos; si algo cambia, reevaluar.</div>`+
     `<div><b>C · Comunicación</b>: canal operativo comprobado entre observador, mando y equipo. Sin comunicaciones aseguradas se entra en situación de peligro.</div>`+
     `<div><b>E · ruta de Escape</b>: ${esc}</div>`+
+    `<div style="font-size:12px;color:#65736b"><b>Diagnóstico cartográfico:</b> ${escapeHtml(osm?.routeStatusMessage||"Diagnóstico no disponible")}</div>`+
     `<div><b>L · Lugar seguro</b>: ${osm&&osm.safe.length?osm.safe.length+" zona(s) candidata(s) en el mapa; ":""}la separación estimada respecto a la llama no certifica seguridad; comprobar combustible, calor radiante, perímetro, rutas de acceso/escape y condiciones reales antes de designar el lugar.</div>`+
     `<div style="color:#65736b;font-size:11px">Si falta cualquiera de los cinco puntos, no trabajar en ese sector. Fuente: protocolo OACEL, Comité de Lucha contra Incendios Forestales (MITECO).</div></details>`;
 }
@@ -2718,7 +2721,7 @@ function fsExportGeoJSON(){
   (D.assets||[]).forEach(a=>point(a.lat,a.lon,{kind:a.big?"infrastructure_or_facility":"building_candidate",icon:a.icon||null}));
   point(fsLast.ign.lat,fsLast.ign.lng,{kind:"ignition_point"});
   if(fsTeamPos)point(fsTeamPos.lat,fsTeamPos.lng,{kind:"team_position",status:"user_marked_position"});
-  const fc={type:"FeatureCollection",name:"IrratiGIS_OACEL",generated_at:new Date().toISOString(),coordinate_reference:"WGS84 / EPSG:4326",coordinate_order:"[longitude, latitude]",metadata:{application:"IrratiGIS OACEL",simulation_elapsed_since_ignition_minutes:Number(fsCfg.elapsedMin)||0,simulation_config:{fuel_key:fsCfg.fuel,fuel_description:FS_FUELS[fsCfg.fuel]?.n||null,moisture_mode:fsCfg.moistMode,start_hour:Number(fsCfg.startH),moisture_percent:Number(fsCfg.moist),wind_mode:fsCfg.wind,wind_direction_degrees:Number(fsCfg.dir),wind_speed_kmh:Number(fsCfg.spd),temperature_c:Number(fsCfg.temp),relative_humidity_percent:Number(fsCfg.rh),simulation_rate:Number(fsCfg.rate),time_step_minutes:FS_DT,horizon_minutes:FS_T},fire_model:"simplified_estimate",fire_model_warning:"Not operationally validated; not a safety certification.",team_position_set:!!fsTeamPos,feature_count:features.length,route_count:(D.escapeRoutes||[]).length,export_format:"GeoJSON"},features};
+  const fc={type:"FeatureCollection",name:"IrratiGIS_OACEL",generated_at:new Date().toISOString(),coordinate_reference:"WGS84 / EPSG:4326",coordinate_order:"[longitude, latitude]",metadata:{application:"IrratiGIS OACEL",simulation_elapsed_since_ignition_minutes:Number(fsCfg.elapsedMin)||0,simulation_config:{fuel_key:fsCfg.fuel,fuel_description:FS_FUELS[fsCfg.fuel]?.n||null,moisture_mode:fsCfg.moistMode,start_hour:Number(fsCfg.startH),moisture_percent:Number(fsCfg.moist),wind_mode:fsCfg.wind,wind_direction_degrees:Number(fsCfg.dir),wind_speed_kmh:Number(fsCfg.spd),temperature_c:Number(fsCfg.temp),relative_humidity_percent:Number(fsCfg.rh),simulation_rate:Number(fsCfg.rate),time_step_minutes:FS_DT,horizon_minutes:FS_T},fire_model:"simplified_estimate",fire_model_warning:"Not operationally validated; not a safety certification.",team_position_set:!!fsTeamPos,route_status:fsLast.osm?.routeStatus||"unknown",route_status_message:fsLast.osm?.routeStatusMessage||"Diagnóstico no disponible",feature_count:features.length,route_count:(D.escapeRoutes||[]).length,export_format:"GeoJSON"},features};
   const blob=new Blob([JSON.stringify(fc,null,2)],{type:"application/geo+json;charset=utf-8"});
   const url=URL.createObjectURL(blob), a=document.createElement("a");
   a.href=url; a.download="IrratiGIS_OACEL_"+new Date().toISOString().replace(/[:.]/g,"-")+".geojson";
@@ -2908,7 +2911,7 @@ async function fsRun(){
   }).catch(err=>{ if(my===fsBusy&&q(".fs-cov")) q(".fs-cov").innerHTML=`<span style="color:#65736b">Mapa forestal no disponible (${escapeHtml(err.message||String(err))}); la densidad de combustible no se ha evaluado.</span>`; });
 
   let osm=null, osmErr=null;
-  try{ osm=await fsOsm({rays,farBg,Lh,per60,def,par}); }catch(err){ osmErr=err.message||String(err); }
+  try{ osm=await fsOsm({rays,farBg,Lh,per60,def,par}); fsLast.osm=osm; }catch(err){ osmErr=err.message||String(err); }
   if(my!==fsBusy||!q(".fs-osm")) return;
   const li=(a,f)=>a.length?`<ol style="margin:2px 0 4px 18px;padding:0">${a.map(f).map(x=>`<li>${x}</li>`).join("")}</ol>`:"<div>— ninguna encontrada en el sector</div>";
   const ln=l=>`${escapeHtml(l.type)}${l.name?" «"+escapeHtml(l.name)+"»":""} · llegada ~${Math.round(l.ta)} min · a ${Math.round(l.d)} m · ${Math.round(l.len)} m de trazado`;
