@@ -1271,13 +1271,13 @@ async function queryB5mFeatureInfo(latlng){
 }
 
 let streetViewMode=false;
-let fsArmed=false;   // suteen simulazioa: su-hasiera hautatzeko zain
+let fsArmed=false, fsTeamArmed=false;   // su-hasiera eta posizio-taldea mapan markatzeko moduak
 /* Google Street View: Maps URLs (gakorik gabe eta doan). Fitxa berrian irekitzen da. */
 function streetViewUrl(lat,lon){
   return "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint="+Number(lat).toFixed(7)+","+Number(lon).toFixed(7);
 }
 map.on("click",e=>{
-  if(waypointMode||drawingTrack||coordPickMode||streetViewMode||fsArmed)return;
+  if(waypointMode||drawingTrack||coordPickMode||streetViewMode||fsArmed||fsTeamArmed)return;
   queryB5mFeatureInfo(e.latlng);
 });
 
@@ -2148,8 +2148,8 @@ const FS_FUELS={
   pinudia:{n:"Pinar / plantación con acículas (modelos 9-10)",R0:.25,sig:2000,beta:.02,waf:.2,w:.6,Mx:.25,Rmax:15},
   hostozabala:{n:"Hayedo / robledal, hojarasca (modelos 8-9)",R0:.2,sig:2200,beta:.03,waf:.15,w:.35,Mx:.30,Rmax:8}
 };
-const fsCfg={fuel:"garoa",moistMode:"calc",startH:0,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
-let fsIgn=null, fsBusy=0, fsLast=null;
+const fsCfg={fuel:"garoa",moistMode:"calc",startH:0,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300,elapsedMin:0};
+let fsIgn=null, fsTeamPos=null, fsBusy=0, fsLast=null;
 const fsGroup=L.layerGroup(), fsDem=new Map();
 const fsCard=d=>["N","NE","E","SE","S","SO","O","NO"][Math.round((((d%360)+360)%360)/45)%8];
 const fsRad=Math.PI/180;
@@ -2406,8 +2406,8 @@ function fsParallel(rays,farBg,Lf){
 async function fsOverpass(bb){
   const A=k=>`way${k}(${bb});`, N=k=>`nwr${k}(${bb});`;
   const q=`[out:json][timeout:60];(`+
-    A(`["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|track|path|footway|bridleway|cycleway)$"]`)+
-    A(`["waterway"~"^(river|stream|canal)$"]`)+A(`["power"="line"]`)+
+    A(`["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|pedestrian|service|track|path|footway|steps|corridor|bridleway|cycleway)$"]`)+
+    A(`["waterway"~"^(river|stream|canal)$"]`)+A(`["natural"="cliff"]`)+A(`["barrier"~"^(wall|fence|retaining_wall|ditch|hedge)$"]`)+A(`["power"="line"]`)+
     A(`["landuse"~"^(farmland|meadow|grass|residential|industrial|quarry|cemetery|retail|commercial|recreation_ground|village_green)$"]`)+
     A(`["natural"~"^(water|bare_rock|scree|sand|beach|shingle)$"]`)+A(`["leisure"~"^(pitch|park|golf_course)$"]`)+`);out geom;(`+
     A(`["building"]`)+N(`["amenity"~"^(hospital|clinic|school|kindergarten|nursing_home|fire_station|police|shelter)$"]`)+
@@ -2420,7 +2420,7 @@ async function fsOverpass(bb){
 function fsRuns(g,ok){ const runs=[]; let cur=[]; g.forEach(v=>{ if(ok(v)) cur.push(v); else{ if(cur.length>1) runs.push(cur); cur=[]; } }); if(cur.length>1) runs.push(cur); return runs; }
 function fsLen(run){ let s=0; for(let i=1;i<run.length;i++){ const [e,n]=fsM(run[i-1],run[i]); s+=Math.hypot(e,n); } return s; }
 const FS_TYPE={farmland:"cultivo",meadow:"prado",grass:"césped/prado",residential:"zona urbana",industrial:"zona industrial",quarry:"cantera",cemetery:"cementerio",retail:"zona comercial",commercial:"zona comercial",recreation_ground:"zona recreativa",village_green:"zona verde",water:"agua",bare_rock:"roca desnuda",scree:"pedrera",sand:"arenal",beach:"arenal",shingle:"grava",pitch:"campo deportivo",park:"parque",golf_course:"campo de golf"};
-const FS_HW={motorway:"Autopista",trunk:"Carretera",primary:"Carretera",secondary:"Carretera",tertiary:"Carretera",unclassified:"Carretera/camino local",residential:"Vía urbana",service:"Vía de servicio",track:"Pista / camino",path:"Senda",footway:"Senda",bridleway:"Camino de herradura",cycleway:"Vía ciclista"};
+const FS_HW={motorway:"Autopista",trunk:"Carretera",primary:"Carretera",secondary:"Carretera",tertiary:"Carretera",unclassified:"Carretera/camino local",residential:"Vía urbana",living_street:"Calle de convivencia",pedestrian:"Vía peatonal",service:"Vía de servicio",track:"Pista / camino",path:"Senda",footway:"Senda",steps:"Escaleras",corridor:"Pasillo peatonal",bridleway:"Camino de herradura",cycleway:"Vía ciclista"};
 function fsInfra(t){
   if(t.amenity) return ({hospital:["🏥","Hospital"],clinic:["🏥","Centro sanitario"],nursing_home:["🏥","Residencia"],school:["🏫","Colegio"],kindergarten:["🏫","Guardería"],fire_station:["🚒","Parque de bomberos"],police:["🚓","Policía"],shelter:["🛖","Refugio"]})[t.amenity]||null;
   if(t.power) return ["⚡","Instalación eléctrica"];
@@ -2436,20 +2436,22 @@ async function fsOsm(ctx){
   const {rays,farBg,Lh,per60,def}=ctx, o={lat:fsIgn.lat,lon:fsIgn.lng}, D=fsLast.draw;
   let la=[fsIgn.lat-.014,fsIgn.lat+.014], lo=[fsIgn.lng-.019,fsIgn.lng+.019];
   rays.forEach(r=>{ const p=r.pts[r.pts.length-1]; la.push(p[2]); lo.push(p[3]); });
+  if(fsTeamPos){la.push(fsTeamPos.lat);lo.push(fsTeamPos.lng);}
   const bb=[Math.max(fsIgn.lat-.055,Math.min(...la)-.008),Math.max(fsIgn.lng-.075,Math.min(...lo)-.01),
             Math.min(fsIgn.lat+.055,Math.max(...la)+.008),Math.min(fsIgn.lng+.075,Math.max(...lo)+.01)].map(x=>x.toFixed(5)).join(",");
   const j=await fsOverpass(bb), all=j.elements||[];
   const ways=all.filter(w=>w.type==="way"&&w.geometry&&w.geometry.length>1&&w.tags);
   const ann=v=>{ const [e,n]=fsM(o,v), d=Math.hypot(e,n); let b=Math.atan2(e,n)/fsRad; if(b<0) b+=360;
     return {lat:v.lat,lon:v.lon,d,b,dh:angDiff(b,farBg),ta:fsArrival(rays,v.lat,v.lon)}; };
-  const lineType=w=>w.tags.waterway?({river:"Río",stream:"Arroyo",canal:"Canal"}[w.tags.waterway]||"Curso de agua"):(FS_HW[w.tags.highway]||w.tags.highway);
+  const lineType=w=>w.tags.waterway?({river:"Río",stream:"Arroyo",canal:"Canal"}[w.tags.waterway]||"Curso de agua"):w.tags.natural==="cliff"?"Roquedo / cortado":w.tags.barrier?({wall:"Muro",fence:"Valla",retaining_wall:"Muro de contención",ditch:"Zanja",hedge:"Seto"}[w.tags.barrier]||"Barrera"):FS_HW[w.tags.highway]||w.tags.highway;
   const nm=w=>w.tags.name||w.tags.ref||"";
-  const linear=ways.filter(w=>w.tags.highway||w.tags.waterway);
+  const linear=ways.filter(w=>w.tags.highway||w.tags.waterway||w.tags.natural==="cliff"||w.tags.barrier);
+  const routeWays=linear.filter(w=>w.tags.highway&&!["motorway","motorway_link","trunk","trunk_link"].includes(w.tags.highway)&&!["no","private"].includes(w.tags.access)&&!["no","private"].includes(w.tags.foot));
 
   /* KONTROL-LERROAK (lehendik daudenak: ibaiak, errepideak, pistak, bidexkak): aurrealdeko sektorean, hedapenarekiko perpendikularrak */
   const cand=[];
   linear.forEach(w=>{
-    const g=w.geometry.map(ann), tw=w.tags.waterway?({river:.9,stream:.5,canal:.7}[w.tags.waterway]??.5):({track:.9,service:.6,path:.7,footway:.7,bridleway:.7,cycleway:.7}[w.tags.highway]??1);
+    const g=w.geometry.map(ann), tw=w.tags.natural==="cliff"?1.2:w.tags.barrier?({wall:.8,retaining_wall:1,ditch:.8,fence:.4,hedge:.4}[w.tags.barrier]||.4):w.tags.waterway?({river:.9,stream:.5,canal:.7}[w.tags.waterway]??.5):({track:.9,service:.6,path:.7,footway:.7,bridleway:.7,cycleway:.7}[w.tags.highway]??1);
     fsRuns(g,v=>v.dh<=75&&v.ta>=20&&v.ta<=FS_T&&v.d>=150).forEach(run=>{
       const len=fsLen(run); if(len<80) return;
       const mid=run[Math.floor(run.length/2)], dir=fsBear(run[0],run[run.length-1]);
@@ -2458,10 +2460,10 @@ async function fsOsm(ctx){
     });
   });
   const seen=new Set(), ctl=cand.filter(c=>c.score>20).sort((a,b)=>b.score-a.score).filter(c=>!seen.has(c.w.id)&&seen.add(c.w.id)).slice(0,7);
-  ctl.forEach((c,i)=>{ const riv=!!c.w.tags.waterway, pts=c.run.map(v=>[v.lat,v.lon]); D.control.push({pts,riv});
+  ctl.forEach((c,i)=>{ const riv=!!c.w.tags.waterway, pts=c.run.map(v=>[v.lat,v.lon]); D.control.push({pts,riv,type:lineType(c.w),name:nm(c.w)||lineType(c.w)});
     L.polyline(pts,{color:riv?"#00a8e8":"#1565c0",weight:5,dashArray:"9 6",opacity:.9})
      .bindTooltip(`Control #${i+1} · ${lineType(c.w)}${nm(c.w)?" "+nm(c.w):""} · llega en ~${Math.round(c.mid.ta)} min`,{sticky:true}).addTo(fsGroup); });
-  const nearestCtl=(lat,lon)=>{ let best=null; linear.forEach(w=>w.geometry.forEach(v=>{ const [e,n]=fsM({lat,lon},v), d=Math.hypot(e,n); if(!best||d<best.d) best={d,name:nm(w)||lineType(w),type:lineType(w)}; })); return best; };
+  const nearestCtl=(lat,lon)=>{ let best=null; linear.forEach(w=>w.geometry.forEach(v=>{ const [e,n]=fsM({lat,lon},v), d=Math.hypot(e,n); if(!best||d<best.d) best={d,name:nm(w)||lineType(w),type:lineType(w),lat:v.lat,lon:v.lon}; })); return best; };
 
   /* LEKU SEGURUAK */
   const rreq=Math.max(4*Lh,10), safe=[];
@@ -2476,14 +2478,99 @@ async function fsOsm(ctx){
   });
   safe.sort((x,y)=>x.key-y.key); safe.length=Math.min(safe.length,6);
   safe.forEach((s,i)=>{ D.safe.push(s.pts); L.polygon(s.pts,{color:"#1b8a3a",weight:2,fillColor:"#34c759",fillOpacity:.35})
-    .bindTooltip(`Lugar seguro #${i+1} · ${FS_TYPE[s.w.tags.landuse||s.w.tags.natural||s.w.tags.leisure]||"zona"} · r≈${Math.round(s.r)} m`,{sticky:true}).addTo(fsGroup); });
+    .bindTooltip(`Candidato a lugar seguro #${i+1} · ${FS_TYPE[s.w.tags.landuse||s.w.tags.natural||s.w.tags.leisure]||"zona"} · r≈${Math.round(s.r)} m · validar sobre el terreno`,{sticky:true}).addTo(fsGroup); });
+
+  /* Rutas candidatas conectadas: red peatonal OSM hacia zonas candidatas.
+     La llegada del fuego es una restricción aproximada, no una garantía de seguridad. */
+  const escapeRoutes=[];
+  {
+    const nodes=new Map();
+    const key=v=>v.lat.toFixed(5)+","+v.lon.toFixed(5);
+    const getNode=v=>{const k=key(v);if(!nodes.has(k))nodes.set(k,{id:k,lat:v.lat,lon:v.lon,adj:[]});return nodes.get(k);};
+    const speedKmh=w=>({footway:3.5,pedestrian:3.5,corridor:3.5,path:3.5,bridleway:3.5,steps:2,track:4,cycleway:4,service:4,residential:4.5,living_street:4,unclassified:4.5,tertiary:4.5,secondary:4.5,primary:4})[w.tags.highway]||3.5;
+    routeWays.forEach(w=>{
+      const g=w.geometry;
+      for(let i=1;i<g.length;i++){
+        const a=getNode(g[i-1]),b=getNode(g[i]);if(a.id===b.id)continue;
+        const [dx,dy]=fsM(a,b),len=Math.hypot(dx,dy);if(len<1)continue;
+        const minutes=len/(speedKmh(w)*1000/60),steps=Math.min(20,Math.max(1,Math.ceil(len/30))),fireSamples=[];
+        for(let k=0;k<=steps;k++){const f=k/steps;fireSamples.push({f,arrival:ann({lat:a.lat+(b.lat-a.lat)*f,lon:a.lon+(b.lon-a.lon)*f}).ta});}
+        a.adj.push({to:b.id,len,minutes,fireSamples,way:w});
+        b.adj.push({to:a.id,len,minutes,fireSamples:fireSamples.map(p=>({f:1-p.f,arrival:p.arrival})).reverse(),way:w});
+      }
+    });
+    const nodeList=[...nodes.values()];
+    const nearest=(ll,maxM=350)=>{let best=null;for(const n of nodeList){const [dx,dy]=fsM(ll,n),d=Math.hypot(dx,dy);if(d<=maxM&&(!best||d<best.d))best={node:n,d};}return best;};
+    const routeOrigin=fsTeamPos?{lat:fsTeamPos.lat,lon:fsTeamPos.lng}:null;
+    const start=routeOrigin?nearest(routeOrigin,150):null;
+    if(start&&nodeList.length){
+      const boundarySamples=z=>{
+        const out=[],p=z.pts||[];
+        for(let i=0;i<p.length;i++){
+          const a=p[i],b=p[(i+1)%p.length];out.push(a);
+          const [dx,dy]=fsM({lat:a[0],lon:a[1]},{lat:b[0],lon:b[1]}),len=Math.hypot(dx,dy),steps=Math.min(100,Math.max(1,Math.ceil(len/40)));
+          for(let k=1;k<steps;k++)out.push([a[0]+(b[0]-a[0])*k/steps,a[1]+(b[1]-a[1])*k/steps]);
+        }
+        return out;
+      };
+      const targets=safe.map((z,i)=>{let best=null;for(const p of boundarySamples(z)){const n=nearest({lat:p[0],lon:p[1]},150);if(n&&(!best||n.d<best.d))best={...n,zone:z,index:i,boundaryPoint:p};}return best;}).filter(Boolean);
+      const dist=new Map([[start.node.id,0]]),prev=new Map(),done=new Set(),heap=[];
+      const push=item=>{heap.push(item);let i=heap.length-1;while(i>0){const p=(i-1)>>1;if(heap[p].cost<=item.cost)break;heap[i]=heap[p];i=p;}heap[i]=item;};
+      const pop=()=>{if(!heap.length)return null;const root=heap[0],last=heap.pop();if(heap.length){let i=0;while(true){const l=i*2+1,r=l+1;if(l>=heap.length)break;const c=r<heap.length&&heap[r].cost<heap[l].cost?r:l;if(heap[c].cost>=last.cost)break;heap[i]=heap[c];i=c;}heap[i]=last;}return root;};
+      push({id:start.node.id,cost:0});
+      const targetIds=new Set(targets.map(t=>t.node.id));
+      while(heap.length){
+        const cur=pop();if(!cur||done.has(cur.id)||cur.cost!==dist.get(cur.id))continue;done.add(cur.id);
+        if(done.size>25000)break;
+        for(const e of nodes.get(cur.id).adj){
+          if(done.has(e.to))continue;
+          const next=cur.cost+e.minutes;
+          const elapsed=Number(fsCfg.elapsedMin)||0;
+          const crossesModelledFire=e.fireSamples.some(p=>Number.isFinite(p.arrival)&&p.arrival<=elapsed+cur.cost+e.minutes*p.f+10);
+          if(crossesModelledFire)continue;
+          if(next<(dist.get(e.to)??Infinity)){dist.set(e.to,next);prev.set(e.to,{from:cur.id,edge:e});push({id:e.to,cost:next});}
+        }
+        if([...targetIds].every(id=>done.has(id)))break;
+      }
+      const made=new Set();
+      targets.sort((a,b)=>(dist.get(a.node.id)??Infinity)-(dist.get(b.node.id)??Infinity)).forEach(t=>{
+        if(made.has(t.index)||!Number.isFinite(dist.get(t.node.id)))return;
+        const ids=[t.node.id];let cur=t.node.id,guard=0;
+        while(cur!==start.node.id&&prev.has(cur)&&guard++<30000){cur=prev.get(cur).from;ids.push(cur);}
+        if(ids[ids.length-1]!==start.node.id||ids.length<2)return;ids.reverse();
+        const pts=[[fsTeamPos.lat,fsTeamPos.lng],...ids.map(id=>[nodes.get(id).lat,nodes.get(id).lon])];
+        const boundary={p:t.boundaryPoint,d:t.d};
+        const walkingSpeedMMin=3500/60,elapsed=Number(fsCfg.elapsedMin)||0,networkMinutes=dist.get(t.node.id);
+        const connectorSafe=(from,to,distance,offsetMin)=>{
+          const [dx,dy]=fsM({lat:from[0],lon:from[1]},{lat:to[0],lon:to[1]}),len=Math.hypot(dx,dy),steps=Math.max(1,Math.ceil(len/20));
+          for(let k=0;k<=steps;k++){
+            const f=k/steps,point={lat:from[0]+(to[0]-from[0])*f,lon:from[1]+(to[1]-from[1])*f};
+            const fireAt=ann(point).ta,walkAt=elapsed+offsetMin+(distance*f)/walkingSpeedMMin;
+            if(Number.isFinite(fireAt)&&fireAt<=walkAt+10)return false;
+          }
+          return true;
+        };
+        if(!boundary||boundary.d>150) return;
+        if(!connectorSafe([fsTeamPos.lat,fsTeamPos.lng],[start.node.lat,start.node.lon],start.d,0))return;
+        if(!connectorSafe([t.node.lat,t.node.lon],boundary.p,boundary.d,networkMinutes))return;
+        if(boundary&&boundary.d<=150)pts.push(boundary.p);
+        let length=0;for(let i=1;i<pts.length;i++){const [dx,dy]=fsM({lat:pts[i-1][0],lon:pts[i-1][1]},{lat:pts[i][0],lon:pts[i][1]});length+=Math.hypot(dx,dy);}
+        const snapMinutes=(start.d+boundary.d)/walkingSpeedMMin;
+        const etaTotal=dist.get(t.node.id)+snapMinutes;
+        const route={pts,zone_index:t.index+1,zone_name:FS_TYPE[t.zone.w.tags.landuse||t.zone.w.tags.natural||t.zone.w.tags.leisure]||"zona candidata",length_m:Math.round(length),eta_min:Math.ceil(etaTotal),network_eta_min:Math.round(dist.get(t.node.id)),start_snap_m:Math.round(start.d),destination_snap_m:Math.round(t.d),elapsed_since_ignition_min:Number(fsCfg.elapsedMin)||0,fire_margin_min:10,route_method:"OSM_pedestrian_graph_Dijkstra_with_sampled_fire_arrival_checks",status:"candidata_no_validada"};
+        escapeRoutes.push(route);made.add(t.index);D.escapeRoutes.push(route);
+        L.polyline(pts,{color:"#00a6a6",weight:5,opacity:.95,dashArray:"10 5"})
+          .bindTooltip(`Ruta conectada candidata #${escapeRoutes.length} → zona #${route.zone_index} · ${route.length_m} m · ~${route.eta_min} min a pie · margen modelado 10 min; validar en campo`,{sticky:true}).addTo(fsGroup);
+      });
+    }
+  }
 
   /* IHES-BIDEAK */
   const esc=[];
   linear.filter(w=>w.tags.highway).forEach(w=>{ fsRuns(w.geometry.map(ann),v=>v.dh>=100&&v.d<=1500).forEach(run=>esc.push({w,run,dmin:Math.min(...run.map(v=>v.d))})); });
   const seenE=new Set(), escape=esc.sort((a,b)=>a.dmin-b.dmin).filter(c=>!seenE.has(c.w.id)&&seenE.add(c.w.id)).slice(0,2);
   escape.forEach((c,i)=>{ const pts=c.run.map(v=>[v.lat,v.lon]); D.escape.push(pts); L.polyline(pts,{color:"#00bcd4",weight:4,opacity:.95})
-    .bindTooltip(`Ruta de escape #${i+1} · ${lineType(c.w)}`,{sticky:true}).addTo(fsGroup); });
+    .bindTooltip(`Tramo candidato para escape #${i+1} · ${lineType(c.w)} · no es una ruta validada hasta un lugar seguro`,{sticky:true}).addTo(fsGroup); });
 
   /* BABESTEKO ONDASUNAK: eraikinak eta azpiegiturak, 6 orduren barruan suak iritsiko dituenak */
   const pointsEls=all.filter(e=>!e.geometry&&(e.center||Number.isFinite(e.lat))&&e.tags), seenP=new Set(), bien=[];
@@ -2501,10 +2588,31 @@ async function fsOsm(ctx){
 
   /* Defentsa-lerro iradokiaren eta atake paraleloaren ainguraketak */
   const ends=def?[def.pts[0],def.pts[def.pts.length-1]].map(p=>nearestCtl(p[0],p[1])):[];
+  D.anchors=[]; D.anchorLinks=[];
+  if(def&&def.pts.length>1){
+    [0,def.pts.length-1].forEach((ix,i)=>{
+      const p=def.pts[ix], near=ends[i], role=`Anclaje candidato ${i===0?"A":"B"} de la línea de defensa`;
+      const a={lat:p[0],lon:p[1],role,near:near?{name:near.name,type:near.type,distance_m:Math.round(near.d)}:null};
+      D.anchors.push(a);
+      if(near&&near.d<=500){const link={pts:[[a.lat,a.lon],[near.lat,near.lon]],distance_m:Math.round(near.d),role,control_name:near.name};D.anchorLinks.push(link);L.polyline(link.pts,{color:"#ff9800",weight:3,dashArray:"5 5",opacity:.9}).bindTooltip(`${role} → ${escapeHtml(near.name)} · enlace candidato ${link.distance_m} m`,{sticky:true}).addTo(fsGroup);}
+      L.marker([a.lat,a.lon],{icon:fsIcon("⚓",19),zIndexOffset:1100})
+        .bindTooltip(`${role}${near?` · control más cercano: ${escapeHtml(near.name)} (${Math.round(near.d)} m)`:" · sin control cercano identificado"} · verificar continuidad y seguridad`,{sticky:true}).addTo(fsGroup);
+    });
+  }
+  ctx.par.forEach((p,i)=>{ if(!p.pts||p.pts.length<2) return;
+    const near=nearestCtl(p.pts[0][0],p.pts[0][1]);
+    const a={lat:p.pts[0][0],lon:p.pts[0][1],role:`Anclaje candidato de ataque paralelo (${p.name})`,near:near?{name:near.name,type:near.type,distance_m:Math.round(near.d)}:null};
+    D.anchors.push(a);
+    if(near&&near.d<=500){const link={pts:[[a.lat,a.lon],[near.lat,near.lon]],distance_m:Math.round(near.d),role:a.role,control_name:near.name};D.anchorLinks.push(link);L.polyline(link.pts,{color:"#ff9800",weight:2,dashArray:"4 5",opacity:.8}).bindTooltip(`${escapeHtml(a.role)} → ${escapeHtml(near.name)} · enlace candidato ${link.distance_m} m`,{sticky:true}).addTo(fsGroup);}
+    L.marker([a.lat,a.lon],{icon:fsIcon("⚓",17),zIndexOffset:1050})
+      .bindTooltip(`${a.role}${near?` · control más cercano: ${escapeHtml(near.name)} (${Math.round(near.d)} m)`:" · sin control cercano identificado"} · validar en campo`,{sticky:true}).addTo(fsGroup);
+  });
   const info=c=>({name:nm(c.w),type:lineType(c.w),ta:c.mid.ta,d:c.mid.d,len:c.len,riv:!!c.w.tags.waterway});
-  return {ctl:ctl.map(info),
+  const routeStatus=!fsTeamPos?"team_position_missing":!safe.length?"no_candidate_zones":!escapeRoutes.length?"no_connected_route_passed_checks":"candidate_routes_found";
+  const routeStatusMessage=({team_position_missing:"No se marcó la posición del equipo.",no_candidate_zones:"No se detectaron zonas candidatas con los filtros cartográficos actuales.",no_connected_route_passed_checks:"No se encontró una ruta conectada que superase los filtros de conexión y llegada modelada del fuego; esto no demuestra que no exista una ruta real.",candidate_routes_found:"Se encontraron rutas conectadas candidatas; requieren comprobación operativa."})[routeStatus];
+  return {teamPositionSet:!!fsTeamPos,routeStatus,routeStatusMessage,ctl:ctl.map(info),
     safe:safe.map(s=>({name:FS_TYPE[s.w.tags.landuse||s.w.tags.natural||s.w.tags.leisure]||"zona",r:s.r,d:s.a.d,b:s.a.b})),
-    escape:escape.map(c=>({name:nm(c.w)||lineType(c.w),d:c.dmin})),rreq,ends,
+    escape:escape.map(c=>({name:nm(c.w)||lineType(c.w),d:c.dmin})),escapeRoutes:escapeRoutes.map(r=>({zone_name:r.zone_name,length_m:r.length_m,eta_min:r.eta_min,fire_margin_min:r.fire_margin_min})),rreq,ends,
     bld:{n:blds.length,first:blds[0],b60:blds.filter(x=>x.ta<=60).length,b120:blds.filter(x=>x.ta<=120).length,b240:blds.filter(x=>x.ta<=240).length},
     infra:infra.slice(0,8),pl,
     par:ctx.par.map(p=>p.pts.length?nearestCtl(p.pts[0][0],p.pts[0][1]):null),total:all.length};
@@ -2566,14 +2674,66 @@ function fsParAdvice(Lh,Lf){
 
 /* --- OACEL --- */
 function fsOacel(b0,w0,Lh,osm){
-  const esc=osm&&osm.escape.length?"candidatas hacia atrás/flanco: "+osm.escape.map(x=>`${escapeHtml(x.name)} (a ${Math.round(x.d)} m)`).join("; ")+" — debe ser transitable y llegar a una zona segura antes de que llegue el fuego.":"definir y reconocer antes de entrar (hacia la cola o zona quemada).";
+  const esc=osm&&osm.teamPositionSet&&osm.escapeRoutes&&osm.escapeRoutes.length?"desde la posición marcada del equipo, rutas conectadas candidatas: "+osm.escapeRoutes.map(x=>`${escapeHtml(x.zone_name)} (${x.length_m} m; ~${x.eta_min} min a pie; margen modelado ${x.fire_margin_min} min)`).join("; ")+" — cálculo preliminar sobre OSM con `${fsCfg.elapsedMin||0}` min transcurridos desde el inicio del fuego; no está validado en campo. "+(osm.escape.length?"También se muestran tramos candidatos sin continuidad garantizada.":""):!osm?.teamPositionSet?"marca la posición actual del equipo con «Posición del equipo» para calcular rutas desde ese punto. ":"no se ha podido calcular una ruta conectada hasta una zona candidata; "+(osm&&osm.escape.length?"se muestran solo tramos candidatos. ":"")+"definir y reconocer una salida antes de entrar."; 
   return `<details style="margin-top:6px" open><summary style="cursor:pointer;font-weight:700">🛡️ Protocolo OACEL</summary>`+
     `<div><b>O · Observación</b>: observador en posición segura con visión del frente (cabeza hacia ${fsCard(b0.head)}) y de los flancos; si no hay visión directa, comunicación con quien la tenga.</div>`+
     `<div><b>A · Atención</b>: vigilar los puntos críticos marcados (cambios de viento y pendiente, alineaciones Campbell), giros de viento (previsto ${fsCard(w0.dir)} ${Math.round(w0.spd)} km/h), humo y focos; si algo cambia, reevaluar.</div>`+
     `<div><b>C · Comunicación</b>: canal operativo comprobado entre observador, mando y equipo. Sin comunicaciones aseguradas se entra en situación de peligro.</div>`+
     `<div><b>E · ruta de Escape</b>: ${esc}</div>`+
-    `<div><b>L · Lugar seguro</b>: ${osm&&osm.safe.length?osm.safe.length+" candidato(s) en el mapa; ":""}separación ≥ ${Math.round(Math.max(4*Lh,10))} m (4 × llama); designar y comunicar a todos, y reevaluar cada vez que cambie la situación.</div>`+
+    `<div style="font-size:12px;color:#65736b"><b>Diagnóstico cartográfico:</b> ${escapeHtml(osm?.routeStatusMessage||"Diagnóstico no disponible")}</div>`+
+    `<div><b>L · Lugar seguro</b>: ${osm&&osm.safe.length?osm.safe.length+" zona(s) candidata(s) en el mapa; ":""}la separación estimada respecto a la llama no certifica seguridad; comprobar combustible, calor radiante, perímetro, rutas de acceso/escape y condiciones reales antes de designar el lugar.</div>`+
     `<div style="color:#65736b;font-size:11px">Si falta cualquiera de los cinco puntos, no trabajar en ese sector. Fuente: protocolo OACEL, Comité de Lucha contra Incendios Forestales (MITECO).</div></details>`;
+}
+
+/* --- Exportación de resultados OACEL a GeoJSON (WGS84) --- */
+function fsExportGeoJSON(){
+  const D=fsLast&&fsLast.draw;
+  const btn=fsPanel.querySelector(".fs-export");
+  if(!D){ if(btn) btn.textContent="Primero calcula"; return; }
+  const features=[];
+  const add=(geometry,properties)=>features.push({type:"Feature",geometry,properties:{
+    source:"IrratiGIS · Suteen bilakaera",
+    status:"candidato_no_validado",
+    safety_note:"Resultado cartográfico orientativo; no certifica seguridad ni sustituye la validación operativa en terreno.",
+    ...properties
+  }});
+  const xy=pts=>pts.map(p=>[Number(p[1]),Number(p[0])]);
+  const validCoord=v=>v!==null&&v!==""&&v!==undefined&&Number.isFinite(Number(v));
+  const validPts=pts=>Array.isArray(pts)&&pts.length>1&&pts.every(p=>Array.isArray(p)&&validCoord(p[0])&&validCoord(p[1])&&Math.abs(Number(p[0]))<=90&&Math.abs(Number(p[1]))<=180);
+  const line=(pts,properties)=>{ if(validPts(pts)) add({type:"LineString",coordinates:xy(pts)},properties); };
+  const polygon=(pts,properties)=>{
+    if(!Array.isArray(pts)||pts.length<3||!pts.every(p=>Array.isArray(p)&&validCoord(p[0])&&validCoord(p[1])&&Math.abs(Number(p[0]))<=90&&Math.abs(Number(p[1]))<=180)) return;
+    const ring=xy(pts);
+    const distinct=new Set(ring.map(p=>p[0]+","+p[1]));
+    if(distinct.size<3) return;
+    const a=ring[0], b=ring[ring.length-1];
+    if(a[0]!==b[0]||a[1]!==b[1]) ring.push([...a]);
+    let twiceArea=0;
+    for(let i=0;i<ring.length-1;i++) twiceArea+=ring[i][0]*ring[i+1][1]-ring[i+1][0]*ring[i][1];
+    if(!Number.isFinite(twiceArea)||Math.abs(twiceArea)<1e-12) return;
+    if(twiceArea<0){ ring.pop(); ring.reverse(); ring.push([...ring[0]]); }
+    add({type:"Polygon",coordinates:[ring]},properties);
+  };
+  const point=(lat,lon,properties)=>{ if(Number.isFinite(lat)&&Number.isFinite(lon)&&Math.abs(lat)<=90&&Math.abs(lon)<=180) add({type:"Point",coordinates:[lon,lat]},properties); };
+  (D.perimeters||[]).forEach(p=>polygon(p.pts,{kind:"predicted_perimeter",minutes:p.minutes,area_ha:Number.isFinite(Number(p.area_ha))?Number(Number(p.area_ha).toFixed(3)):null,status:"modelled_estimate"}));
+  (D.control||[]).forEach((c,i)=>line(c.pts,{kind:"existing_control_candidate",index:i+1,barrier_type:c.riv?"watercourse":c.type||"road_or_barrier",name:c.name||null,status:"candidate_requires_field_check"}));
+  (D.safe||[]).forEach((p,i)=>polygon(p,{kind:"candidate_low_fuel_area",index:i+1,status:"unvalidated_candidate"}));
+  (D.escape||[]).forEach((p,i)=>line(p,{kind:"candidate_escape_segment",index:i+1,status:"not_a_validated_route",warning:"No se ha comprobado continuidad hasta un lugar seguro ni transitabilidad."}));
+  (D.escapeRoutes||[]).forEach((r,i)=>line(r.pts,{kind:"connected_escape_route_candidate",index:i+1,destination_candidate:r.zone_name,destination_candidate_index:r.zone_index,length_m:r.length_m,estimated_walking_minutes:r.eta_min,network_walking_minutes:r.network_eta_min,start_snap_distance_m:r.start_snap_m,destination_snap_distance_m:r.destination_snap_m,modelled_fire_arrival_margin_minutes:r.fire_margin_min,elapsed_since_ignition_minutes:r.elapsed_since_ignition_min,route_method:r.route_method||"unknown",status:"not_field_validated",warning:"Ruta calculada sobre datos cartográficos y un modelo simplificado; confirmar accesibilidad, fuego, humo, pendiente, comunicaciones y destino en terreno."}));
+  if(D.def) line(D.def,{kind:"proposed_defence_line",status:"planning_alternative_requires_operational_validation"});
+  (D.par||[]).forEach((p,i)=>line(p,{kind:"parallel_attack_alternative",flank:i===0?"right":"left",status:"planning_alternative_requires_operational_validation"}));
+  (D.crit||[]).forEach((c,i)=>point(c.lat,c.lon,{kind:"critical_point_candidate",index:i+1,time_min:c.t,reason:c.why||""}));
+  (D.anchors||[]).forEach((a,i)=>point(a.lat,a.lon,{kind:"anchor_point_candidate",index:i+1,role:a.role,nearest_control:a.near?.name||null,nearest_control_type:a.near?.type||null,nearest_control_distance_m:a.near?.distance_m??null}));
+  (D.anchorLinks||[]).forEach((a,i)=>line(a.pts,{kind:"candidate_anchor_connection",index:i+1,anchor_role:a.role,existing_control_candidate:a.control_name,distance_m:a.distance_m,status:"requires_field_validation"}));
+  (D.assets||[]).forEach(a=>point(a.lat,a.lon,{kind:a.big?"infrastructure_or_facility":"building_candidate",icon:a.icon||null}));
+  point(fsLast.ign.lat,fsLast.ign.lng,{kind:"ignition_point"});
+  if(fsTeamPos)point(fsTeamPos.lat,fsTeamPos.lng,{kind:"team_position",status:"user_marked_position"});
+  const fc={type:"FeatureCollection",name:"IrratiGIS_OACEL",generated_at:new Date().toISOString(),coordinate_reference:"WGS84 / EPSG:4326",coordinate_order:"[longitude, latitude]",metadata:{application:"IrratiGIS OACEL",simulation_elapsed_since_ignition_minutes:Number(fsCfg.elapsedMin)||0,simulation_config:{fuel_key:fsCfg.fuel,fuel_description:FS_FUELS[fsCfg.fuel]?.n||null,moisture_mode:fsCfg.moistMode,start_hour:Number(fsCfg.startH),moisture_percent:Number(fsCfg.moist),wind_mode:fsCfg.wind,wind_direction_degrees:Number(fsCfg.dir),wind_speed_kmh:Number(fsCfg.spd),temperature_c:Number(fsCfg.temp),relative_humidity_percent:Number(fsCfg.rh),simulation_rate:Number(fsCfg.rate),time_step_minutes:FS_DT,horizon_minutes:FS_T},fire_model:"simplified_estimate",fire_model_warning:"Not operationally validated; not a safety certification.",team_position_set:!!fsTeamPos,route_status:fsLast.osm?.routeStatus||"unknown",route_status_message:fsLast.osm?.routeStatusMessage||"Diagnóstico no disponible",feature_count:features.length,route_count:(D.escapeRoutes||[]).length,export_format:"GeoJSON"},features};
+  const blob=new Blob([JSON.stringify(fc,null,2)],{type:"application/geo+json;charset=utf-8"});
+  const url=URL.createObjectURL(blob), a=document.createElement("a");
+  a.href=url; a.download="IrratiGIS_OACEL_"+new Date().toISOString().replace(/[:.]/g,"-")+".geojson";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1500);
+  if(btn){ btn.textContent="GeoJSON descargado"; setTimeout(()=>{if(btn.isConnected)btn.textContent="⬇ Exportar GeoJSON";},2200); }
 }
 
 /* --- panela --- */
@@ -2593,7 +2753,8 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div style="${row}">Inicio del fuego <select class="fs-sh"><option value="0">ahora</option><option value="3">en 3 h</option><option value="6">en 6 h</option><option value="9">en 9 h</option><option value="12">en 12 h</option></select> <span style="color:#65736b">(solo con meteorología automática)</span></div>`+
    `<div style="${row}">Humedad comb. fino muerto <select class="fs-mm"><option value="calc">calculada (T y HR)</option><option value="man">manual</option></select> <span class="fs-msl" style="display:none"><input type="range" class="fs-m" min="3" max="25" value="${fsCfg.moist}" style="width:80px;vertical-align:middle"> <b class="fs-mv">${fsCfg.moist}%</b></span></div>`+
    `<div style="${row}">Medios para construir línea <select class="fs-rate"><option value="100">Herramienta manual (~100 m/h)</option><option value="300" selected>Mixto (~300 m/h)</option><option value="600">Maquinaria (~600 m/h)</option></select></div>`+
-   `<div style="display:flex;gap:6px;margin:6px 0"><button type="button" class="fs-set" style="${bs}background:#d9480f">📍 Marcar inicio</button><button type="button" class="fs-clr" style="${bs}background:#65736b">Limpiar</button></div>`+
+   `<div style="${row}">Minutos transcurridos desde el inicio del fuego <input class="fs-elapsed" type="number" min="0" max="360" step="5" value="${fsCfg.elapsedMin}" style="width:70px"> <span style="color:#65736b">(para estimar el margen de escape)</span></div>`+
+   `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0"><button type="button" class="fs-set" style="${bs}background:#d9480f">🔥 Marcar inicio del fuego</button><button type="button" class="fs-team" style="${bs}background:#7b2cbf">📍 Posición del equipo</button><button type="button" class="fs-export" style="${bs}background:#1565c0">⬇ Exportar GeoJSON</button><button type="button" class="fs-clr" style="${bs}background:#65736b">Limpiar</button></div>`+
    `<div class="fs-out" style="color:#65736b">Pulsa «Marcar inicio» y haz clic en el mapa.</div>`;
   const q=s=>fsPanel.querySelector(s), rerun=()=>{ if(fsIgn) fsRun(); }, num=(e,lo,hi,d)=>Math.min(hi,Math.max(lo,Number(e.target.value)||d));
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
@@ -2608,15 +2769,20 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-m").oninput=e=>{ q(".fs-mv").textContent=e.target.value+"%"; };
   q(".fs-m").onchange=e=>{ fsCfg.moist=Number(e.target.value); rerun(); };
   q(".fs-rate").onchange=e=>{ fsCfg.rate=Number(e.target.value); rerun(); };
+  q(".fs-elapsed").onchange=e=>{fsCfg.elapsedMin=Math.max(0,Math.min(360,Number(e.target.value)||0));e.target.value=fsCfg.elapsedMin;rerun();};
+  q(".fs-export").onclick=()=>fsExportGeoJSON();
   fsPanel.addEventListener("click",e=>{
     const f=e.target.closest&&e.target.closest("[data-fs-fuel]"); if(f){ fsCfg.fuel=f.dataset.fsFuel; q(".fs-fuel").value=fsCfg.fuel; rerun(); return; }
     const g=e.target.closest&&e.target.closest("[data-fs-gif]"); if(g) fsMakeGif(g);
   });
-  q(".fs-set").onclick=()=>{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio."; };
-  q(".fs-clr").onclick=()=>{ fsGroup.clearLayers(); fsIgn=null; fsLast=null; fsBusy++; q(".fs-out").textContent="Pulsa «Marcar inicio» y haz clic en el mapa."; };
+  q(".fs-set").onclick=()=>{ fsTeamArmed=false; fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio del fuego."; };
+  q(".fs-team").onclick=()=>{ fsArmed=false; fsTeamArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="OACEL: haz clic en la posición actual del equipo para calcular rutas desde allí."; };
+  q(".fs-clr").onclick=()=>{ fsGroup.clearLayers(); fsIgn=null; fsTeamPos=null; fsLast=null; fsBusy++; fsTeamArmed=false; fsArmed=false; q(".fs-out").textContent="Marca el inicio del fuego y, después, la posición del equipo."; };
 }
 map.on("click",e=>{
-  if(!fsArmed||!map.hasLayer(fsGroup)) return;
+  if(!map.hasLayer(fsGroup)) return;
+  if(fsTeamArmed){fsTeamArmed=false;map.getContainer().style.cursor="";fsTeamPos=e.latlng;if(fsIgn)fsRun();return;}
+  if(!fsArmed)return;
   setTimeout(()=>{ fsArmed=false; },0);
   map.getContainer().style.cursor=""; fsIgn=e.latlng; fsRun();
 });
@@ -2624,7 +2790,7 @@ layersControl.addOverlay(fsGroup,"🔥 Suteen bilakaera (simulazioa)");
 map.on("overlayadd",e=>{
   if(e.layer!==fsGroup) return;
   fsPanel.style.display="block";
-  if(fsIgn) fsRun(); else{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio."; }
+  if(fsIgn){fsRun();}else{fsArmed=true;map.getContainer().style.cursor="crosshair";$("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio."; }
 });
 map.on("overlayremove",e=>{ if(e.layer===fsGroup){ fsPanel.style.display="none"; fsArmed=false; fsBusy++; map.getContainer().style.cursor=""; } });
 
@@ -2634,7 +2800,8 @@ async function fsRun(){
   if(!fsIgn) return;
   const my=++fsBusy, out=fsPanel.querySelector(".fs-out"), fu=FS_FUELS[fsCfg.fuel];
   fsGroup.clearLayers();
-  L.marker(fsIgn,{icon:fsIcon("🔥",24)}).addTo(fsGroup);
+  L.marker(fsIgn,{icon:fsIcon("🔥",24)}).bindTooltip("Inicio del fuego modelado").addTo(fsGroup);
+  if(fsTeamPos)L.marker(fsTeamPos,{icon:fsIcon("👩‍🚒",24),zIndexOffset:1200}).bindTooltip("Posición marcada del equipo · confirmar en campo").addTo(fsGroup);
   out.textContent="⏳ Calculando…";
   let met;
   try{
@@ -2648,9 +2815,9 @@ async function fsRun(){
     out.innerHTML=fsDec(`Con estas condiciones el fuego <b>no se propaga</b> en las próximas 6 h: la humedad del combustible fino muerto es del ${m00.toFixed(1)} % (T ${Math.round(w00.T)} °C, HR ${Math.round(w00.RH)} %) y supera la de extinción de este combustible (${Math.round(fu.Mx*100)} %). Prueba otra hora de inicio (por la tarde baja la humedad), otro combustible, o pon la humedad a mano.`); return;
   }
   const bInit=fsBehavior(fu,ter.tan,ter.asp,w00.dir,w00.spd,m00), iRef=far.pts.findIndex(p=>p[1]>=15), tRef=(bInit.Rh>0||iRef<=0)?0:far.pts[iRef][0], w0=met.at(tRef), m0=fsMoistAt(w0), b0=fsBehavior(fu,ter.tan,ter.asp,w0.dir,w0.spd,m0);
-  fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0,met,farBg,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
+  fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0,met,farBg,draw:{perimeters:[],control:[],safe:[],escape:[],escapeRoutes:[],assets:[],crit:[],anchors:[],anchorLinks:[],def:null,par:[]}};
   const D=fsLast.draw, cols={30:"#d7191c",60:"#fd8d3c",120:"#ffd45a"}, ha={};
-  [120,60,30].forEach(t=>{ const p=fsPerim(rays,t); ha[t]=fsHa(p);
+  [120,60,30].forEach(t=>{ const p=fsPerim(rays,t); ha[t]=fsHa(p); D.perimeters.push({minutes:t,area_ha:ha[t],pts:p});
     L.polygon(p,{color:cols[t],weight:2,fillColor:cols[t],fillOpacity:.25}).bindTooltip(`${t} min · ${ha[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup); });
 
   /* Burua(ren) ibilbidea: profila + Campbell mailak */
@@ -2751,7 +2918,7 @@ async function fsRun(){
   }).catch(err=>{ if(my===fsBusy&&q(".fs-cov")) q(".fs-cov").innerHTML=`<span style="color:#65736b">Mapa forestal no disponible (${escapeHtml(err.message||String(err))}); la densidad de combustible no se ha evaluado.</span>`; });
 
   let osm=null, osmErr=null;
-  try{ osm=await fsOsm({rays,farBg,Lh,per60,def,par}); }catch(err){ osmErr=err.message||String(err); }
+  try{ osm=await fsOsm({rays,farBg,Lh,per60,def,par}); fsLast.osm=osm; }catch(err){ osmErr=err.message||String(err); }
   if(my!==fsBusy||!q(".fs-osm")) return;
   const li=(a,f)=>a.length?`<ol style="margin:2px 0 4px 18px;padding:0">${a.map(f).map(x=>`<li>${x}</li>`).join("")}</ol>`:"<div>— ninguna encontrada en el sector</div>";
   const ln=l=>`${escapeHtml(l.type)}${l.name?" «"+escapeHtml(l.name)+"»":""} · llegada ~${Math.round(l.ta)} min · a ${Math.round(l.d)} m · ${Math.round(l.len)} m de trazado`;

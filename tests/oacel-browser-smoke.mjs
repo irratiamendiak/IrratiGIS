@@ -1,0 +1,102 @@
+import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { extname, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
+
+const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
+const mime = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".json": "application/json; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
+};
+
+const server = createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url || "/", "http://127.0.0.1");
+    const requested = decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname);
+    const path = resolve(root, "." + requested);
+    if (path !== root && !path.startsWith(root + sep)) {
+      res.writeHead(403).end("Forbidden");
+      return;
+    }
+    const body = await readFile(path);
+    res.writeHead(200, { "content-type": mime[extname(path)] || "application/octet-stream" });
+    res.end(body);
+  } catch {
+    res.writeHead(404).end("Not found");
+  }
+});
+
+let browser;
+try {
+  await new Promise((resolveListen, reject) => {
+    server.once("error", reject);
+    server.listen(4173, "127.0.0.1", resolveListen);
+  });
+  browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const pageErrors = [];
+  page.on("pageerror", error => pageErrors.push(error.message));
+
+  await page.goto("http://127.0.0.1:4173/", { waitUntil: "domcontentloaded", timeout: 45000 });
+  await page.waitForFunction(() => window.L && document.querySelector("#map")?._leaflet_id,
+    null, { timeout: 45000 });
+  assert.ok(await page.locator("#map .leaflet-control-container").count(),
+    "Leaflet map controls should initialize");
+  assert.ok(await page.locator("#map").evaluate(el => el.clientHeight >= 400),
+    "Map should have a usable visible height");
+
+  // This smoke test has no user credentials; remove the auth gate only in the
+  // isolated test page so it can exercise the underlying map and OACEL controls.
+  await page.evaluate(() => document.querySelector("#irratiLoginBackdrop")?.remove());
+
+  const oacelLabel = page.locator(".leaflet-control-layers-overlays label")
+    .filter({ hasText: "Suteen bilakaera (simulazioa)" });
+  await oacelLabel.waitFor({ state: "attached", timeout: 15000 });
+  const checkbox = oacelLabel.locator('input[type="checkbox"]');
+  // Trigger Leaflet's own input click handler without relying on the
+  // collapsed control being physically clickable under the browser's hover state.
+  await checkbox.evaluate(el => el.click());
+  await page.locator(".fs-panel").waitFor({ state: "visible", timeout: 5000 });
+  await assertPanelControls(page);
+
+  await page.locator(".fs-team").click();
+  assert.match(await page.locator("#message").textContent(), /posición actual del equipo/i,
+    "Team-position control should arm map placement and explain the action");
+  assert.equal(await page.locator("#map").evaluate(el => el.style.cursor), "crosshair",
+    "Team-position mode should switch the map cursor to crosshair");
+  await page.locator("#map").click({ position: { x: 700, y: 450 } });
+  assert.notEqual(await page.locator("#map").evaluate(el => el.style.cursor), "crosshair",
+    "Selecting the team position on the map should disarm placement and restore the cursor");
+  await page.locator(".fs-set").click();
+  assert.match(await page.locator("#message").textContent(), /marcar el punto de inicio del fuego/i,
+    "Fire-start control should arm fire placement and explain the action");
+
+  await page.locator(".fs-export").click();
+  assert.equal(await page.locator(".fs-export").textContent(), "Primero calcula",
+    "GeoJSON export should explain that simulation results are required before export");
+
+  await checkbox.evaluate(el => el.click());
+  await page.waitForFunction(() => {
+    const panel = document.querySelector(".fs-panel");
+    return panel && getComputedStyle(panel).display === "none";
+  }, null, { timeout: 5000 });
+
+  assert.deepEqual(pageErrors, [], "Page must not throw uncaught JavaScript errors");
+  console.log("Browser OACEL smoke checks passed: map initialized; OACEL panel opened, controls rendered, and panel closed.");
+} finally {
+  if (browser) await browser.close();
+  await new Promise(resolveClose => server.close(resolveClose));
+}
+
+async function assertPanelControls(page) {
+  for (const selector of [".fs-set", ".fs-team", ".fs-export", ".fs-clr", ".fs-elapsed"]) {
+    assert.equal(await page.locator(".fs-panel " + selector).count(), 1,
+      "Expected OACEL panel control: " + selector);
+  }
+}

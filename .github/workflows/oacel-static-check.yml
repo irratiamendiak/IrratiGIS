@@ -1,0 +1,27 @@
+name: OACEL static checks
+# Syntax and regression guards for the OACEL inline application.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feature/oacel-export-anchors]
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install GDAL/OGR GeoJSON validator
+        run: sudo apt-get update && sudo apt-get install -y gdal-bin
+      - name: Run OACEL static checks and emit GeoJSON fixture
+        env:
+          OACEL_GEOJSON_FIXTURE_PATH: /tmp/oacel-validation.geojson
+        run: node tests/oacel-static-check.mjs
+      - name: Validate exported GeoJSON with GDAL/OGR
+        run: ogrinfo -ro -al -so /tmp/oacel-validation.geojson
