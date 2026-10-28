@@ -2406,7 +2406,7 @@ function fsParallel(rays,farBg,Lf){
 async function fsOverpass(bb){
   const A=k=>`way${k}(${bb});`, N=k=>`nwr${k}(${bb});`;
   const q=`[out:json][timeout:60];(`+
-    A(`["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|track|path|footway|bridleway|cycleway)$"]`)+
+    A(`["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|pedestrian|service|track|path|footway|steps|corridor|bridleway|cycleway)$"]`)+
     A(`["waterway"~"^(river|stream|canal)$"]`)+A(`["natural"="cliff"]`)+A(`["barrier"~"^(wall|fence|retaining_wall|ditch|hedge)$"]`)+A(`["power"="line"]`)+
     A(`["landuse"~"^(farmland|meadow|grass|residential|industrial|quarry|cemetery|retail|commercial|recreation_ground|village_green)$"]`)+
     A(`["natural"~"^(water|bare_rock|scree|sand|beach|shingle)$"]`)+A(`["leisure"~"^(pitch|park|golf_course)$"]`)+`);out geom;(`+
@@ -2487,7 +2487,7 @@ async function fsOsm(ctx){
     const nodes=new Map();
     const key=v=>v.lat.toFixed(5)+","+v.lon.toFixed(5);
     const getNode=v=>{const k=key(v);if(!nodes.has(k))nodes.set(k,{id:k,lat:v.lat,lon:v.lon,adj:[]});return nodes.get(k);};
-    const speedKmh=w=>({footway:3.5,path:3.5,bridleway:3.5,track:4,cycleway:4,service:4,residential:4.5,unclassified:4.5,tertiary:4.5,secondary:4.5,primary:4})[w.tags.highway]||3.5;
+    const speedKmh=w=>({footway:3.5,pedestrian:3.5,corridor:3.5,path:3.5,bridleway:3.5,steps:2,track:4,cycleway:4,service:4,residential:4.5,living_street:4,unclassified:4.5,tertiary:4.5,secondary:4.5,primary:4})[w.tags.highway]||3.5;
     routeWays.forEach(w=>{
       const g=w.geometry;
       for(let i=1;i<g.length;i++){
