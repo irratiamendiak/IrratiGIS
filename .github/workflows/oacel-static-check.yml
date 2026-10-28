@@ -17,5 +17,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Run OACEL static checks
+      - name: Install GDAL/OGR GeoJSON validator
+        run: sudo apt-get update && sudo apt-get install -y gdal-bin
+      - name: Run OACEL static checks and emit GeoJSON fixture
+        env:
+          OACEL_GEOJSON_FIXTURE_PATH: /tmp/oacel-validation.geojson
         run: node tests/oacel-static-check.mjs
+      - name: Validate exported GeoJSON with GDAL/OGR
+        run: ogrinfo -ro -al -so /tmp/oacel-validation.geojson
