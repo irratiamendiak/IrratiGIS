@@ -96,7 +96,7 @@ assert.deepEqual(emitted[0].geometry.coordinates, [-2, 42]);
 
 console.log("Executable GeoJSON geometry tests passed.");
 
-const exportEnd = html.indexOf("\\n\\n/* --- panela --- */", exportStart);
+const exportEnd = html.indexOf("\n\n/* --- panela --- */", exportStart);
 assert.ok(exportEnd > exportStart, "Expected end of GeoJSON export function");
 const exportSource = html.slice(exportStart, exportEnd);
 let capturedBlob;
