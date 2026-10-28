@@ -59,18 +59,12 @@ try {
     .filter({ hasText: "Suteen bilakaera (simulazioa)" });
   await oacelLabel.waitFor({ state: "attached", timeout: 15000 });
   const checkbox = oacelLabel.locator('input[type="checkbox"]');
-  // Change the actual Leaflet overlay control without relying on its collapsed
-  // panel being physically clickable under the browser's hover state.
-  await checkbox.evaluate(el => {
-    el.checked = true;
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  // Trigger Leaflet's own input click handler without relying on the
+  // collapsed control being physically clickable under the browser's hover state.
+  await checkbox.evaluate(el => el.click());
   await page.locator(".fs-panel").waitFor({ state: "visible", timeout: 5000 });
   await assertPanelControls(page);
-  await checkbox.evaluate(el => {
-    el.checked = false;
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  await checkbox.evaluate(el => el.click());
   await page.waitForFunction(() => {
     const panel = document.querySelector(".fs-panel");
     return panel && getComputedStyle(panel).display === "none";
