@@ -74,10 +74,10 @@ assert.equal(emitted.length, 1);
 const ring = emitted[0].geometry.coordinates[0];
 assert.deepEqual(ring[0], ring[ring.length - 1],
   "Polygon ring must be closed");
-const signedArea = ring.slice(0, -1).reduce((sum, p, i, pts) => {
-  const next = pts[i + 1];
-  return sum + p[0] * next[1] - next[0] * p[1];
-}, 0);
+let signedArea = 0;
+for (let i = 0; i < ring.length - 1; i++) {
+  signedArea += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+}
 assert.ok(signedArea > 0, "Exterior polygon ring must be counter-clockwise");
 emitted.length = 0;
 helpers.polygon([[91, -2], [43, -3], [44, -4]], {kind: "invalid_polygon"});
