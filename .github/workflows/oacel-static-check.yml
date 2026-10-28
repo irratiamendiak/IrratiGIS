@@ -1,4 +1,5 @@
 name: OACEL static checks
+# Syntax and regression guards for the OACEL inline application.
 
 on:
   pull_request:
