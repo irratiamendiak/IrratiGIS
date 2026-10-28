@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
@@ -148,6 +148,9 @@ exportFunction();
 assert.ok(capturedBlob, "GeoJSON export should create a Blob");
 assert.equal(capturedBlob.type, "application/geo+json;charset=utf-8");
 const exported = JSON.parse(await capturedBlob.text());
+if (process.env.OACEL_GEOJSON_FIXTURE_PATH) {
+  writeFileSync(process.env.OACEL_GEOJSON_FIXTURE_PATH, JSON.stringify(exported));
+}
 assert.equal(exported.type, "FeatureCollection");
 assert.equal(exported.coordinate_reference, "WGS84 / EPSG:4326");
 assert.equal(exported.coordinate_order, "[longitude, latitude]");
