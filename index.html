@@ -2540,10 +2540,22 @@ async function fsOsm(ctx){
         if(ids[ids.length-1]!==start.node.id||ids.length<2)return;ids.reverse();
         const pts=[[fsTeamPos.lat,fsTeamPos.lng],...ids.map(id=>[nodes.get(id).lat,nodes.get(id).lon])];
         const boundary={p:t.boundaryPoint,d:t.d};
+        const walkingSpeedMMin=3500/60,elapsed=Number(fsCfg.elapsedMin)||0,networkMinutes=dist.get(t.node.id);
+        const connectorSafe=(from,to,distance,offsetMin)=>{
+          const [dx,dy]=fsM({lat:from[0],lon:from[1]},{lat:to[0],lon:to[1]}),len=Math.hypot(dx,dy),steps=Math.max(1,Math.ceil(len/20));
+          for(let k=0;k<=steps;k++){
+            const f=k/steps,point={lat:from[0]+(to[0]-from[0])*f,lon:from[1]+(to[1]-from[1])*f};
+            const fireAt=ann(point).ta,walkAt=elapsed+offsetMin+(distance*f)/walkingSpeedMMin;
+            if(Number.isFinite(fireAt)&&fireAt<=walkAt+10)return false;
+          }
+          return true;
+        };
+        if(!boundary||boundary.d>150) return;
+        if(!connectorSafe([fsTeamPos.lat,fsTeamPos.lng],[start.node.lat,start.node.lon],start.d,0))return;
+        if(!connectorSafe([t.node.lat,t.node.lon],boundary.p,boundary.d,networkMinutes))return;
         if(boundary&&boundary.d<=150)pts.push(boundary.p);
         let length=0;for(let i=1;i<pts.length;i++){const [dx,dy]=fsM({lat:pts[i-1][0],lon:pts[i-1][1]},{lat:pts[i][0],lon:pts[i][1]});length+=Math.hypot(dx,dy);}
-        const walkingSpeedMMin=3500/60;
-        const snapMinutes=(start.d+(boundary?boundary.d:0))/walkingSpeedMMin;
+        const snapMinutes=(start.d+boundary.d)/walkingSpeedMMin;
         const etaTotal=dist.get(t.node.id)+snapMinutes;
         const route={pts,zone_index:t.index+1,zone_name:FS_TYPE[t.zone.w.tags.landuse||t.zone.w.tags.natural||t.zone.w.tags.leisure]||"zona candidata",length_m:Math.round(length),eta_min:Math.ceil(etaTotal),network_eta_min:Math.round(dist.get(t.node.id)),start_snap_m:Math.round(start.d),destination_snap_m:Math.round(t.d),elapsed_since_ignition_min:Number(fsCfg.elapsedMin)||0,fire_margin_min:10,route_method:"OSM_pedestrian_graph_Dijkstra_with_sampled_fire_arrival_checks",status:"candidata_no_validada"};
         escapeRoutes.push(route);made.add(t.index);D.escapeRoutes.push(route);
