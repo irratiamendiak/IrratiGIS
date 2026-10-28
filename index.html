@@ -2461,7 +2461,7 @@ async function fsOsm(ctx){
   ctl.forEach((c,i)=>{ const riv=!!c.w.tags.waterway, pts=c.run.map(v=>[v.lat,v.lon]); D.control.push({pts,riv});
     L.polyline(pts,{color:riv?"#00a8e8":"#1565c0",weight:5,dashArray:"9 6",opacity:.9})
      .bindTooltip(`Control #${i+1} · ${lineType(c.w)}${nm(c.w)?" "+nm(c.w):""} · llega en ~${Math.round(c.mid.ta)} min`,{sticky:true}).addTo(fsGroup); });
-  const nearestCtl=(lat,lon)=>{ let best=null; linear.forEach(w=>w.geometry.forEach(v=>{ const [e,n]=fsM({lat,lon},v), d=Math.hypot(e,n); if(!best||d<best.d) best={d,name:nm(w)||lineType(w),type:lineType(w)}; })); return best; };
+  const nearestCtl=(lat,lon)=>{ let best=null; linear.forEach(w=>w.geometry.forEach(v=>{ const [e,n]=fsM({lat,lon},v), d=Math.hypot(e,n); if(!best||d<best.d) best={d,name:nm(w)||lineType(w),type:lineType(w),lat:v.lat,lon:v.lon}; })); return best; };
 
   /* LEKU SEGURUAK */
   const rreq=Math.max(4*Lh,10), safe=[];
@@ -2557,12 +2557,13 @@ async function fsOsm(ctx){
 
   /* Defentsa-lerro iradokiaren eta atake paraleloaren ainguraketak */
   const ends=def?[def.pts[0],def.pts[def.pts.length-1]].map(p=>nearestCtl(p[0],p[1])):[];
-  D.anchors=[];
+  D.anchors=[]; D.anchorLinks=[];
   if(def&&def.pts.length>1){
     [0,def.pts.length-1].forEach((ix,i)=>{
       const p=def.pts[ix], near=ends[i], role=`Anclaje candidato ${i===0?"A":"B"} de la línea de defensa`;
       const a={lat:p[0],lon:p[1],role,near:near?{name:near.name,type:near.type,distance_m:Math.round(near.d)}:null};
       D.anchors.push(a);
+      if(near&&near.d<=500){const link={pts:[[a.lat,a.lon],[near.lat,near.lon]],distance_m:Math.round(near.d),role,control_name:near.name};D.anchorLinks.push(link);L.polyline(link.pts,{color:"#ff9800",weight:3,dashArray:"5 5",opacity:.9}).bindTooltip(`${role} → ${escapeHtml(near.name)} · enlace candidato ${link.distance_m} m`,{sticky:true}).addTo(fsGroup);}
       L.marker([a.lat,a.lon],{icon:fsIcon("⚓",19),zIndexOffset:1100})
         .bindTooltip(`${role}${near?` · control más cercano: ${escapeHtml(near.name)} (${Math.round(near.d)} m)`:" · sin control cercano identificado"} · verificar continuidad y seguridad`,{sticky:true}).addTo(fsGroup);
     });
@@ -2571,6 +2572,7 @@ async function fsOsm(ctx){
     const near=nearestCtl(p.pts[0][0],p.pts[0][1]);
     const a={lat:p.pts[0][0],lon:p.pts[0][1],role:`Anclaje candidato de ataque paralelo (${p.name})`,near:near?{name:near.name,type:near.type,distance_m:Math.round(near.d)}:null};
     D.anchors.push(a);
+    if(near&&near.d<=500){const link={pts:[[a.lat,a.lon],[near.lat,near.lon]],distance_m:Math.round(near.d),role:a.role,control_name:near.name};D.anchorLinks.push(link);L.polyline(link.pts,{color:"#ff9800",weight:2,dashArray:"4 5",opacity:.8}).bindTooltip(`${escapeHtml(a.role)} → ${escapeHtml(near.name)} · enlace candidato ${link.distance_m} m`,{sticky:true}).addTo(fsGroup);}
     L.marker([a.lat,a.lon],{icon:fsIcon("⚓",17),zIndexOffset:1050})
       .bindTooltip(`${a.role}${near?` · control más cercano: ${escapeHtml(near.name)} (${Math.round(near.d)} m)`:" · sin control cercano identificado"} · validar en campo`,{sticky:true}).addTo(fsGroup);
   });
@@ -2680,6 +2682,7 @@ function fsExportGeoJSON(){
   (D.par||[]).forEach((p,i)=>line(p,{kind:"parallel_attack_alternative",flank:i===0?"right":"left",status:"planning_alternative_requires_operational_validation"}));
   (D.crit||[]).forEach((c,i)=>point(c.lat,c.lon,{kind:"critical_point_candidate",index:i+1,time_min:c.t,reason:c.why||""}));
   (D.anchors||[]).forEach((a,i)=>point(a.lat,a.lon,{kind:"anchor_point_candidate",index:i+1,role:a.role,nearest_control:a.near?.name||null,nearest_control_type:a.near?.type||null,nearest_control_distance_m:a.near?.distance_m??null}));
+  (D.anchorLinks||[]).forEach((a,i)=>line(a.pts,{kind:"candidate_anchor_connection",index:i+1,anchor_role:a.role,existing_control_candidate:a.control_name,distance_m:a.distance_m,status:"requires_field_validation"}));
   (D.assets||[]).forEach(a=>point(a.lat,a.lon,{kind:a.big?"infrastructure_or_facility":"building_candidate",icon:a.icon||null}));
   point(fsLast.ign.lat,fsLast.ign.lng,{kind:"ignition_point"});
   const fc={type:"FeatureCollection",name:"IrratiGIS_OACEL",features};
@@ -2763,7 +2766,7 @@ async function fsRun(){
     out.innerHTML=fsDec(`Con estas condiciones el fuego <b>no se propaga</b> en las próximas 6 h: la humedad del combustible fino muerto es del ${m00.toFixed(1)} % (T ${Math.round(w00.T)} °C, HR ${Math.round(w00.RH)} %) y supera la de extinción de este combustible (${Math.round(fu.Mx*100)} %). Prueba otra hora de inicio (por la tarde baja la humedad), otro combustible, o pon la humedad a mano.`); return;
   }
   const bInit=fsBehavior(fu,ter.tan,ter.asp,w00.dir,w00.spd,m00), iRef=far.pts.findIndex(p=>p[1]>=15), tRef=(bInit.Rh>0||iRef<=0)?0:far.pts[iRef][0], w0=met.at(tRef), m0=fsMoistAt(w0), b0=fsBehavior(fu,ter.tan,ter.asp,w0.dir,w0.spd,m0);
-  fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0,met,farBg,draw:{perimeters:[],control:[],safe:[],escape:[],escapeRoutes:[],assets:[],crit:[],anchors:[],def:null,par:[]}};
+  fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0,met,farBg,draw:{perimeters:[],control:[],safe:[],escape:[],escapeRoutes:[],assets:[],crit:[],anchors:[],anchorLinks:[],def:null,par:[]}};
   const D=fsLast.draw, cols={30:"#d7191c",60:"#fd8d3c",120:"#ffd45a"}, ha={};
   [120,60,30].forEach(t=>{ const p=fsPerim(rays,t); ha[t]=fsHa(p); D.perimeters.push({minutes:t,area_ha:ha[t],pts:p});
     L.polygon(p,{color:cols[t],weight:2,fillColor:cols[t],fillOpacity:.25}).bindTooltip(`${t} min · ${ha[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup); });
