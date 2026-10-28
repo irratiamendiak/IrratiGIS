@@ -2460,7 +2460,7 @@ async function fsOsm(ctx){
     });
   });
   const seen=new Set(), ctl=cand.filter(c=>c.score>20).sort((a,b)=>b.score-a.score).filter(c=>!seen.has(c.w.id)&&seen.add(c.w.id)).slice(0,7);
-  ctl.forEach((c,i)=>{ const riv=!!c.w.tags.waterway, pts=c.run.map(v=>[v.lat,v.lon]); D.control.push({pts,riv});
+  ctl.forEach((c,i)=>{ const riv=!!c.w.tags.waterway, pts=c.run.map(v=>[v.lat,v.lon]); D.control.push({pts,riv,type:lineType(c.w),name:nm(c.w)||lineType(c.w)});
     L.polyline(pts,{color:riv?"#00a8e8":"#1565c0",weight:5,dashArray:"9 6",opacity:.9})
      .bindTooltip(`Control #${i+1} · ${lineType(c.w)}${nm(c.w)?" "+nm(c.w):""} · llega en ~${Math.round(c.mid.ta)} min`,{sticky:true}).addTo(fsGroup); });
   const nearestCtl=(lat,lon)=>{ let best=null; linear.forEach(w=>w.geometry.forEach(v=>{ const [e,n]=fsM({lat,lon},v), d=Math.hypot(e,n); if(!best||d<best.d) best={d,name:nm(w)||lineType(w),type:lineType(w),lat:v.lat,lon:v.lon}; })); return best; };
@@ -2677,7 +2677,7 @@ function fsExportGeoJSON(){
   };
   const point=(lat,lon,properties)=>{ if(Number.isFinite(lat)&&Number.isFinite(lon)) add({type:"Point",coordinates:[lon,lat]},properties); };
   (D.perimeters||[]).forEach(p=>polygon(p.pts,{kind:"predicted_perimeter",minutes:p.minutes,area_ha:Number(p.area_ha.toFixed(3)),status:"modelled_estimate"}));
-  (D.control||[]).forEach((c,i)=>line(c.pts,{kind:"existing_control_candidate",index:i+1,barrier_type:c.riv?"watercourse":"road_or_track",status:"candidate_requires_field_check"}));
+  (D.control||[]).forEach((c,i)=>line(c.pts,{kind:"existing_control_candidate",index:i+1,barrier_type:c.riv?"watercourse":c.type||"road_or_barrier",name:c.name||null,status:"candidate_requires_field_check"}));
   (D.safe||[]).forEach((p,i)=>polygon(p,{kind:"candidate_low_fuel_area",index:i+1,status:"unvalidated_candidate"}));
   (D.escape||[]).forEach((p,i)=>line(p,{kind:"candidate_escape_segment",index:i+1,status:"not_a_validated_route",warning:"No se ha comprobado continuidad hasta un lugar seguro ni transitabilidad."}));
   (D.escapeRoutes||[]).forEach((r,i)=>line(r.pts,{kind:"connected_escape_route_candidate",index:i+1,destination_candidate:r.zone_name,length_m:r.length_m,estimated_walking_minutes:r.eta_min,modelled_fire_arrival_margin_minutes:r.fire_margin_min,elapsed_since_ignition_minutes:r.elapsed_since_ignition_min,status:"not_field_validated",warning:"Ruta calculada sobre datos cartográficos y un modelo simplificado; confirmar accesibilidad, fuego, humo, pendiente, comunicaciones y destino en terreno."}));
