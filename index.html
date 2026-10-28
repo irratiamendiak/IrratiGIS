@@ -2698,10 +2698,11 @@ function fsExportGeoJSON(){
     ...properties
   }});
   const xy=pts=>pts.map(p=>[Number(p[1]),Number(p[0])]);
-  const validPts=pts=>Array.isArray(pts)&&pts.length>1&&pts.every(p=>Array.isArray(p)&&Number.isFinite(Number(p[0]))&&Number.isFinite(Number(p[1]))&&Math.abs(Number(p[0]))<=90&&Math.abs(Number(p[1]))<=180);
+  const validCoord=v=>v!==null&&v!==""&&v!==undefined&&Number.isFinite(Number(v));
+  const validPts=pts=>Array.isArray(pts)&&pts.length>1&&pts.every(p=>Array.isArray(p)&&validCoord(p[0])&&validCoord(p[1])&&Math.abs(Number(p[0]))<=90&&Math.abs(Number(p[1]))<=180);
   const line=(pts,properties)=>{ if(validPts(pts)) add({type:"LineString",coordinates:xy(pts)},properties); };
   const polygon=(pts,properties)=>{
-    if(!Array.isArray(pts)||pts.length<3||!pts.every(p=>Array.isArray(p)&&Number.isFinite(Number(p[0]))&&Number.isFinite(Number(p[1]))&&Math.abs(Number(p[0]))<=90&&Math.abs(Number(p[1]))<=180)) return;
+    if(!Array.isArray(pts)||pts.length<3||!pts.every(p=>Array.isArray(p)&&validCoord(p[0])&&validCoord(p[1])&&Math.abs(Number(p[0]))<=90&&Math.abs(Number(p[1]))<=180)) return;
     const ring=xy(pts);
     const a=ring[0], b=ring[ring.length-1];
     if(a[0]!==b[0]||a[1]!==b[1]) ring.push([...a]);
