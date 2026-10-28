@@ -2148,7 +2148,7 @@ const FS_FUELS={
   pinudia:{n:"Pinar / plantación con acículas (modelos 9-10)",R0:.25,sig:2000,beta:.02,waf:.2,w:.6,Mx:.25,Rmax:15},
   hostozabala:{n:"Hayedo / robledal, hojarasca (modelos 8-9)",R0:.2,sig:2200,beta:.03,waf:.15,w:.35,Mx:.30,Rmax:8}
 };
-const fsCfg={fuel:"garoa",moistMode:"calc",moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
+const fsCfg={fuel:"garoa",moistMode:"calc",startH:0,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
 let fsIgn=null, fsBusy=0, fsLast=null;
 const fsGroup=L.layerGroup(), fsDem=new Map();
 const fsCard=d=>["N","NE","E","SE","S","SO","O","NO"][Math.round((((d%360)+360)%360)/45)%8];
@@ -2293,9 +2293,9 @@ function fsFFM(T,RH){
 }
 const fsMoistAt=w=>fsCfg.moistMode==="man"?fsCfg.moist:fsFFM(w.T,w.RH);
 function fsWindChanges(met){   // eguraldi-iragarpenean haize-aldaketa nabarmenak (minutuak sua piztutik)
-  const out=[]; if(!met.hours.length) return out; let prev=met.now;
+  const out=[]; if(!met.hours.length) return out; let prev=met.at(0);
   for(let k=1;k<met.hours.length;k++){
-    const w=met.hours[k], t=k*60-met.m0; if(t>FS_T) break; if(!(t>0)) continue;
+    const w=met.hours[k], t=k*60-met.m0-(met.sh||0); if(t>FS_T) break; if(!(t>0)) continue;
     const mx=Math.max(w.spd,prev.spd), mn=Math.max(1,Math.min(w.spd,prev.spd));
     if((angDiff(prev.dir,w.dir)>=45&&mx>=8)||Math.abs(w.spd-prev.spd)>=15||(mx>=10&&mx/mn>=1.6)){ out.push({t,from:prev,to:w}); prev=w; }
   }
@@ -2512,17 +2512,17 @@ async function fsOsm(ctx){
 
 /* --- meteorologia (Open-Meteo: oraingoa + 12 orduko iragarpena; Campbell geruzaren iturri berbera) --- */
 async function fsMeteo(){
-  if(fsCfg.wind==="man"){ const w={dir:fsCfg.dir,spd:fsCfg.spd,gust:NaN,T:fsCfg.temp,RH:fsCfg.rh}; return {at:()=>w,now:w,hours:[],m0:0,src:"manual"}; }
+  if(fsCfg.wind==="man"){ const w={dir:fsCfg.dir,spd:fsCfg.spd,gust:NaN,T:fsCfg.temp,RH:fsCfg.rh}; return {at:()=>w,now:w,hours:[],m0:0,sh:0,src:"manual"}; }
   const v="temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m";
-  const r=await fetch("https://api.open-meteo.com/v1/forecast?"+new URLSearchParams({latitude:fsIgn.lat.toFixed(3),longitude:fsIgn.lng.toFixed(3),current:v,hourly:v,forecast_hours:"12",wind_speed_unit:"kmh",timezone:"Europe/Madrid"}));
+  const r=await fetch("https://api.open-meteo.com/v1/forecast?"+new URLSearchParams({latitude:fsIgn.lat.toFixed(3),longitude:fsIgn.lng.toFixed(3),current:v,hourly:v,forecast_hours:"24",wind_speed_unit:"kmh",timezone:"Europe/Madrid"}));
   if(!r.ok) throw new Error("No se pudo obtener la meteorología automática (HTTP "+r.status+"). Usa el modo manual.");
   const j=await r.json(), c=j.current||{}, h=j.hourly||{};
   const pk=(o,i)=>({dir:Number(o.wind_direction_10m[i]),spd:Number(o.wind_speed_10m[i]),gust:Number(o.wind_gusts_10m[i]),T:Number(o.temperature_2m[i]),RH:Number(o.relative_humidity_2m[i])});
   const hours=(h.time||[]).map((_,i)=>pk(h,i)), now={dir:Number(c.wind_direction_10m),spd:Number(c.wind_speed_10m),gust:Number(c.wind_gusts_10m),T:Number(c.temperature_2m),RH:Number(c.relative_humidity_2m)};
   if(![now.dir,now.spd,now.T,now.RH].every(Number.isFinite)) throw new Error("Meteorología automática incompleta. Usa el modo manual.");
-  const m0=new Date().getMinutes();
-  const at=t=>{ const k=Math.floor((t+m0)/60); return (t<=0||k<=0||!hours.length)?now:hours[Math.min(hours.length-1,k)]; };
-  return {at,now,hours,m0,src:"Open-Meteo, previsión horaria"};
+  const m0=new Date().getMinutes(), sh=fsCfg.startH*60;
+  const at=t=>{ const k=Math.floor((t+sh+m0)/60); return (k<=0||!hours.length)?now:hours[Math.min(hours.length-1,k)]; };
+  return {at,now,hours,m0,sh,src:"Open-Meteo, previsión horaria"};
 }
 
 /* --- estaldura / erregaia: geoEuskadi baso-mapa (WMS GetFeatureInfo). Iradokizuna bakarrik. --- */
@@ -2578,7 +2578,9 @@ function fsOacel(b0,w0,Lh,osm){
 
 /* --- panela --- */
 const fsPanel=L.DomUtil.create("div","",map.getContainer());
-fsPanel.style.cssText="display:none;position:absolute;left:12px;bottom:30px;z-index:1000;width:min(360px,calc(100% - 24px));max-height:72%;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.35);padding:10px 12px;font:12px/1.4 system-ui;color:#1d2b24";
+fsPanel.style.cssText="display:none;position:absolute;left:12px;bottom:30px;z-index:1000;width:min(360px,calc(100% - 24px));max-height:72%;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.35);padding:10px 12px;font:12px/1.4 system-ui;color:#1d2b24;overflow-x:hidden;box-sizing:border-box";
+fsPanel.className="fs-panel";
+{ const st=document.createElement("style"); st.textContent=".fs-panel select,.fs-panel input[type=number]{max-width:100%;box-sizing:border-box}.fs-panel select{font-size:12px}"; document.head.appendChild(st); }
 L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation(fsPanel);
 {
   const bs="border:0;border-radius:8px;padding:6px 10px;font:700 12px system-ui;cursor:pointer;color:#fff;", row="margin-bottom:4px";
@@ -2586,8 +2588,9 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div style="display:flex;justify-content:space-between;align-items:center"><strong style="font-size:13px">🔥 Evolución del incendio · simulación</strong><button type="button" class="fs-x" style="border:0;background:none;font-size:16px;cursor:pointer">✕</button></div>`+
    `<div style="color:#8b2f2f;font-size:11px;margin:3px 0 6px">Apoyo a la decisión con modelo simplificado (tipo Rothermel). No sustituye al mando ni a las herramientas operativas. No modela focos secundarios ni fuego de copa.</div>`+
    `<div style="${row}">Combustible <select class="fs-fuel" style="max-width:100%">${Object.keys(FS_FUELS).map(k=>`<option value="${k}"${k===fsCfg.fuel?" selected":""}>${FS_FUELS[k].n}</option>`).join("")}</select></div>`+
-   `<div style="${row}">Meteorología <select class="fs-ws"><option value="auto">Automática (viento, temperatura y humedad + previsión)</option><option value="man">Manual</option></select></div>`+
+   `<div style="${row}">Meteorología <select class="fs-ws"><option value="auto">Automática (Open-Meteo + previsión)</option><option value="man">Manual</option></select></div>`+
    `<div class="fs-man" style="display:none;${row}">Viento del <input type="number" class="fs-dir" min="0" max="360" step="5" value="${fsCfg.dir}" style="width:50px">° · <input type="number" class="fs-spd" min="0" max="100" value="${fsCfg.spd}" style="width:44px"> km/h · T <input type="number" class="fs-t" min="-10" max="45" value="${fsCfg.temp}" style="width:42px">°C · HR <input type="number" class="fs-rh" min="5" max="100" value="${fsCfg.rh}" style="width:42px">%</div>`+
+   `<div style="${row}">Inicio del fuego <select class="fs-sh"><option value="0">ahora</option><option value="3">en 3 h</option><option value="6">en 6 h</option><option value="9">en 9 h</option><option value="12">en 12 h</option></select> <span style="color:#65736b">(solo con meteorología automática)</span></div>`+
    `<div style="${row}">Humedad comb. fino muerto <select class="fs-mm"><option value="calc">calculada (T y HR)</option><option value="man">manual</option></select> <span class="fs-msl" style="display:none"><input type="range" class="fs-m" min="3" max="25" value="${fsCfg.moist}" style="width:80px;vertical-align:middle"> <b class="fs-mv">${fsCfg.moist}%</b></span></div>`+
    `<div style="${row}">Medios para construir línea <select class="fs-rate"><option value="100">Herramienta manual (~100 m/h)</option><option value="300" selected>Mixto (~300 m/h)</option><option value="600">Maquinaria (~600 m/h)</option></select></div>`+
    `<div style="display:flex;gap:6px;margin:6px 0"><button type="button" class="fs-set" style="${bs}background:#d9480f">📍 Marcar inicio</button><button type="button" class="fs-clr" style="${bs}background:#65736b">Limpiar</button></div>`+
@@ -2600,6 +2603,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-spd").onchange=e=>{ fsCfg.spd=num(e,0,100,0); rerun(); };
   q(".fs-t").onchange=e=>{ fsCfg.temp=num(e,-10,45,20); rerun(); };
   q(".fs-rh").onchange=e=>{ fsCfg.rh=num(e,5,100,50); rerun(); };
+  q(".fs-sh").onchange=e=>{ fsCfg.startH=Number(e.target.value); rerun(); };
   q(".fs-mm").onchange=e=>{ fsCfg.moistMode=e.target.value; q(".fs-msl").style.display=fsCfg.moistMode==="man"?"inline":"none"; rerun(); };
   q(".fs-m").oninput=e=>{ q(".fs-mv").textContent=e.target.value+"%"; };
   q(".fs-m").onchange=e=>{ fsCfg.moist=Number(e.target.value); rerun(); };
@@ -2638,9 +2642,12 @@ async function fsRun(){
     if(!Number.isFinite(fsElev(fsIgn.lat,fsIgn.lng))) throw new Error("No se pudo cargar el terreno (modelo digital de elevación).");
   }catch(err){ if(my===fsBusy) out.innerHTML="⚠️ "+escapeHtml(err.message||String(err)); return; }
   if(my!==fsBusy) return;
-  const w0=met.at(0), m0=fsMoistAt(w0), ter=fsTerrain(fsIgn.lat,fsIgn.lng), b0=fsBehavior(fu,ter.tan,ter.asp,w0.dir,w0.spd,m0);
-  if(b0.Rh<=0){ out.innerHTML=`Con una humedad del combustible fino del ${m0.toFixed(1)} % (por encima de la de extinción de este combustible) el fuego <b>no se propaga</b> en este modelo.`; return; }
-  const rays=fsSimulate(fu,met), far=rays.reduce((a,r)=>r.pts[90][1]>a.pts[90][1]?r:a,rays[0]), farBg=far.bg;
+  const rays=fsSimulate(fu,met), far=rays.reduce((a,r)=>r.pts[180][1]>a.pts[180][1]?r:a,rays[0]), farBg=far.bg;
+  const ter=fsTerrain(fsIgn.lat,fsIgn.lng), w00=met.at(0), m00=fsMoistAt(w00);
+  if(far.pts[180][1]<15){
+    out.innerHTML=fsDec(`Con estas condiciones el fuego <b>no se propaga</b> en las próximas 6 h: la humedad del combustible fino muerto es del ${m00.toFixed(1)} % (T ${Math.round(w00.T)} °C, HR ${Math.round(w00.RH)} %) y supera la de extinción de este combustible (${Math.round(fu.Mx*100)} %). Prueba otra hora de inicio (por la tarde baja la humedad), otro combustible, o pon la humedad a mano.`); return;
+  }
+  const bInit=fsBehavior(fu,ter.tan,ter.asp,w00.dir,w00.spd,m00), iRef=far.pts.findIndex(p=>p[1]>=15), tRef=(bInit.Rh>0||iRef<=0)?0:far.pts[iRef][0], w0=met.at(tRef), m0=fsMoistAt(w0), b0=fsBehavior(fu,ter.tan,ter.asp,w0.dir,w0.spd,m0);
   fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0,met,farBg,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
   const D=fsLast.draw, cols={30:"#d7191c",60:"#fd8d3c",120:"#ffd45a"}, ha={};
   [120,60,30].forEach(t=>{ const p=fsPerim(rays,t); ha[t]=fsHa(p);
@@ -2679,14 +2686,15 @@ async function fsRun(){
   const critIcon=n=>L.divIcon({className:"",html:`<div style="background:#d6006f;color:#fff;border:2px solid #fff;border-radius:50%;width:22px;height:22px;line-height:18px;text-align:center;font:700 12px system-ui;box-shadow:0 1px 3px rgba(0,0,0,.6)">${n}</div>`,iconSize:[22,22],iconAnchor:[11,11]});
   crit.forEach((c,i)=>{ D.crit.push(c); L.marker([c.lat,c.lon],{icon:critIcon(i+1),zIndexOffset:900}).bindTooltip(`Punto crítico ${i+1} · ~${c.t} min`).addTo(fsGroup); });
 
-  const warn=[]; if(w0.spd>=40||Ih>3460) warn.push("Viento/intensidad altos: puede haber focos secundarios y fuego de copa (no modelados); la propagación real puede ser mayor.");
+  const warn=[]; if(tRef>0) warn.push(`Al inicio el combustible fino está demasiado húmedo (${m00.toFixed(1)} %): el fuego no empieza a avanzar hasta ~${tRef} min, cuando baja la humedad. Los valores de propagación, intensidad y estrategia se refieren a ese momento.`);
+  if(w0.spd>=40||Ih>3460) warn.push("Viento/intensidad altos: puede haber focos secundarios y fuego de copa (no modelados); la propagación real puede ser mayor.");
   if(w0.gust>w0.spd*1.4) warn.push(`Rachas de ${Math.round(w0.gust)} km/h: la velocidad puntual puede superar la estimada.`);
   const summary=
     `<div style="border-left:4px solid ${st[0]};padding:2px 8px;margin:4px 0"><b style="color:${st[0]}">${st[1]}</b><br>${st[2]}<br><b>Ataque paralelo</b>: ${fsParAdvice(Lh,Lf)}</div>`+
     `<b>Propagación</b>: cabeza hacia <b>${fsCard(b0.head)} (${Math.round(b0.head)}°)</b> · <b>${b0.Rh.toFixed(1)} m/min</b> (${(b0.Rh*.06).toFixed(2)} km/h)<br>`+
     `Flancos ${fsR(b0,90).toFixed(1)} m/min · cola ${fsR(b0,180).toFixed(1)} m/min · relación L/A ${b0.LB.toFixed(1)}<br>`+
     `Intensidad ${Math.round(Ih)} kW/m · llama ≈ ${Lh.toFixed(1)} m (flancos ${Lf.toFixed(1)} m · cola ${Lb.toFixed(1)} m)<br>`+
-    `Viento ${fsCard(w0.dir)} ${Math.round(w0.dir)}° · ${Math.round(w0.spd)} km/h · T ${Math.round(w0.T)} °C · HR ${Math.round(w0.RH)} % → humedad comb. fino muerto <b>${m0.toFixed(1)} %</b>${fsCfg.moistMode==="man"?" (manual)":""} <span style="color:#65736b">(${escapeHtml(met.src)})</span><br>`+
+    `${fsCfg.wind==="auto"&&fsCfg.startH?"Inicio dentro de "+fsCfg.startH+" h · ":""}Viento ${fsCard(w0.dir)} ${Math.round(w0.dir)}° · ${Math.round(w0.spd)} km/h · T ${Math.round(w0.T)} °C · HR ${Math.round(w0.RH)} % → humedad comb. fino muerto <b>${m0.toFixed(1)} %</b>${fsCfg.moistMode==="man"?" (manual)":""} <span style="color:#65736b">(${escapeHtml(met.src)})</span><br>`+
     `Pendiente en el inicio ${Math.round(ter.tan*100)}% (ladera hacia ${fsCard(ter.asp)})<br>`+
     `Superficie: <span style="color:#d7191c">30 min ${ha[30].toFixed(1)} ha</span> · <span style="color:#e8590c">60 min ${ha[60].toFixed(1)} ha</span> · <span style="color:#c98a00">120 min ${ha[120].toFixed(1)} ha</span>`+
     warn.map(w=>`<div style="color:#8b2f2f;margin-top:4px">⚠️ ${w}</div>`).join("");
