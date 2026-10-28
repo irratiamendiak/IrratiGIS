@@ -8,7 +8,10 @@ const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
 
 assert.ok(scripts.length > 0, "Expected at least one inline JavaScript block");
 for (const [index, script] of scripts.entries()) {
-  assert.doesNotThrow(() => new Function(script[2]), \`Inline script \${index + 1} must parse\`);
+  assert.doesNotThrow(
+    () => new Function(script[2]),
+    "Inline script " + (index + 1) + " must parse"
+  );
 }
 
 const required = [
@@ -21,7 +24,8 @@ const required = [
   ["safety disclaimer", "no certifica seguridad"],
 ];
 for (const [label, token] of required) {
-  assert.ok(html.includes(token), \`Missing expected feature: \${label}\`);
+  assert.ok(html.includes(token), "Missing expected feature: " + label);
 }
 
-console.log(\`Static OACEL checks passed: \${scripts.length} inline scripts parsed; \${required.length} feature guards found.\`);
+console.log("Static OACEL checks passed: " + scripts.length +
+  " inline scripts parsed; " + required.length + " feature guards found.");
