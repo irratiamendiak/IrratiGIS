@@ -68,7 +68,7 @@ helpers.line([[42, -2], [43, -3]], {kind: "valid_line"});
 assert.equal(emitted.length, 1);
 assert.deepEqual(emitted[0].geometry.coordinates, [[-2, 42], [-3, 43]]);
 emitted.length = 0;
-helpers.polygon([[42, -2], [43, -3], [44, -4]], {kind: "test_polygon"});
+helpers.polygon([[42, -2], [43, -3], [44, -2]], {kind: "test_polygon"});
 assert.equal(emitted.length, 1);
 const ring = emitted[0].geometry.coordinates[0];
 assert.deepEqual(ring[0], ring[ring.length - 1],
