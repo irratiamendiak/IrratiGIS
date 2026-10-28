@@ -55,16 +55,22 @@ try {
   // isolated test page so it can exercise the underlying map and OACEL controls.
   await page.evaluate(() => document.querySelector("#irratiLoginBackdrop")?.remove());
 
-  const layerToggle = page.locator(".leaflet-control-layers-toggle");
-  if (await layerToggle.isVisible()) await layerToggle.click();
   const oacelLabel = page.locator(".leaflet-control-layers-overlays label")
     .filter({ hasText: "Suteen bilakaera (simulazioa)" });
-  await oacelLabel.waitFor({ state: "visible", timeout: 15000 });
+  await oacelLabel.waitFor({ state: "attached", timeout: 15000 });
   const checkbox = oacelLabel.locator('input[type="checkbox"]');
-  await checkbox.check({ force: true });
+  // Change the actual Leaflet overlay control without relying on its collapsed
+  // panel being physically clickable under the browser's hover state.
+  await checkbox.evaluate(el => {
+    el.checked = true;
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  });
   await page.locator(".fs-panel").waitFor({ state: "visible", timeout: 5000 });
   await assertPanelControls(page);
-  await checkbox.uncheck({ force: true });
+  await checkbox.evaluate(el => {
+    el.checked = false;
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  });
   await page.waitForFunction(() => {
     const panel = document.querySelector(".fs-panel");
     return panel && getComputedStyle(panel).display === "none";
