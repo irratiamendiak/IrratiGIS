@@ -1,0 +1,20 @@
+name: OACEL static checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feature/oacel-export-anchors]
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run OACEL static checks
+        run: node tests/oacel-static-check.mjs
