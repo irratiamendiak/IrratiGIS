@@ -15,6 +15,7 @@ for (const [index, script] of scripts.entries()) {
 }
 
 const required = [
+  ["motorway and trunk links excluded from pedestrian graph", '!["motorway","motorway_link","trunk","trunk_link"].includes(w.tags.highway)'],
   ["sampled fire-arrival checks", "fireSamples"],
   ["reverse edge samples", "fireSamples:fireSamples.map(p=>({f:1-p.f,arrival:p.arrival})).reverse()"],
   ["off-network connector checks", "const connectorSafe="],
