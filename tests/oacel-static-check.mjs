@@ -22,6 +22,12 @@ const required = [
   ["route diagnostic status", "no_connected_route_passed_checks"],
   ["diagnostic in exported metadata", "route_status:fsLast.osm?.routeStatus"],
   ["GeoJSON point latitude and longitude bounds", "Math.abs(lat)<=90&&Math.abs(lon)<=180"],
+  ["GeoJSON coordinates reversed from lat/lon to lon/lat", "const xy=pts=>pts.map(p=>[Number(p[1]),Number(p[0])])"],
+  ["GeoJSON polygon rings closed", "if(a[0]!==b[0]||a[1]!==b[1]) ring.push([...a])"],
+  ["GeoJSON line coordinate validation", "const line=(pts,properties)=>{ if(validPts(pts))"],
+  ["GeoJSON polygon coordinate bounds", "Math.abs(Number(p[0]))<=90&&Math.abs(Number(p[1]))<=180"],
+  ["GeoJSON collection metadata and coordinate order", 'coordinate_order:"[longitude, latitude]"'],
+  ["GeoJSON route warning preserved", "confirmar accesibilidad, fuego, humo, pendiente, comunicaciones y destino en terreno."],
   ["WGS84 GeoJSON export", "application/geo+json;charset=utf-8"],
   ["safety disclaimer", "no certifica seguridad"],
 ];
