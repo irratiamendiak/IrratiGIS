@@ -56,7 +56,7 @@ try {
   await page.evaluate(() => document.querySelector("#irratiLoginBackdrop")?.remove());
 
   const layerToggle = page.locator(".leaflet-control-layers-toggle");
-  if (await layerToggle.count()) await layerToggle.click();
+  if (await layerToggle.isVisible()) await layerToggle.click();
   const oacelLabel = page.locator(".leaflet-control-layers-overlays label")
     .filter({ hasText: "Suteen bilakaera (simulazioa)" });
   await oacelLabel.waitFor({ state: "visible", timeout: 15000 });
