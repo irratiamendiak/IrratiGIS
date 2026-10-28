@@ -37,3 +37,43 @@ for (const [label, token] of required) {
 
 console.log("Static OACEL checks passed: " + scripts.length +
   " inline scripts parsed; " + required.length + " feature guards found.");
+
+const exportStart = html.indexOf("function fsExportGeoJSON(){");
+const helpersStart = html.indexOf("  const xy=pts=>", exportStart);
+const helpersEnd = html.indexOf("  (D.perimeters||[])", helpersStart);
+assert.ok(exportStart >= 0 && helpersStart > exportStart && helpersEnd > helpersStart,
+  "Expected GeoJSON geometry helpers inside fsExportGeoJSON");
+const emitted = [];
+const helpersSource = html.slice(helpersStart, helpersEnd);
+const helpers = new Function("add", helpersSource +
+  "\nreturn {xy,validPts,line,polygon,point};")((geometry, properties) =>
+    emitted.push({geometry, properties}));
+
+assert.deepEqual(helpers.xy([[42.5, -2.7], [43, -3]]),
+  [[-2.7, 42.5], [-3, 43]], "Coordinates must be emitted as longitude, latitude");
+assert.equal(helpers.validPts([[42, -2], [43, -3]]), true);
+assert.equal(helpers.validPts([[91, -2], [43, -3]]), false,
+  "Latitude outside [-90, 90] must be rejected");
+assert.equal(helpers.validPts([[42, 181], [43, -3]]), false,
+  "Longitude outside [-180, 180] must be rejected");
+helpers.line([[42, -2]], {kind: "invalid_line"});
+assert.equal(emitted.length, 0, "Lines with fewer than two points must be rejected");
+helpers.line([[42, -2], [43, -3]], {kind: "valid_line"});
+assert.equal(emitted.length, 1);
+assert.deepEqual(emitted[0].geometry.coordinates, [[-2, 42], [-3, 43]]);
+emitted.length = 0;
+helpers.polygon([[42, -2], [43, -3], [44, -4]], {kind: "test_polygon"});
+assert.equal(emitted.length, 1);
+const ring = emitted[0].geometry.coordinates[0];
+assert.deepEqual(ring[0], ring[ring.length - 1],
+  "Polygon ring must be closed");
+emitted.length = 0;
+helpers.polygon([[91, -2], [43, -3], [44, -4]], {kind: "invalid_polygon"});
+assert.equal(emitted.length, 0, "Invalid polygon coordinates must be rejected");
+helpers.point(91, -2, {kind: "invalid_point"});
+helpers.point(42, 181, {kind: "invalid_point"});
+assert.equal(emitted.length, 0, "Out-of-range points must be rejected");
+helpers.point(42, -2, {kind: "valid_point"});
+assert.deepEqual(emitted[0].geometry.coordinates, [-2, 42]);
+
+console.log("Executable GeoJSON geometry tests passed.");
