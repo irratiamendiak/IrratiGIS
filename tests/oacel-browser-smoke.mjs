@@ -51,6 +51,10 @@ try {
   assert.ok(await page.locator("#map").evaluate(el => el.clientHeight >= 400),
     "Map should have a usable visible height");
 
+  // This smoke test has no user credentials; remove the auth gate only in the
+  // isolated test page so it can exercise the underlying map and OACEL controls.
+  await page.evaluate(() => document.querySelector("#irratiLoginBackdrop")?.remove());
+
   const layerToggle = page.locator(".leaflet-control-layers-toggle");
   if (await layerToggle.count()) await layerToggle.click();
   const oacelLabel = page.locator(".leaflet-control-layers-overlays label")
