@@ -2446,7 +2446,7 @@ async function fsOsm(ctx){
   const lineType=w=>w.tags.waterway?({river:"Río",stream:"Arroyo",canal:"Canal"}[w.tags.waterway]||"Curso de agua"):w.tags.natural==="cliff"?"Roquedo / cortado":w.tags.barrier?({wall:"Muro",fence:"Valla",retaining_wall:"Muro de contención",ditch:"Zanja",hedge:"Seto"}[w.tags.barrier]||"Barrera"):FS_HW[w.tags.highway]||w.tags.highway;
   const nm=w=>w.tags.name||w.tags.ref||"";
   const linear=ways.filter(w=>w.tags.highway||w.tags.waterway||w.tags.natural==="cliff"||w.tags.barrier);
-  const routeWays=linear.filter(w=>w.tags.highway&&!["motorway","trunk"].includes(w.tags.highway)&&!["no","private"].includes(w.tags.access)&&!["no","private"].includes(w.tags.foot));
+  const routeWays=linear.filter(w=>w.tags.highway&&!["motorway","motorway_link","trunk","trunk_link"].includes(w.tags.highway)&&!["no","private"].includes(w.tags.access)&&!["no","private"].includes(w.tags.foot));
 
   /* KONTROL-LERROAK (lehendik daudenak: ibaiak, errepideak, pistak, bidexkak): aurrealdeko sektorean, hedapenarekiko perpendikularrak */
   const cand=[];
