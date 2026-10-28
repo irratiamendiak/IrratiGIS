@@ -25,6 +25,7 @@ const required = [
   ["GeoJSON coordinates reversed from lat/lon to lon/lat", "const xy=pts=>pts.map(p=>[Number(p[1]),Number(p[0])])"],
   ["GeoJSON polygon rings closed", "if(a[0]!==b[0]||a[1]!==b[1]) ring.push([...a])"],
   ["GeoJSON line coordinate validation", "const line=(pts,properties)=>{ if(validPts(pts))"],
+  ["reject null and empty GeoJSON coordinates", 'const validCoord=v=>v!==null&&v!==""&&v!==undefined&&Number.isFinite(Number(v))'],
   ["GeoJSON polygon coordinate bounds", "Math.abs(Number(p[0]))<=90&&Math.abs(Number(p[1]))<=180"],
   ["GeoJSON collection metadata and coordinate order", 'coordinate_order:"[longitude, latitude]"'],
   ["GeoJSON route warning preserved", "confirmar accesibilidad, fuego, humo, pendiente, comunicaciones y destino en terreno."],
@@ -56,6 +57,10 @@ assert.equal(helpers.validPts([[91, -2], [43, -3]]), false,
   "Latitude outside [-90, 90] must be rejected");
 assert.equal(helpers.validPts([[42, 181], [43, -3]]), false,
   "Longitude outside [-180, 180] must be rejected");
+assert.equal(helpers.validPts([[null, -2], [43, -3]]), false,
+  "Null coordinates must not coerce to zero");
+assert.equal(helpers.validPts([["", -2], [43, -3]]), false,
+  "Empty coordinates must not coerce to zero");
 helpers.line([[42, -2]], {kind: "invalid_line"});
 assert.equal(emitted.length, 0, "Lines with fewer than two points must be rejected");
 helpers.line([[42, -2], [43, -3]], {kind: "valid_line"});
