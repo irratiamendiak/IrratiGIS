@@ -25,6 +25,7 @@ const required = [
   ["GeoJSON coordinates reversed from lat/lon to lon/lat", "const xy=pts=>pts.map(p=>[Number(p[1]),Number(p[0])])"],
   ["GeoJSON polygon rings closed", "if(a[0]!==b[0]||a[1]!==b[1]) ring.push([...a])"],
   ["GeoJSON rejects degenerate polygon rings", "if(!Number.isFinite(twiceArea)||Math.abs(twiceArea)<1e-12) return"],
+  ["GeoJSON exterior rings use counter-clockwise winding", "if(twiceArea<0){ ring.pop(); ring.reverse(); ring.push([...ring[0]]); }"],
   ["GeoJSON line coordinate validation", "const line=(pts,properties)=>{ if(validPts(pts))"],
   ["reject null and empty GeoJSON coordinates", 'const validCoord=v=>v!==null&&v!==""&&v!==undefined&&Number.isFinite(Number(v))'],
   ["GeoJSON polygon coordinate bounds", "Math.abs(Number(p[0]))<=90&&Math.abs(Number(p[1]))<=180"],
@@ -73,6 +74,11 @@ assert.equal(emitted.length, 1);
 const ring = emitted[0].geometry.coordinates[0];
 assert.deepEqual(ring[0], ring[ring.length - 1],
   "Polygon ring must be closed");
+const signedArea = ring.slice(0, -1).reduce((sum, p, i, pts) => {
+  const next = pts[i + 1];
+  return sum + p[0] * next[1] - next[0] * p[1];
+}, 0);
+assert.ok(signedArea > 0, "Exterior polygon ring must be counter-clockwise");
 emitted.length = 0;
 helpers.polygon([[91, -2], [43, -3], [44, -4]], {kind: "invalid_polygon"});
 assert.equal(emitted.length, 0, "Invalid polygon coordinates must be rejected");
