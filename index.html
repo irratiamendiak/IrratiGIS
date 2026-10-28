@@ -1271,13 +1271,13 @@ async function queryB5mFeatureInfo(latlng){
 }
 
 let streetViewMode=false;
-let fsArmed=false;   // suteen simulazioa: su-hasiera hautatzeko zain
+let fsArmed=false, fsTeamArmed=false;   // su-hasiera eta posizio-taldea mapan markatzeko moduak
 /* Google Street View: Maps URLs (gakorik gabe eta doan). Fitxa berrian irekitzen da. */
 function streetViewUrl(lat,lon){
   return "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint="+Number(lat).toFixed(7)+","+Number(lon).toFixed(7);
 }
 map.on("click",e=>{
-  if(waypointMode||drawingTrack||coordPickMode||streetViewMode||fsArmed)return;
+  if(waypointMode||drawingTrack||coordPickMode||streetViewMode||fsArmed||fsTeamArmed)return;
   queryB5mFeatureInfo(e.latlng);
 });
 
@@ -2149,7 +2149,7 @@ const FS_FUELS={
   hostozabala:{n:"Hayedo / robledal, hojarasca (modelos 8-9)",R0:.2,sig:2200,beta:.03,waf:.15,w:.35,Mx:.30,Rmax:8}
 };
 const fsCfg={fuel:"garoa",moistMode:"calc",startH:0,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
-let fsIgn=null, fsBusy=0, fsLast=null;
+let fsIgn=null, fsTeamPos=null, fsBusy=0, fsLast=null;
 const fsGroup=L.layerGroup(), fsDem=new Map();
 const fsCard=d=>["N","NE","E","SE","S","SO","O","NO"][Math.round((((d%360)+360)%360)/45)%8];
 const fsRad=Math.PI/180;
@@ -2436,6 +2436,7 @@ async function fsOsm(ctx){
   const {rays,farBg,Lh,per60,def}=ctx, o={lat:fsIgn.lat,lon:fsIgn.lng}, D=fsLast.draw;
   let la=[fsIgn.lat-.014,fsIgn.lat+.014], lo=[fsIgn.lng-.019,fsIgn.lng+.019];
   rays.forEach(r=>{ const p=r.pts[r.pts.length-1]; la.push(p[2]); lo.push(p[3]); });
+  if(fsTeamPos){la.push(fsTeamPos.lat);lo.push(fsTeamPos.lng);}
   const bb=[Math.max(fsIgn.lat-.055,Math.min(...la)-.008),Math.max(fsIgn.lng-.075,Math.min(...lo)-.01),
             Math.min(fsIgn.lat+.055,Math.max(...la)+.008),Math.min(fsIgn.lng+.075,Math.max(...lo)+.01)].map(x=>x.toFixed(5)).join(",");
   const j=await fsOverpass(bb), all=j.elements||[];
@@ -2497,7 +2498,8 @@ async function fsOsm(ctx){
     });
     const nodeList=[...nodes.values()];
     const nearest=(ll,maxM=350)=>{let best=null;for(const n of nodeList){const [dx,dy]=fsM(ll,n),d=Math.hypot(dx,dy);if(d<=maxM&&(!best||d<best.d))best={node:n,d};}return best;};
-    const start=nearest(o,500);
+    const routeOrigin=fsTeamPos?{lat:fsTeamPos.lat,lon:fsTeamPos.lng}:null;
+    const start=routeOrigin?nearest(routeOrigin,500):null;
     if(start&&nodeList.length){
       const targets=safe.map((z,i)=>{let best=null;for(const p of z.pts){const n=nearest({lat:p[0],lon:p[1]},350);if(n&&(!best||n.d<best.d))best={...n,zone:z,index:i};}return best;}).filter(Boolean);
       const dist=new Map([[start.node.id,0]]),prev=new Map(),done=new Set(),heap=[];
@@ -2522,7 +2524,7 @@ async function fsOsm(ctx){
         const ids=[t.node.id];let cur=t.node.id,guard=0;
         while(cur!==start.node.id&&prev.has(cur)&&guard++<30000){cur=prev.get(cur).from;ids.push(cur);}
         if(ids[ids.length-1]!==start.node.id||ids.length<2)return;ids.reverse();
-        const pts=[[fsIgn.lat,fsIgn.lng],...ids.map(id=>[nodes.get(id).lat,nodes.get(id).lon])];
+        const pts=[[fsTeamPos.lat,fsTeamPos.lng],...ids.map(id=>[nodes.get(id).lat,nodes.get(id).lon])];
         const boundary=t.zone.pts.reduce((best,p)=>{const [dx,dy]=fsM({lat:t.node.lat,lon:t.node.lon},{lat:p[0],lon:p[1]}),d=Math.hypot(dx,dy);return !best||d<best.d?{p,d}:best;},null);
         if(boundary&&boundary.d<=350)pts.push(boundary.p);
         let length=0;for(let i=1;i<pts.length;i++){const [dx,dy]=fsM({lat:pts[i-1][0],lon:pts[i-1][1]},{lat:pts[i][0],lon:pts[i][1]});length+=Math.hypot(dx,dy);}
@@ -2577,7 +2579,7 @@ async function fsOsm(ctx){
       .bindTooltip(`${a.role}${near?` · control más cercano: ${escapeHtml(near.name)} (${Math.round(near.d)} m)`:" · sin control cercano identificado"} · validar en campo`,{sticky:true}).addTo(fsGroup);
   });
   const info=c=>({name:nm(c.w),type:lineType(c.w),ta:c.mid.ta,d:c.mid.d,len:c.len,riv:!!c.w.tags.waterway});
-  return {ctl:ctl.map(info),
+  return {teamPositionSet:!!fsTeamPos,ctl:ctl.map(info),
     safe:safe.map(s=>({name:FS_TYPE[s.w.tags.landuse||s.w.tags.natural||s.w.tags.leisure]||"zona",r:s.r,d:s.a.d,b:s.a.b})),
     escape:escape.map(c=>({name:nm(c.w)||lineType(c.w),d:c.dmin})),escapeRoutes:escapeRoutes.map(r=>({zone_name:r.zone_name,length_m:r.length_m,eta_min:r.eta_min,fire_margin_min:r.fire_margin_min})),rreq,ends,
     bld:{n:blds.length,first:blds[0],b60:blds.filter(x=>x.ta<=60).length,b120:blds.filter(x=>x.ta<=120).length,b240:blds.filter(x=>x.ta<=240).length},
@@ -2641,7 +2643,7 @@ function fsParAdvice(Lh,Lf){
 
 /* --- OACEL --- */
 function fsOacel(b0,w0,Lh,osm){
-  const esc=osm&&osm.escapeRoutes&&osm.escapeRoutes.length?"rutas conectadas candidatas: "+osm.escapeRoutes.map(x=>`${escapeHtml(x.zone_name)} (${x.length_m} m; ~${x.eta_min} min a pie; margen modelado ${x.fire_margin_min} min)`).join("; ")+" — cálculo preliminar sobre OSM; no está validado en campo. "+(osm.escape.length?"También se muestran tramos candidatos sin continuidad garantizada.":""):"no se ha podido calcular una ruta conectada hasta una zona candidata; "+(osm&&osm.escape.length?"se muestran solo tramos candidatos. ":"")+"definir y reconocer una salida antes de entrar."; 
+  const esc=osm&&osm.teamPositionSet&&osm.escapeRoutes&&osm.escapeRoutes.length?"desde la posición marcada del equipo, rutas conectadas candidatas: "+osm.escapeRoutes.map(x=>`${escapeHtml(x.zone_name)} (${x.length_m} m; ~${x.eta_min} min a pie; margen modelado ${x.fire_margin_min} min)`).join("; ")+" — cálculo preliminar sobre OSM; no está validado en campo. "+(osm.escape.length?"También se muestran tramos candidatos sin continuidad garantizada.":""):!osm?.teamPositionSet?"marca la posición actual del equipo con «Posición del equipo» para calcular rutas desde ese punto. ":"no se ha podido calcular una ruta conectada hasta una zona candidata; "+(osm&&osm.escape.length?"se muestran solo tramos candidatos. ":"")+"definir y reconocer una salida antes de entrar."; 
   return `<details style="margin-top:6px" open><summary style="cursor:pointer;font-weight:700">🛡️ Protocolo OACEL</summary>`+
     `<div><b>O · Observación</b>: observador en posición segura con visión del frente (cabeza hacia ${fsCard(b0.head)}) y de los flancos; si no hay visión directa, comunicación con quien la tenga.</div>`+
     `<div><b>A · Atención</b>: vigilar los puntos críticos marcados (cambios de viento y pendiente, alineaciones Campbell), giros de viento (previsto ${fsCard(w0.dir)} ${Math.round(w0.spd)} km/h), humo y focos; si algo cambia, reevaluar.</div>`+
@@ -2685,6 +2687,7 @@ function fsExportGeoJSON(){
   (D.anchorLinks||[]).forEach((a,i)=>line(a.pts,{kind:"candidate_anchor_connection",index:i+1,anchor_role:a.role,existing_control_candidate:a.control_name,distance_m:a.distance_m,status:"requires_field_validation"}));
   (D.assets||[]).forEach(a=>point(a.lat,a.lon,{kind:a.big?"infrastructure_or_facility":"building_candidate",icon:a.icon||null}));
   point(fsLast.ign.lat,fsLast.ign.lng,{kind:"ignition_point"});
+  if(fsTeamPos)point(fsTeamPos.lat,fsTeamPos.lng,{kind:"team_position",status:"user_marked_position"});
   const fc={type:"FeatureCollection",name:"IrratiGIS_OACEL",features};
   const blob=new Blob([JSON.stringify(fc,null,2)],{type:"application/geo+json;charset=utf-8"});
   const url=URL.createObjectURL(blob), a=document.createElement("a");
@@ -2710,7 +2713,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div style="${row}">Inicio del fuego <select class="fs-sh"><option value="0">ahora</option><option value="3">en 3 h</option><option value="6">en 6 h</option><option value="9">en 9 h</option><option value="12">en 12 h</option></select> <span style="color:#65736b">(solo con meteorología automática)</span></div>`+
    `<div style="${row}">Humedad comb. fino muerto <select class="fs-mm"><option value="calc">calculada (T y HR)</option><option value="man">manual</option></select> <span class="fs-msl" style="display:none"><input type="range" class="fs-m" min="3" max="25" value="${fsCfg.moist}" style="width:80px;vertical-align:middle"> <b class="fs-mv">${fsCfg.moist}%</b></span></div>`+
    `<div style="${row}">Medios para construir línea <select class="fs-rate"><option value="100">Herramienta manual (~100 m/h)</option><option value="300" selected>Mixto (~300 m/h)</option><option value="600">Maquinaria (~600 m/h)</option></select></div>`+
-   `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0"><button type="button" class="fs-set" style="${bs}background:#d9480f">📍 Marcar inicio</button><button type="button" class="fs-export" style="${bs}background:#1565c0">⬇ Exportar GeoJSON</button><button type="button" class="fs-clr" style="${bs}background:#65736b">Limpiar</button></div>`+
+   `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0"><button type="button" class="fs-set" style="${bs}background:#d9480f">🔥 Marcar inicio del fuego</button><button type="button" class="fs-team" style="${bs}background:#7b2cbf">📍 Posición del equipo</button><button type="button" class="fs-export" style="${bs}background:#1565c0">⬇ Exportar GeoJSON</button><button type="button" class="fs-clr" style="${bs}background:#65736b">Limpiar</button></div>`+
    `<div class="fs-out" style="color:#65736b">Pulsa «Marcar inicio» y haz clic en el mapa.</div>`;
   const q=s=>fsPanel.querySelector(s), rerun=()=>{ if(fsIgn) fsRun(); }, num=(e,lo,hi,d)=>Math.min(hi,Math.max(lo,Number(e.target.value)||d));
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
@@ -2730,11 +2733,14 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
     const f=e.target.closest&&e.target.closest("[data-fs-fuel]"); if(f){ fsCfg.fuel=f.dataset.fsFuel; q(".fs-fuel").value=fsCfg.fuel; rerun(); return; }
     const g=e.target.closest&&e.target.closest("[data-fs-gif]"); if(g) fsMakeGif(g);
   });
-  q(".fs-set").onclick=()=>{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio."; };
-  q(".fs-clr").onclick=()=>{ fsGroup.clearLayers(); fsIgn=null; fsLast=null; fsBusy++; q(".fs-out").textContent="Pulsa «Marcar inicio» y haz clic en el mapa."; };
+  q(".fs-set").onclick=()=>{ fsTeamArmed=false; fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio del fuego."; };
+  q(".fs-team").onclick=()=>{ fsArmed=false; fsTeamArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="OACEL: haz clic en la posición actual del equipo para calcular rutas desde allí."; };
+  q(".fs-clr").onclick=()=>{ fsGroup.clearLayers(); fsIgn=null; fsTeamPos=null; fsLast=null; fsBusy++; fsTeamArmed=false; fsArmed=false; q(".fs-out").textContent="Marca el inicio del fuego y, después, la posición del equipo."; };
 }
 map.on("click",e=>{
-  if(!fsArmed||!map.hasLayer(fsGroup)) return;
+  if(!map.hasLayer(fsGroup)) return;
+  if(fsTeamArmed){fsTeamArmed=false;map.getContainer().style.cursor="";fsTeamPos=e.latlng;if(fsIgn)fsRun();return;}
+  if(!fsArmed)return;
   setTimeout(()=>{ fsArmed=false; },0);
   map.getContainer().style.cursor=""; fsIgn=e.latlng; fsRun();
 });
@@ -2742,7 +2748,7 @@ layersControl.addOverlay(fsGroup,"🔥 Suteen bilakaera (simulazioa)");
 map.on("overlayadd",e=>{
   if(e.layer!==fsGroup) return;
   fsPanel.style.display="block";
-  if(fsIgn) fsRun(); else{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio."; }
+  if(fsIgn){fsRun();}else{fsArmed=true;map.getContainer().style.cursor="crosshair";$("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio."; }
 });
 map.on("overlayremove",e=>{ if(e.layer===fsGroup){ fsPanel.style.display="none"; fsArmed=false; fsBusy++; map.getContainer().style.cursor=""; } });
 
@@ -2752,7 +2758,8 @@ async function fsRun(){
   if(!fsIgn) return;
   const my=++fsBusy, out=fsPanel.querySelector(".fs-out"), fu=FS_FUELS[fsCfg.fuel];
   fsGroup.clearLayers();
-  L.marker(fsIgn,{icon:fsIcon("🔥",24)}).addTo(fsGroup);
+  L.marker(fsIgn,{icon:fsIcon("🔥",24)}).bindTooltip("Inicio del fuego modelado").addTo(fsGroup);
+  if(fsTeamPos)L.marker(fsTeamPos,{icon:fsIcon("👩‍🚒",24),zIndexOffset:1200}).bindTooltip("Posición marcada del equipo · confirmar en campo").addTo(fsGroup);
   out.textContent="⏳ Calculando…";
   let met;
   try{
