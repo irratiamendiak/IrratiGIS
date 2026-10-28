@@ -95,3 +95,84 @@ helpers.point(42, -2, {kind: "valid_point"});
 assert.deepEqual(emitted[0].geometry.coordinates, [-2, 42]);
 
 console.log("Executable GeoJSON geometry tests passed.");
+
+const exportEnd = html.indexOf("\\n\\n/* --- panela --- */", exportStart);
+assert.ok(exportEnd > exportStart, "Expected end of GeoJSON export function");
+const exportSource = html.slice(exportStart, exportEnd);
+let capturedBlob;
+const fakeUrl = {
+  createObjectURL(blob) { capturedBlob = blob; return "blob:geojson-test"; },
+  revokeObjectURL() {},
+};
+const fakeAnchor = { href: "", download: "", click() {}, remove() {} };
+const fakeDocument = {
+  createElement() { return { ...fakeAnchor }; },
+  body: { appendChild() {} },
+};
+const fakeButton = { textContent: "", isConnected: true };
+const fakePanel = { querySelector(selector) { return selector === ".fs-export" ? fakeButton : null; } };
+const exportState = {
+  ign: { lat: 42, lng: -2 },
+  osm: { routeStatus: "candidate_routes_found", routeStatusMessage: "candidate only" },
+  draw: {
+    perimeters: [
+      { minutes: 30, area_ha: 4.2, pts: [[42, -2], [42.1, -2], [42.1, -1.9]] },
+      { minutes: 60, area_ha: "unknown", pts: [[91, -2], [42, -2], [42.1, -1.9]] },
+    ],
+    control: [{ pts: [[42, -2], [42.01, -2.01]], riv: false, type: "path", name: "trail" }],
+    safe: [[[42, -2], [42, -2], [42, -2]]],
+    escape: [[[42, -2], [42.02, -2.02]]],
+    escapeRoutes: [{
+      pts: [[42, -2], [42.02, -2.02]], zone_name: "candidate area", zone_index: 1,
+      length_m: 200, eta_min: 4, network_eta_min: 3, start_snap_m: 10,
+      destination_snap_m: 15, fire_margin_min: 10, elapsed_since_ignition_min: 5,
+      route_method: "test_graph",
+    }],
+    def: [[42, -2], [42.03, -2.03]],
+    par: [[[42, -2], [42.04, -2.04]]],
+    crit: [{ lat: 42.01, lon: -2.01, t: 10, why: "test" }],
+    anchors: [{ lat: 42.02, lon: -2.02, role: "anchor A", near: { name: "path", type: "path", distance_m: 20 } }],
+    anchorLinks: [{ pts: [[42.02, -2.02], [42.03, -2.03]], role: "anchor A", control_name: "path", distance_m: 20 }],
+    assets: [{ lat: 42.01, lon: -2.01, big: false, icon: "🏠" }],
+  },
+};
+const exportCfg = { elapsedMin: 5, fuel: "test", moistMode: "calc", startH: 0, moist: 8,
+  wind: "manual", dir: 225, spd: 20, temp: 25, rh: 40, rate: 300 };
+const exportFunction = new Function(
+  "fsLast", "fsPanel", "fsTeamPos", "fsCfg", "FS_FUELS", "FS_DT", "FS_T",
+  "Blob", "URL", "document", "setTimeout",
+  "return (" + exportSource + ");"
+)(exportState, fakePanel, { lat: 42.005, lng: -2.005 }, exportCfg,
+  { test: { n: "test fuel" } }, 5, 360, Blob, fakeUrl, fakeDocument, () => {});
+exportFunction();
+assert.ok(capturedBlob, "GeoJSON export should create a Blob");
+assert.equal(capturedBlob.type, "application/geo+json;charset=utf-8");
+const exported = JSON.parse(await capturedBlob.text());
+assert.equal(exported.type, "FeatureCollection");
+assert.equal(exported.coordinate_reference, "WGS84 / EPSG:4326");
+assert.equal(exported.coordinate_order, "[longitude, latitude]");
+assert.equal(exported.metadata.feature_count, exported.features.length,
+  "Metadata feature count must match emitted features");
+assert.equal(exported.metadata.route_count, 1);
+assert.equal(exported.metadata.route_status, "candidate_routes_found");
+assert.ok(exported.features.some(f => f.properties.kind === "team_position"));
+assert.ok(exported.features.some(f => f.properties.kind === "connected_escape_route_candidate"));
+assert.ok(exported.features.some(f => f.properties.kind === "predicted_perimeter" && f.properties.area_ha === 4.2));
+assert.ok(!exported.features.some(f => f.properties.kind === "candidate_low_fuel_area"),
+  "Invalid/degenerate polygons must be omitted");
+assert.ok(!exported.features.some(f => f.properties.kind === "predicted_perimeter" && f.properties.minutes === 60),
+  "Invalid polygon coordinates must be omitted");
+for (const feature of exported.features) {
+  assert.equal(feature.type, "Feature");
+  assert.ok(feature.properties.safety_note, "Every feature should include a safety disclaimer");
+  const visit = coordinates => {
+    if (typeof coordinates[0] === "number") {
+      assert.ok(Number.isFinite(coordinates[0]) && Number.isFinite(coordinates[1]));
+      assert.ok(Math.abs(coordinates[0]) <= 180 && Math.abs(coordinates[1]) <= 90,
+        "GeoJSON output must use valid [longitude, latitude] positions");
+    } else coordinates.forEach(visit);
+  };
+  visit(feature.geometry.coordinates);
+}
+console.log("GeoJSON export integration checks passed: metadata, feature types, coordinate bounds/order, and safety labels.");
+
