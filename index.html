@@ -2478,6 +2478,62 @@ async function fsOsm(ctx){
   safe.forEach((s,i)=>{ D.safe.push(s.pts); L.polygon(s.pts,{color:"#1b8a3a",weight:2,fillColor:"#34c759",fillOpacity:.35})
     .bindTooltip(`Candidato a lugar seguro #${i+1} · ${FS_TYPE[s.w.tags.landuse||s.w.tags.natural||s.w.tags.leisure]||"zona"} · r≈${Math.round(s.r)} m · validar sobre el terreno`,{sticky:true}).addTo(fsGroup); });
 
+  /* Rutas candidatas conectadas: red peatonal OSM hacia zonas candidatas.
+     La llegada del fuego es una restricción aproximada, no una garantía de seguridad. */
+  const escapeRoutes=[];
+  {
+    const nodes=new Map();
+    const key=v=>v.lat.toFixed(5)+","+v.lon.toFixed(5);
+    const getNode=v=>{const k=key(v);if(!nodes.has(k))nodes.set(k,{id:k,lat:v.lat,lon:v.lon,adj:[]});return nodes.get(k);};
+    const speedKmh=w=>({footway:3.5,path:3.5,bridleway:3.5,track:4,cycleway:4,service:4,residential:4.5,unclassified:4.5,tertiary:4.5,secondary:4.5,primary:4,trunk:3.5,motorway:3.5})[w.tags.highway]||3.5;
+    linear.filter(w=>w.tags.highway).forEach(w=>{
+      const g=w.geometry;
+      for(let i=1;i<g.length;i++){
+        const a=getNode(g[i-1]),b=getNode(g[i]);if(a.id===b.id)continue;
+        const [dx,dy]=fsM(a,b),len=Math.hypot(dx,dy);if(len<1)continue;
+        const arrival=ann({lat:(a.lat+b.lat)/2,lon:(a.lon+b.lon)/2}).ta,minutes=len/(speedKmh(w)*1000/60);
+        a.adj.push({to:b.id,len,minutes,arrival,way:w});b.adj.push({to:a.id,len,minutes,arrival,way:w});
+      }
+    });
+    const nodeList=[...nodes.values()];
+    const nearest=(ll,maxM=350)=>{let best=null;for(const n of nodeList){const [dx,dy]=fsM(ll,n),d=Math.hypot(dx,dy);if(d<=maxM&&(!best||d<best.d))best={node:n,d};}return best;};
+    const start=nearest(o,500);
+    if(start&&nodeList.length){
+      const targets=safe.map((z,i)=>{let best=null;for(const p of z.pts){const n=nearest({lat:p[0],lon:p[1]},350);if(n&&(!best||n.d<best.d))best={...n,zone:z,index:i};}return best;}).filter(Boolean);
+      const dist=new Map([[start.node.id,0]]),prev=new Map(),done=new Set(),heap=[];
+      const push=item=>{heap.push(item);let i=heap.length-1;while(i>0){const p=(i-1)>>1;if(heap[p].cost<=item.cost)break;heap[i]=heap[p];i=p;}heap[i]=item;};
+      const pop=()=>{if(!heap.length)return null;const root=heap[0],last=heap.pop();if(heap.length){let i=0;while(true){const l=i*2+1,r=l+1;if(l>=heap.length)break;const c=r<heap.length&&heap[r].cost<heap[l].cost?r:l;if(heap[c].cost>=last.cost)break;heap[i]=heap[c];i=c;}heap[i]=last;}return root;};
+      push({id:start.node.id,cost:0});
+      const targetIds=new Set(targets.map(t=>t.node.id));
+      while(heap.length){
+        const cur=pop();if(!cur||done.has(cur.id)||cur.cost!==dist.get(cur.id))continue;done.add(cur.id);
+        if(done.size>25000)break;
+        for(const e of nodes.get(cur.id).adj){
+          if(done.has(e.to))continue;
+          const next=cur.cost+e.minutes;
+          if(Number.isFinite(e.arrival)&&e.arrival<=next+10)continue;
+          if(next<(dist.get(e.to)??Infinity)){dist.set(e.to,next);prev.set(e.to,{from:cur.id,edge:e});push({id:e.to,cost:next});}
+        }
+        if([...targetIds].every(id=>done.has(id)))break;
+      }
+      const made=new Set();
+      targets.sort((a,b)=>(dist.get(a.node.id)??Infinity)-(dist.get(b.node.id)??Infinity)).forEach(t=>{
+        if(made.has(t.index)||!Number.isFinite(dist.get(t.node.id)))return;
+        const ids=[t.node.id];let cur=t.node.id,guard=0;
+        while(cur!==start.node.id&&prev.has(cur)&&guard++<30000){cur=prev.get(cur).from;ids.push(cur);}
+        if(ids[ids.length-1]!==start.node.id||ids.length<2)return;ids.reverse();
+        const pts=[[fsIgn.lat,fsIgn.lng],...ids.map(id=>[nodes.get(id).lat,nodes.get(id).lon])];
+        const boundary=t.zone.pts.reduce((best,p)=>{const [dx,dy]=fsM({lat:t.node.lat,lon:t.node.lon},{lat:p[0],lon:p[1]}),d=Math.hypot(dx,dy);return !best||d<best.d?{p,d}:best;},null);
+        if(boundary&&boundary.d<=350)pts.push(boundary.p);
+        let length=0;for(let i=1;i<pts.length;i++){const [dx,dy]=fsM({lat:pts[i-1][0],lon:pts[i-1][1]},{lat:pts[i][0],lon:pts[i][1]});length+=Math.hypot(dx,dy);}
+        const route={pts,zone_index:t.index+1,zone_name:FS_TYPE[t.zone.w.tags.landuse||t.zone.w.tags.natural||t.zone.w.tags.leisure]||"zona candidata",length_m:Math.round(length),eta_min:Math.round(dist.get(t.node.id)),start_snap_m:Math.round(start.d),destination_snap_m:Math.round(t.d),fire_margin_min:10,status:"candidata_no_validada"};
+        escapeRoutes.push(route);made.add(t.index);D.escapeRoutes.push(route);
+        L.polyline(pts,{color:"#00a6a6",weight:5,opacity:.95,dashArray:"10 5"})
+          .bindTooltip(`Ruta conectada candidata #${escapeRoutes.length} → zona #${route.zone_index} · ${route.length_m} m · ~${route.eta_min} min a pie · margen modelado 10 min; validar en campo`,{sticky:true}).addTo(fsGroup);
+      });
+    }
+  }
+
   /* IHES-BIDEAK */
   const esc=[];
   linear.filter(w=>w.tags.highway).forEach(w=>{ fsRuns(w.geometry.map(ann),v=>v.dh>=100&&v.d<=1500).forEach(run=>esc.push({w,run,dmin:Math.min(...run.map(v=>v.d))})); });
@@ -2521,7 +2577,7 @@ async function fsOsm(ctx){
   const info=c=>({name:nm(c.w),type:lineType(c.w),ta:c.mid.ta,d:c.mid.d,len:c.len,riv:!!c.w.tags.waterway});
   return {ctl:ctl.map(info),
     safe:safe.map(s=>({name:FS_TYPE[s.w.tags.landuse||s.w.tags.natural||s.w.tags.leisure]||"zona",r:s.r,d:s.a.d,b:s.a.b})),
-    escape:escape.map(c=>({name:nm(c.w)||lineType(c.w),d:c.dmin})),rreq,ends,
+    escape:escape.map(c=>({name:nm(c.w)||lineType(c.w),d:c.dmin})),escapeRoutes:escapeRoutes.map(r=>({zone_name:r.zone_name,length_m:r.length_m,eta_min:r.eta_min,fire_margin_min:r.fire_margin_min})),rreq,ends,
     bld:{n:blds.length,first:blds[0],b60:blds.filter(x=>x.ta<=60).length,b120:blds.filter(x=>x.ta<=120).length,b240:blds.filter(x=>x.ta<=240).length},
     infra:infra.slice(0,8),pl,
     par:ctx.par.map(p=>p.pts.length?nearestCtl(p.pts[0][0],p.pts[0][1]):null),total:all.length};
@@ -2583,7 +2639,7 @@ function fsParAdvice(Lh,Lf){
 
 /* --- OACEL --- */
 function fsOacel(b0,w0,Lh,osm){
-  const esc=osm&&osm.escape.length?"tramos candidatos hacia atrás/flanco: "+osm.escape.map(x=>`${escapeHtml(x.name)} (a ${Math.round(x.d)} m)`).join("; ")+" — NO constituyen una ruta calculada ni validada hasta un lugar seguro; comprobar continuidad, transitabilidad y tiempo de llegada.":"no se ha validado una ruta; definir y reconocer una salida hacia un lugar seguro antes de entrar."; 
+  const esc=osm&&osm.escapeRoutes&&osm.escapeRoutes.length?"rutas conectadas candidatas: "+osm.escapeRoutes.map(x=>`${escapeHtml(x.zone_name)} (${x.length_m} m; ~${x.eta_min} min a pie; margen modelado ${x.fire_margin_min} min)`).join("; ")+" — cálculo preliminar sobre OSM; no está validado en campo. "+(osm.escape.length?"También se muestran tramos candidatos sin continuidad garantizada.":""):"no se ha podido calcular una ruta conectada hasta una zona candidata; "+(osm&&osm.escape.length?"se muestran solo tramos candidatos. ":"")+"definir y reconocer una salida antes de entrar."; 
   return `<details style="margin-top:6px" open><summary style="cursor:pointer;font-weight:700">🛡️ Protocolo OACEL</summary>`+
     `<div><b>O · Observación</b>: observador en posición segura con visión del frente (cabeza hacia ${fsCard(b0.head)}) y de los flancos; si no hay visión directa, comunicación con quien la tenga.</div>`+
     `<div><b>A · Atención</b>: vigilar los puntos críticos marcados (cambios de viento y pendiente, alineaciones Campbell), giros de viento (previsto ${fsCard(w0.dir)} ${Math.round(w0.spd)} km/h), humo y focos; si algo cambia, reevaluar.</div>`+
@@ -2619,6 +2675,7 @@ function fsExportGeoJSON(){
   (D.control||[]).forEach((c,i)=>line(c.pts,{kind:"existing_control_candidate",index:i+1,barrier_type:c.riv?"watercourse":"road_or_track",status:"candidate_requires_field_check"}));
   (D.safe||[]).forEach((p,i)=>polygon(p,{kind:"candidate_low_fuel_area",index:i+1,status:"unvalidated_candidate"}));
   (D.escape||[]).forEach((p,i)=>line(p,{kind:"candidate_escape_segment",index:i+1,status:"not_a_validated_route",warning:"No se ha comprobado continuidad hasta un lugar seguro ni transitabilidad."}));
+  (D.escapeRoutes||[]).forEach((r,i)=>line(r.pts,{kind:"connected_escape_route_candidate",index:i+1,destination_candidate:r.zone_name,length_m:r.length_m,estimated_walking_minutes:r.eta_min,modelled_fire_arrival_margin_minutes:r.fire_margin_min,status:"not_field_validated",warning:"Ruta calculada sobre datos cartográficos y un modelo simplificado; confirmar accesibilidad, fuego, humo, pendiente, comunicaciones y destino en terreno."}));
   if(D.def) line(D.def,{kind:"proposed_defence_line",status:"planning_alternative_requires_operational_validation"});
   (D.par||[]).forEach((p,i)=>line(p,{kind:"parallel_attack_alternative",flank:i===0?"right":"left",status:"planning_alternative_requires_operational_validation"}));
   (D.crit||[]).forEach((c,i)=>point(c.lat,c.lon,{kind:"critical_point_candidate",index:i+1,time_min:c.t,reason:c.why||""}));
@@ -2706,7 +2763,7 @@ async function fsRun(){
     out.innerHTML=fsDec(`Con estas condiciones el fuego <b>no se propaga</b> en las próximas 6 h: la humedad del combustible fino muerto es del ${m00.toFixed(1)} % (T ${Math.round(w00.T)} °C, HR ${Math.round(w00.RH)} %) y supera la de extinción de este combustible (${Math.round(fu.Mx*100)} %). Prueba otra hora de inicio (por la tarde baja la humedad), otro combustible, o pon la humedad a mano.`); return;
   }
   const bInit=fsBehavior(fu,ter.tan,ter.asp,w00.dir,w00.spd,m00), iRef=far.pts.findIndex(p=>p[1]>=15), tRef=(bInit.Rh>0||iRef<=0)?0:far.pts[iRef][0], w0=met.at(tRef), m0=fsMoistAt(w0), b0=fsBehavior(fu,ter.tan,ter.asp,w0.dir,w0.spd,m0);
-  fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0,met,farBg,draw:{perimeters:[],control:[],safe:[],escape:[],assets:[],crit:[],anchors:[],def:null,par:[]}};
+  fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0,met,farBg,draw:{perimeters:[],control:[],safe:[],escape:[],escapeRoutes:[],assets:[],crit:[],anchors:[],def:null,par:[]}};
   const D=fsLast.draw, cols={30:"#d7191c",60:"#fd8d3c",120:"#ffd45a"}, ha={};
   [120,60,30].forEach(t=>{ const p=fsPerim(rays,t); ha[t]=fsHa(p); D.perimeters.push({minutes:t,area_ha:ha[t],pts:p});
     L.polygon(p,{color:cols[t],weight:2,fillColor:cols[t],fillOpacity:.25}).bindTooltip(`${t} min · ${ha[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup); });
