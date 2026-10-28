@@ -75,6 +75,8 @@ assert.deepEqual(ring[0], ring[ring.length - 1],
 emitted.length = 0;
 helpers.polygon([[91, -2], [43, -3], [44, -4]], {kind: "invalid_polygon"});
 assert.equal(emitted.length, 0, "Invalid polygon coordinates must be rejected");
+helpers.polygon([[null, -2], [43, -3], [44, -4]], {kind: "invalid_polygon"});
+assert.equal(emitted.length, 0, "Null polygon coordinates must be rejected");
 helpers.point(91, -2, {kind: "invalid_point"});
 helpers.point(42, 181, {kind: "invalid_point"});
 assert.equal(emitted.length, 0, "Out-of-range points must be rejected");
