@@ -2493,9 +2493,10 @@ async function fsOsm(ctx){
       for(let i=1;i<g.length;i++){
         const a=getNode(g[i-1]),b=getNode(g[i]);if(a.id===b.id)continue;
         const [dx,dy]=fsM(a,b),len=Math.hypot(dx,dy);if(len<1)continue;
-        const arrivalFrom=ann(a).ta,arrivalTo=ann(b).ta,arrivalMid=ann({lat:(a.lat+b.lat)/2,lon:(a.lon+b.lon)/2}).ta,minutes=len/(speedKmh(w)*1000/60);
-        a.adj.push({to:b.id,len,minutes,arrivalFrom,arrivalTo,arrivalMid,way:w});
-        b.adj.push({to:a.id,len,minutes,arrivalFrom:arrivalTo,arrivalTo:arrivalFrom,arrivalMid,way:w});
+        const minutes=len/(speedKmh(w)*1000/60),steps=Math.min(20,Math.max(1,Math.ceil(len/30))),fireSamples=[];
+        for(let k=0;k<=steps;k++){const f=k/steps;fireSamples.push({f,arrival:ann({lat:a.lat+(b.lat-a.lat)*f,lon:a.lon+(b.lon-a.lon)*f}).ta});}
+        a.adj.push({to:b.id,len,minutes,fireSamples,way:w});
+        b.adj.push({to:a.id,len,minutes,fireSamples:fireSamples.map(p=>({f:1-p.f,arrival:p.arrival})).reverse(),way:w});
       }
     });
     const nodeList=[...nodes.values()];
@@ -2525,9 +2526,8 @@ async function fsOsm(ctx){
           if(done.has(e.to))continue;
           const next=cur.cost+e.minutes;
           const elapsed=Number(fsCfg.elapsedMin)||0;
-          const midTime=elapsed+cur.cost+e.minutes/2, endTime=elapsed+next;
-          if((Number.isFinite(e.arrivalMid)&&e.arrivalMid<=midTime+10)||
-             (Number.isFinite(e.arrivalTo)&&e.arrivalTo<=endTime+10))continue;
+          const crossesModelledFire=e.fireSamples.some(p=>Number.isFinite(p.arrival)&&p.arrival<=elapsed+cur.cost+e.minutes*p.f+10);
+          if(crossesModelledFire)continue;
           if(next<(dist.get(e.to)??Infinity)){dist.set(e.to,next);prev.set(e.to,{from:cur.id,edge:e});push({id:e.to,cost:next});}
         }
         if([...targetIds].every(id=>done.has(id)))break;
