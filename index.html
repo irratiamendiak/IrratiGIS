@@ -2707,7 +2707,7 @@ function fsExportGeoJSON(){
     if(a[0]!==b[0]||a[1]!==b[1]) ring.push([...a]);
     add({type:"Polygon",coordinates:[ring]},properties);
   };
-  const point=(lat,lon,properties)=>{ if(Number.isFinite(lat)&&Number.isFinite(lon)) add({type:"Point",coordinates:[lon,lat]},properties); };
+  const point=(lat,lon,properties)=>{ if(Number.isFinite(lat)&&Number.isFinite(lon)&&Math.abs(lat)<=90&&Math.abs(lon)<=180) add({type:"Point",coordinates:[lon,lat]},properties); };
   (D.perimeters||[]).forEach(p=>polygon(p.pts,{kind:"predicted_perimeter",minutes:p.minutes,area_ha:Number.isFinite(Number(p.area_ha))?Number(Number(p.area_ha).toFixed(3)):null,status:"modelled_estimate"}));
   (D.control||[]).forEach((c,i)=>line(c.pts,{kind:"existing_control_candidate",index:i+1,barrier_type:c.riv?"watercourse":c.type||"road_or_barrier",name:c.name||null,status:"candidate_requires_field_check"}));
   (D.safe||[]).forEach((p,i)=>polygon(p,{kind:"candidate_low_fuel_area",index:i+1,status:"unvalidated_candidate"}));
