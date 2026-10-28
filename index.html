@@ -2695,20 +2695,21 @@ function fsExportGeoJSON(){
     ...properties
   }});
   const xy=pts=>pts.map(p=>[Number(p[1]),Number(p[0])]);
-  const line=(pts,properties)=>{ if(Array.isArray(pts)&&pts.length>1) add({type:"LineString",coordinates:xy(pts)},properties); };
+  const validPts=pts=>Array.isArray(pts)&&pts.length>1&&pts.every(p=>Array.isArray(p)&&Number.isFinite(Number(p[0]))&&Number.isFinite(Number(p[1]))&&Math.abs(Number(p[0]))<=90&&Math.abs(Number(p[1]))<=180);
+  const line=(pts,properties)=>{ if(validPts(pts)) add({type:"LineString",coordinates:xy(pts)},properties); };
   const polygon=(pts,properties)=>{
-    if(!Array.isArray(pts)||pts.length<3) return;
+    if(!Array.isArray(pts)||pts.length<3||!pts.every(p=>Array.isArray(p)&&Number.isFinite(Number(p[0]))&&Number.isFinite(Number(p[1]))&&Math.abs(Number(p[0]))<=90&&Math.abs(Number(p[1]))<=180)) return;
     const ring=xy(pts);
     const a=ring[0], b=ring[ring.length-1];
     if(a[0]!==b[0]||a[1]!==b[1]) ring.push([...a]);
     add({type:"Polygon",coordinates:[ring]},properties);
   };
   const point=(lat,lon,properties)=>{ if(Number.isFinite(lat)&&Number.isFinite(lon)) add({type:"Point",coordinates:[lon,lat]},properties); };
-  (D.perimeters||[]).forEach(p=>polygon(p.pts,{kind:"predicted_perimeter",minutes:p.minutes,area_ha:Number(p.area_ha.toFixed(3)),status:"modelled_estimate"}));
+  (D.perimeters||[]).forEach(p=>polygon(p.pts,{kind:"predicted_perimeter",minutes:p.minutes,area_ha:Number.isFinite(Number(p.area_ha))?Number(Number(p.area_ha).toFixed(3)):null,status:"modelled_estimate"}));
   (D.control||[]).forEach((c,i)=>line(c.pts,{kind:"existing_control_candidate",index:i+1,barrier_type:c.riv?"watercourse":c.type||"road_or_barrier",name:c.name||null,status:"candidate_requires_field_check"}));
   (D.safe||[]).forEach((p,i)=>polygon(p,{kind:"candidate_low_fuel_area",index:i+1,status:"unvalidated_candidate"}));
   (D.escape||[]).forEach((p,i)=>line(p,{kind:"candidate_escape_segment",index:i+1,status:"not_a_validated_route",warning:"No se ha comprobado continuidad hasta un lugar seguro ni transitabilidad."}));
-  (D.escapeRoutes||[]).forEach((r,i)=>line(r.pts,{kind:"connected_escape_route_candidate",index:i+1,destination_candidate:r.zone_name,length_m:r.length_m,estimated_walking_minutes:r.eta_min,modelled_fire_arrival_margin_minutes:r.fire_margin_min,elapsed_since_ignition_minutes:r.elapsed_since_ignition_min,status:"not_field_validated",warning:"Ruta calculada sobre datos cartográficos y un modelo simplificado; confirmar accesibilidad, fuego, humo, pendiente, comunicaciones y destino en terreno."}));
+  (D.escapeRoutes||[]).forEach((r,i)=>line(r.pts,{kind:"connected_escape_route_candidate",index:i+1,destination_candidate:r.zone_name,destination_candidate_index:r.zone_index,length_m:r.length_m,estimated_walking_minutes:r.eta_min,network_walking_minutes:r.network_eta_min,start_snap_distance_m:r.start_snap_m,destination_snap_distance_m:r.destination_snap_m,modelled_fire_arrival_margin_minutes:r.fire_margin_min,elapsed_since_ignition_minutes:r.elapsed_since_ignition_min,route_method:r.route_method||"unknown",status:"not_field_validated",warning:"Ruta calculada sobre datos cartográficos y un modelo simplificado; confirmar accesibilidad, fuego, humo, pendiente, comunicaciones y destino en terreno."}));
   if(D.def) line(D.def,{kind:"proposed_defence_line",status:"planning_alternative_requires_operational_validation"});
   (D.par||[]).forEach((p,i)=>line(p,{kind:"parallel_attack_alternative",flank:i===0?"right":"left",status:"planning_alternative_requires_operational_validation"}));
   (D.crit||[]).forEach((c,i)=>point(c.lat,c.lon,{kind:"critical_point_candidate",index:i+1,time_min:c.t,reason:c.why||""}));
@@ -2717,7 +2718,7 @@ function fsExportGeoJSON(){
   (D.assets||[]).forEach(a=>point(a.lat,a.lon,{kind:a.big?"infrastructure_or_facility":"building_candidate",icon:a.icon||null}));
   point(fsLast.ign.lat,fsLast.ign.lng,{kind:"ignition_point"});
   if(fsTeamPos)point(fsTeamPos.lat,fsTeamPos.lng,{kind:"team_position",status:"user_marked_position"});
-  const fc={type:"FeatureCollection",name:"IrratiGIS_OACEL",features};
+  const fc={type:"FeatureCollection",name:"IrratiGIS_OACEL",generated_at:new Date().toISOString(),coordinate_reference:"WGS84 / EPSG:4326",coordinate_order:"[longitude, latitude]",metadata:{application:"IrratiGIS OACEL",simulation_elapsed_since_ignition_minutes:Number(fsCfg.elapsedMin)||0,fire_model:"simplified_estimate",fire_model_warning:"Not operationally validated; not a safety certification.",team_position_set:!!fsTeamPos,feature_count:features.length,route_count:(D.escapeRoutes||[]).length,export_format:"GeoJSON"},features};
   const blob=new Blob([JSON.stringify(fc,null,2)],{type:"application/geo+json;charset=utf-8"});
   const url=URL.createObjectURL(blob), a=document.createElement("a");
   a.href=url; a.download="IrratiGIS_OACEL_"+new Date().toISOString().replace(/[:.]/g,"-")+".geojson";
