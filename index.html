@@ -2711,6 +2711,7 @@ function fsExportGeoJSON(){
     let twiceArea=0;
     for(let i=0;i<ring.length-1;i++) twiceArea+=ring[i][0]*ring[i+1][1]-ring[i+1][0]*ring[i][1];
     if(!Number.isFinite(twiceArea)||Math.abs(twiceArea)<1e-12) return;
+    if(twiceArea<0){ ring.pop(); ring.reverse(); ring.push([...ring[0]]); }
     add({type:"Polygon",coordinates:[ring]},properties);
   };
   const point=(lat,lon,properties)=>{ if(Number.isFinite(lat)&&Number.isFinite(lon)&&Math.abs(lat)<=90&&Math.abs(lon)<=180) add({type:"Point",coordinates:[lon,lat]},properties); };
