@@ -2493,16 +2493,26 @@ async function fsOsm(ctx){
       for(let i=1;i<g.length;i++){
         const a=getNode(g[i-1]),b=getNode(g[i]);if(a.id===b.id)continue;
         const [dx,dy]=fsM(a,b),len=Math.hypot(dx,dy);if(len<1)continue;
-        const arrival=ann({lat:(a.lat+b.lat)/2,lon:(a.lon+b.lon)/2}).ta,minutes=len/(speedKmh(w)*1000/60);
-        a.adj.push({to:b.id,len,minutes,arrival,way:w});b.adj.push({to:a.id,len,minutes,arrival,way:w});
+        const arrivalFrom=ann(a).ta,arrivalTo=ann(b).ta,arrivalMid=ann({lat:(a.lat+b.lat)/2,lon:(a.lon+b.lon)/2}).ta,minutes=len/(speedKmh(w)*1000/60);
+        a.adj.push({to:b.id,len,minutes,arrivalFrom,arrivalTo,arrivalMid,way:w});
+        b.adj.push({to:a.id,len,minutes,arrivalFrom:arrivalTo,arrivalTo:arrivalFrom,arrivalMid,way:w});
       }
     });
     const nodeList=[...nodes.values()];
     const nearest=(ll,maxM=350)=>{let best=null;for(const n of nodeList){const [dx,dy]=fsM(ll,n),d=Math.hypot(dx,dy);if(d<=maxM&&(!best||d<best.d))best={node:n,d};}return best;};
     const routeOrigin=fsTeamPos?{lat:fsTeamPos.lat,lon:fsTeamPos.lng}:null;
-    const start=routeOrigin?nearest(routeOrigin,500):null;
+    const start=routeOrigin?nearest(routeOrigin,150):null;
     if(start&&nodeList.length){
-      const targets=safe.map((z,i)=>{let best=null;for(const p of z.pts){const n=nearest({lat:p[0],lon:p[1]},350);if(n&&(!best||n.d<best.d))best={...n,zone:z,index:i};}return best;}).filter(Boolean);
+      const boundarySamples=z=>{
+        const out=[],p=z.pts||[];
+        for(let i=0;i<p.length;i++){
+          const a=p[i],b=p[(i+1)%p.length];out.push(a);
+          const [dx,dy]=fsM({lat:a[0],lon:a[1]},{lat:b[0],lon:b[1]}),len=Math.hypot(dx,dy),steps=Math.min(100,Math.max(1,Math.ceil(len/40)));
+          for(let k=1;k<steps;k++)out.push([a[0]+(b[0]-a[0])*k/steps,a[1]+(b[1]-a[1])*k/steps]);
+        }
+        return out;
+      };
+      const targets=safe.map((z,i)=>{let best=null;for(const p of boundarySamples(z)){const n=nearest({lat:p[0],lon:p[1]},150);if(n&&(!best||n.d<best.d))best={...n,zone:z,index:i,boundaryPoint:p};}return best;}).filter(Boolean);
       const dist=new Map([[start.node.id,0]]),prev=new Map(),done=new Set(),heap=[];
       const push=item=>{heap.push(item);let i=heap.length-1;while(i>0){const p=(i-1)>>1;if(heap[p].cost<=item.cost)break;heap[i]=heap[p];i=p;}heap[i]=item;};
       const pop=()=>{if(!heap.length)return null;const root=heap[0],last=heap.pop();if(heap.length){let i=0;while(true){const l=i*2+1,r=l+1;if(l>=heap.length)break;const c=r<heap.length&&heap[r].cost<heap[l].cost?r:l;if(heap[c].cost>=last.cost)break;heap[i]=heap[c];i=c;}heap[i]=last;}return root;};
@@ -2514,7 +2524,10 @@ async function fsOsm(ctx){
         for(const e of nodes.get(cur.id).adj){
           if(done.has(e.to))continue;
           const next=cur.cost+e.minutes;
-          if(Number.isFinite(e.arrival)&&e.arrival<=(Number(fsCfg.elapsedMin)||0)+next+10)continue;
+          const elapsed=Number(fsCfg.elapsedMin)||0;
+          const midTime=elapsed+cur.cost+e.minutes/2, endTime=elapsed+next;
+          if((Number.isFinite(e.arrivalMid)&&e.arrivalMid<=midTime+10)||
+             (Number.isFinite(e.arrivalTo)&&e.arrivalTo<=endTime+10))continue;
           if(next<(dist.get(e.to)??Infinity)){dist.set(e.to,next);prev.set(e.to,{from:cur.id,edge:e});push({id:e.to,cost:next});}
         }
         if([...targetIds].every(id=>done.has(id)))break;
@@ -2526,10 +2539,13 @@ async function fsOsm(ctx){
         while(cur!==start.node.id&&prev.has(cur)&&guard++<30000){cur=prev.get(cur).from;ids.push(cur);}
         if(ids[ids.length-1]!==start.node.id||ids.length<2)return;ids.reverse();
         const pts=[[fsTeamPos.lat,fsTeamPos.lng],...ids.map(id=>[nodes.get(id).lat,nodes.get(id).lon])];
-        const boundary=t.zone.pts.reduce((best,p)=>{const [dx,dy]=fsM({lat:t.node.lat,lon:t.node.lon},{lat:p[0],lon:p[1]}),d=Math.hypot(dx,dy);return !best||d<best.d?{p,d}:best;},null);
-        if(boundary&&boundary.d<=350)pts.push(boundary.p);
+        const boundary={p:t.boundaryPoint,d:t.d};
+        if(boundary&&boundary.d<=150)pts.push(boundary.p);
         let length=0;for(let i=1;i<pts.length;i++){const [dx,dy]=fsM({lat:pts[i-1][0],lon:pts[i-1][1]},{lat:pts[i][0],lon:pts[i][1]});length+=Math.hypot(dx,dy);}
-        const route={pts,zone_index:t.index+1,zone_name:FS_TYPE[t.zone.w.tags.landuse||t.zone.w.tags.natural||t.zone.w.tags.leisure]||"zona candidata",length_m:Math.round(length),eta_min:Math.round(dist.get(t.node.id)),start_snap_m:Math.round(start.d),destination_snap_m:Math.round(t.d),elapsed_since_ignition_min:Number(fsCfg.elapsedMin)||0,fire_margin_min:10,status:"candidata_no_validada"};
+        const walkingSpeedMMin=3500/60;
+        const snapMinutes=(start.d+(boundary?boundary.d:0))/walkingSpeedMMin;
+        const etaTotal=dist.get(t.node.id)+snapMinutes;
+        const route={pts,zone_index:t.index+1,zone_name:FS_TYPE[t.zone.w.tags.landuse||t.zone.w.tags.natural||t.zone.w.tags.leisure]||"zona candidata",length_m:Math.round(length),eta_min:Math.ceil(etaTotal),network_eta_min:Math.round(dist.get(t.node.id)),start_snap_m:Math.round(start.d),destination_snap_m:Math.round(t.d),elapsed_since_ignition_min:Number(fsCfg.elapsedMin)||0,fire_margin_min:10,route_method:"OSM_pedestrian_graph_Dijkstra_with_sampled_fire_arrival_checks",status:"candidata_no_validada"};
         escapeRoutes.push(route);made.add(t.index);D.escapeRoutes.push(route);
         L.polyline(pts,{color:"#00a6a6",weight:5,opacity:.95,dashArray:"10 5"})
           .bindTooltip(`Ruta conectada candidata #${escapeRoutes.length} → zona #${route.zone_index} · ${route.length_m} m · ~${route.eta_min} min a pie · margen modelado 10 min; validar en campo`,{sticky:true}).addTo(fsGroup);
