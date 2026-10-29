@@ -933,17 +933,17 @@ async function loadControlledBurns(){
 
       if(!Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
-      // Baso kondarrak: mantendu sua eta gehitu izar beltza.
+      // Baso kondarrak: izar beltza gainjarrita, sugarraren barruan.
       const material = String(materialEu(fire.tipoQuema || fire.descripcionMaterial || ""))
         .trim().toLocaleLowerCase();
       const isBasoKondarrak = material === "baso kondarrak";
       const burnIcon = L.divIcon({
         className:"burn-flame-icon",
         html: isBasoKondarrak
-          ? '<div style="display:flex;align-items:center;justify-content:center;gap:1px;white-space:nowrap;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45))"><span style="font-size:22px;line-height:1">🔥</span><span style="color:#000;font-size:17px;line-height:1;text-shadow:0 0 2px #fff">★</span></div>'
+          ? '<div style="position:relative;width:24px;height:24px;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45))"><span style="font-size:22px">🔥</span><span style="position:absolute;left:7px;top:10px;color:#000;font-size:11px;line-height:1;text-shadow:0 0 1px #fff;pointer-events:none">★</span></div>'
           : '<div style="font-size:22px;line-height:1;text-align:center;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45))">🔥</div>',
-        iconSize: isBasoKondarrak ? [43,26] : [24,24],
-        iconAnchor: isBasoKondarrak ? [21,13] : [12,12],
+        iconSize:[24,24],
+        iconAnchor:[12,12],
         popupAnchor:[0,-10]
       });
       const marker = L.marker([lat,lon],{icon:burnIcon});
