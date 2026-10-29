@@ -927,21 +927,26 @@ async function loadControlledBurns(){
 
     controlledBurnLayer.clearLayers();
 
-    const flameIcon = L.divIcon({
-      className:"burn-flame-icon",
-      html:'<div style="font-size:22px;line-height:1;text-align:center;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45))">🔥</div>',
-      iconSize:[24,24],
-      iconAnchor:[12,12],
-      popupAnchor:[0,-10]
-    });
-
     fires.forEach((fire)=>{
       const lat = Number(fire.latitudea);
       const lon = Number(fire.longitudea);
 
       if(!Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
-      const marker = L.marker([lat,lon],{icon:flameIcon});
+      // Baso kondarrak: mantendu sua eta gehitu izar beltza.
+      const material = String(materialEu(fire.tipoQuema || fire.descripcionMaterial || ""))
+        .trim().toLocaleLowerCase();
+      const isBasoKondarrak = material === "baso kondarrak";
+      const burnIcon = L.divIcon({
+        className:"burn-flame-icon",
+        html: isBasoKondarrak
+          ? '<div style="display:flex;align-items:center;justify-content:center;gap:1px;white-space:nowrap;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45))"><span style="font-size:22px;line-height:1">🔥</span><span style="color:#000;font-size:17px;line-height:1;text-shadow:0 0 2px #fff">★</span></div>'
+          : '<div style="font-size:22px;line-height:1;text-align:center;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45))">🔥</div>',
+        iconSize: isBasoKondarrak ? [43,26] : [24,24],
+        iconAnchor: isBasoKondarrak ? [21,13] : [12,12],
+        popupAnchor:[0,-10]
+      });
+      const marker = L.marker([lat,lon],{icon:burnIcon});
 
                        let uTxt = "";
       try { if (typeof proj4 !== "undefined") { const pu = proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[lon,lat]); uTxt = `<br><strong>UTM (ETRS89 30N):</strong> X ${Math.round(pu[0])} · Y ${Math.round(pu[1])}`; } } catch(e){}
