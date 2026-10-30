@@ -76,3 +76,17 @@ Se registra además el producto **Límites y Unidades Administrativas Actuales**
 - Catálogo de producto: https://centrodedescargas.cnig.es/CentroDescargas/catalogo.do?Serie=LILIM
 
 La capa geoEuskadi de Territorios Históricos sigue siendo una fuente de trabajo regional útil, pero sus advertencias de límites provisionales impiden tratarla como delimitación jurídica definitiva. La geometría del piloto debe contrastarse con CNIG antes de recortar los MDT.
+
+## Resultado de la primera inspección B5M (30-10-2026)
+
+Se recibió el archivo `GFA_DSET_MB_SHP.zip` y se inspeccionó localmente, sin alterar el original.
+
+- SHA-256 del ZIP: `f69745502d30e63baf2c0a03267e5a1b682314aa00254b703cb8565cb795ee32`.
+- Contenido: SHP, SHX, DBF, PRJ y README; CRS declarado y leído: EPSG:25830.
+- 126 registros poligonales, 92 códigos territoriales: 88 municipios y 4 entidades territoriales especiales.
+- Sin geometrías nulas, vacías o inválidas en el archivo recibido.
+- Área plana de la unión: 1.981,254 km²; extensión EPSG:25830 registrada en el informe.
+- El GeoPackage de salida conserva cuatro capas: `source_features`, `municipalities`, `special_territorial_units` y `pilot_boundary`. Se disuelven los fragmentos/enclaves por código municipal, sin perder la capa fuente original.
+- Las cuatro entidades especiales se conservan separadas y se incluyen en el contorno general del piloto.
+
+La geometría supera controles estructurales y una comprobación de plausibilidad de área; esto no constituye certificación jurídica ni contraste independiente con CNIG. Antes de recortar los modelos de elevación, el límite debe contrastarse con la fuente CNIG y revisar explícitamente enclaves y entidades especiales.
