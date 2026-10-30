@@ -23,6 +23,10 @@ jobs:
           python-version: "3.12"
       - name: Install geospatial dependencies
         run: pip install "numpy>=1.26,<3" "rasterio>=1.4,<2" "geopandas>=1.0,<2" "pyogrio>=0.10,<1" "matplotlib>=3.8,<4"
+      - name: Test terrain derivative calculations
+        run: |
+          pip install "pytest>=8,<9"
+          python -m pytest -q wildfire/terrain/tests
       - name: Prepare pilot boundary
         run: |
           python wildfire/ingestion/prepare_gipuzkoa_boundary.py \
@@ -46,12 +50,19 @@ jobs:
             --boundary data/processed/gipuzkoa/gipuzkoa_boundary.gpkg \
             --boundary-layer pilot_boundary \
             --output-dir data/processed/gipuzkoa/mdt_relief_preview
-      - name: Upload relief preview
+      - name: Derive slope, aspect, hillshade and quality mask
+        run: |
+          python wildfire/terrain/derive_terrain_variables.py \\
+            --dem data/processed/gipuzkoa/mdt_relief_preview/gipuzkoa_mdt_relief_preview_3_tiles.tif \\
+            --output-dir data/processed/gipuzkoa/terrain_derivatives
+      - name: Upload relief preview and terrain derivatives
         uses: actions/upload-artifact@v4
         with:
           name: gipuzkoa-mdt-relief-preview
           path: |
             data/processed/gipuzkoa/mdt_relief_preview/gipuzkoa_mdt_relief_preview_3_tiles.png
             data/processed/gipuzkoa/mdt_relief_preview/gipuzkoa_mdt_relief_preview_3_tiles.tif
+            data/processed/gipuzkoa/terrain_derivatives/*.tif
+            data/processed/gipuzkoa/terrain_derivatives/terrain_derivatives_report.json
           if-no-files-found: error
           retention-days: 14
