@@ -25,3 +25,5 @@ jobs:
           python -m pytest -q wildfire/terrain/tests wildfire/ingestion/tests
       - name: Validate official source catalogue
         run: python wildfire/ingestion/validate_catalog.py --catalog wildfire/ingestion/sources.euskadi-gipuzkoa.json
+
+# Validates ingestion provenance and ZIP extraction safety.
