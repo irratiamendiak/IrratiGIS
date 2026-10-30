@@ -36,3 +36,16 @@ El validador comprueba estructura y trazabilidad mínima; no valida la exactitud
 ## Límites
 
 No se ha descargado ni procesado aquí ningún mosaico real. No hay todavía un paisaje Gipuzkoa, un modelo de combustible validado ni una salida FlamMap/FARSITE. Los datos provisionales deben permanecer etiquetados como tales.
+
+## Descarga reproducible de fuentes
+
+El límite de Territorios Históricos está publicado en el directorio oficial de geoEuskadi como SHP ZIP. El catálogo declara ETRS89 / UTM 30N y licencia con atribución, pero advierte que algunas líneas pueden ser provisionales y que la capa no reúne los requisitos de cartografía oficial. Se usa solo como límite técnico de recorte del piloto, pendiente de revisión.
+
+Descarga y extracción segura (no se ejecuta durante CI):
+
+    python wildfire/ingestion/download_source.py \
+      --catalog wildfire/ingestion/sources.euskadi-gipuzkoa.json \
+      --source-id euskadi_historical_territories_boundary \
+      --output data/raw
+
+El comando conserva el ZIP original, calcula SHA-256, extrae de forma segura (rechaza rutas ZIP que escapen del destino y enlaces simbólicos) y escribe `download_manifest.json`. No filtra automáticamente el polígono de Gipuzkoa porque primero hay que inspeccionar los campos, CRS y geometrías reales. El MDT50cm CNIG se seleccionará por hojas que intersecten el área, sin descarga masiva indiscriminada.
