@@ -54,3 +54,18 @@ Este inventario identifica fuentes oficiales candidatas. La disponibilidad de un
 | Meteorología | Euskalmet / AEMET y estaciones | Pendiente de contrato temporal y validación |
 
 **No generar todavía un paisaje nacional ni un paisaje operacional completo** hasta resolver los atributos de combustible, humedad, cubierta/copa y la validación de las reglas de correspondencia.
+
+
+## 5. Actualización de catálogo · piloto Gipuzkoa (30-10-2026)
+
+- **Mapa Forestal CAE 2025:** ya existe ficha oficial y tablas estadísticas territoriales/comarcales, incluida Gipuzkoa. La página consultada no confirma por sí sola una distribución espacial descargable 2025. Se mantiene el SHP 2024 como candidato espacial provisional, sin atribuirle fecha 2025.
+- **MDT geoEuskadi 1 m:** el catálogo ofrece distribuciones históricas y de máxima actualidad. Los metadatos describen una base de 2008 con actualizaciones de cambios posteriores. Es necesario revisar el linaje por tesela y el datum vertical.
+- **CNIG MDT50cm provisional V1 (tercera cobertura LiDAR):** publicación identificada en mayo de 2026 para País Vasco. Se incorpora como candidato independiente para comparación de calidad, no como sustituto automático: la versión es provisional y procede de clasificación inicial de nube de puntos.
+- Se crea un catálogo reproducible en `wildfire/ingestion/sources.euskadi-gipuzkoa.json`, una plantilla vacía de correspondencia de combustibles y un validador de metadatos.
+
+Fuentes:
+- https://www.euskadi.eus/mapa-forestal-cae-2025/web01-a3estbin/es/
+- https://www.geo.euskadi.eus/modelo-digital-elevaciones-1-metro-del-pais-vasco/webgeo00-dataset/es/
+- https://centrodedescargas.cnig.es/CentroDescargas/novedades?codSerie=MDT01
+
+**Estado:** catálogo y scaffolding incorporados; todavía no se han descargado ni procesado los datos geoespaciales reales de Gipuzkoa.
