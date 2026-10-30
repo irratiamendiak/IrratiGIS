@@ -26,7 +26,7 @@ def url_for_sheet(sheet: str) -> str:
         raise ValueError(f"Unexpected HOJA identifier: {sheet!r}")
     folder, col, row = match.groups()
     filename = f"mdt_{folder}_{col}_{row}.zip"
-    return f"{BASE}/H{folder}/{filename}"
+    return f"{BASE}/H0{folder}/{filename}"
 
 
 def probe(url: str, timeout: int, retries: int) -> dict:
