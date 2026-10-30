@@ -1,0 +1,56 @@
+name: Inspect Gipuzkoa MDT raster archives
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-mdt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      PYTHONPATH: .
+    steps:
+      - name: Checkout ingestion implementation
+        uses: actions/checkout@v4
+        with:
+          ref: feature/wildfire-intelligence-foundation
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ingestion dependencies
+        run: pip install -r wildfire/ingestion/requirements.txt
+      - name: Prepare official Gipuzkoa boundary
+        run: |
+          python wildfire/ingestion/prepare_gipuzkoa_boundary.py \
+            --catalog wildfire/ingestion/sources.euskadi-gipuzkoa.json \
+            --output data/processed/gipuzkoa
+      - name: Fetch intersecting official 1:5,000 sheets
+        run: |
+          python wildfire/ingestion/fetch_arcgis_sheet_index.py \
+            --boundary data/processed/gipuzkoa/gipuzkoa_boundary.gpkg \
+            --boundary-layer pilot_boundary \
+            --output data/processed/gipuzkoa/mdt_5000_sheet_index.gpkg
+      - name: Check selected MDT ZIP URLs
+        run: |
+          python wildfire/ingestion/check_mdt_zip_availability.py \
+            --index data/processed/gipuzkoa/mdt_5000_sheet_index.json \
+            --output-dir data/processed/gipuzkoa/mdt_zip_check
+      - name: Download and inspect selected MDT ZIP archives
+        run: |
+          python wildfire/ingestion/inspect_mdt_zip_batch.py \
+            --availability data/processed/gipuzkoa/mdt_zip_check/mdt_2017_zip_availability.json \
+            --output-dir data/processed/gipuzkoa/mdt_raster_inspection \
+            --workers 3
+      - name: Upload compact inspection manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: gipuzkoa-mdt-raster-inspection
+          path: |
+            data/processed/gipuzkoa/mdt_raster_inspection/mdt_2017_raster_inspection.csv
+            data/processed/gipuzkoa/mdt_raster_inspection/mdt_2017_raster_inspection.json
+          if-no-files-found: error
+          retention-days: 14
