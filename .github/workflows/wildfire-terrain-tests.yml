@@ -21,9 +21,11 @@ jobs:
         run: pip install -r wildfire/terrain/requirements-dev.txt
       - name: Compile and test
         run: |
-          python -m py_compile wildfire/terrain/prepare_landscape.py wildfire/ingestion/validate_catalog.py wildfire/ingestion/download_source.py
+          python -m py_compile wildfire/terrain/prepare_landscape.py wildfire/ingestion/validate_catalog.py wildfire/ingestion/download_source.py wildfire/ingestion/prepare_gipuzkoa_boundary.py
           python -m pytest -q wildfire/terrain/tests wildfire/ingestion/tests
       - name: Validate official source catalogue
         run: python wildfire/ingestion/validate_catalog.py --catalog wildfire/ingestion/sources.euskadi-gipuzkoa.json
 
 # Validates ingestion provenance and ZIP extraction safety.
+
+# Boundary preparation is compiled in CI; live source download is a separate data task.
