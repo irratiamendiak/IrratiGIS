@@ -1,0 +1,1 @@
+"""IrratiGIS Wildfire Intelligence package."""
