@@ -34,12 +34,19 @@ jobs:
             --boundary data/processed/gipuzkoa/gipuzkoa_boundary.gpkg \
             --boundary-layer pilot_boundary \
             --output data/processed/gipuzkoa/mdt_5000_sheet_index.gpkg
-      - name: Upload sheet-index files
+      - name: Check selected MDT ZIP URLs (no raster downloads)
+        run: |
+          python wildfire/ingestion/check_mdt_zip_availability.py \
+            --index data/processed/gipuzkoa/mdt_5000_sheet_index.json \
+            --output-dir data/processed/gipuzkoa/mdt_zip_check
+      - name: Upload sheet index and MDT availability manifest
         uses: actions/upload-artifact@v4
         with:
-          name: gipuzkoa-mdt-5000-sheet-index
+          name: gipuzkoa-mdt-5000-sheet-index-and-availability
           path: |
             data/processed/gipuzkoa/mdt_5000_sheet_index.gpkg
             data/processed/gipuzkoa/mdt_5000_sheet_index.json
+            data/processed/gipuzkoa/mdt_zip_check/mdt_2017_zip_availability.csv
+            data/processed/gipuzkoa/mdt_zip_check/mdt_2017_zip_availability.json
           if-no-files-found: error
           retention-days: 14
