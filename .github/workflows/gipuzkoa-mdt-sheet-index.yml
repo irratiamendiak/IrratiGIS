@@ -10,8 +10,10 @@ jobs:
   generate-sheet-index:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout default branch
+      - name: Checkout ingestion implementation from PR branch
         uses: actions/checkout@v4
+        with:
+          ref: feature/wildfire-intelligence-foundation
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
