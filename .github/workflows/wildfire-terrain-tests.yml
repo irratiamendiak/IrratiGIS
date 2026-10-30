@@ -21,4 +21,4 @@ jobs:
       - name: Compile and test
         run: |
           python -m py_compile wildfire/terrain/prepare_landscape.py
-          pytest -q wildfire/terrain/tests
+          python -m pytest -q wildfire/terrain/tests
