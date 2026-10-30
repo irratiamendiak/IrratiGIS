@@ -18,7 +18,9 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install dependencies
-        run: pip install -r wildfire/terrain/requirements-dev.txt
+        run: |
+          pip install -r wildfire/terrain/requirements-dev.txt
+          pip install -r wildfire/ingestion/requirements.txt
       - name: Compile and test
         run: |
           python -m py_compile wildfire/terrain/prepare_landscape.py wildfire/ingestion/validate_catalog.py wildfire/ingestion/download_source.py wildfire/ingestion/prepare_gipuzkoa_boundary.py
