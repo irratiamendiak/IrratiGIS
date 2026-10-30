@@ -174,13 +174,15 @@ def main():
         "elevation_min_m": min((r["min_elevation_m"] for r in results if r["min_elevation_m"] is not None), default=None),
         "elevation_max_m": max((r["max_elevation_m"] for r in results if r["max_elevation_m"] is not None), default=None),
         "resolution_values_m": sorted({r["pixel_x"] for r in results if r["pixel_x"] is not None}),
-        "crs_all_epsg25830": all(r["crs_matches_epsg25830"] for r in results if not r["error"]),\n        "legacy_prj_signature_count": sum(r["prj_signature_matches_epsg25830"] for r in results),
+        "crs_all_epsg25830": all(r["crs_matches_epsg25830"] for r in results if not r["error"]),
+        "legacy_prj_signature_count": sum(r["prj_signature_matches_epsg25830"] for r in results),
         "note": "Per-tile actual pixel-value audit inside the pilot polygon. Overlaps are counted once per tile; a final mosaic-level unique-cell audit is still required.",
         "results": results,
     }
     (args.output_dir / "mdt_2017_pixel_audit.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({k: v for k, v in summary.items() if k != "results"}, ensure_ascii=False, indent=2))
     if summary["tiles_with_errors"]:
+        print("ERROR SAMPLE:", next(r["error"] for r in results if r["error"]), flush=True)
         raise SystemExit(1)
 
 
