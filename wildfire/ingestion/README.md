@@ -144,3 +144,19 @@ Se ha localizado una fuente cartográfica oficial que puede resolver la selecci�
 La capa de hojas 5000 es la candidata inicial para investigar la correspondencia entre el identificador cartográfico y los nombres ZIP `mdt_NNN_i_j.zip`; no se da por hecho que ambos esquemas coincidan. La malla UTM 1×1 km puede servir como control espacial complementario, no como sustituto de las huellas reales de los rásteres.
 
 Siguiente validación: consultar las geometrías que intersectan el límite del piloto, comparar sus códigos con el índice de directorios Hxxxx y descargar solo una pequeña muestra de ZIPs candidatos para verificar sus bbox internos. La selección final se hará por intersección de bbox/huella ráster real con Gipuzkoa, comprobando huecos y solapes. Fuente de licencia del servicio: CC BY 3.0; atribución Eusko Jaurlaritza / Gobierno Vasco.
+
+
+### Descarga reproducible del índice oficial de hojas 1:5.000
+
+La capa consultada se ha afinado al servicio ArcGIS REST de cartografía geoEuskadi, que expone `MC_HOJAS_5000` (ID 67) directamente en EPSG:25830 y con los campos `CCFF`, `CFXMTN50`, `SC50CLAS` y `HOJA`. Su extensión publicada alcanza el área del piloto. La capa distinta del servicio U11/KARTOGRAFIA_CAS (ID 80) también se ha localizado, pero el flujo de descarga utiliza la capa 67 de U11/WMS_KARTOGRAFIA, cuya referencia espacial es la adecuada para este cruce.
+
+Para obtener el índice candidato desde la geometría local preparada:
+
+    python wildfire/ingestion/fetch_arcgis_sheet_index.py \
+      --boundary data/processed/gipuzkoa/Gipuzkoa_limite_B5M.gpkg \
+      --boundary-layer pilot_boundary \
+      --output data/processed/gipuzkoa/mdt_5000_sheet_index.gpkg
+
+El script consulta primero los OBJECTID por la extensión del piloto, descarga geometrías por lotes y realiza el cruce geométrico exacto localmente. Produce un GeoPackage y un informe JSON con los códigos y las áreas de intersección. El script necesita conexión a Internet cuando se ejecuta; CI solo compila y prueba su lógica con respuestas simuladas, no consulta servicios externos.
+
+**Precaución:** una hoja cartográfica 1:5.000 no se presume equivalente a un ZIP MDT ni a una carpeta Hxxxx. Los códigos solo se utilizarán para orientar la búsqueda; la selección final de datos de elevación seguirá dependiendo de comprobar la extensión, CRS y resolución de cada ráster real.
