@@ -1,14 +1,15 @@
-name: Wildfire terrain pipeline tests
+name: Wildfire terrain and ingestion tests
 
 on:
   pull_request:
     paths:
       - "wildfire/terrain/**"
+      - "wildfire/ingestion/**"
       - ".github/workflows/wildfire-terrain-tests.yml"
   workflow_dispatch:
 
 jobs:
-  terrain-tests:
+  wildfire-data-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,5 +21,7 @@ jobs:
         run: pip install -r wildfire/terrain/requirements-dev.txt
       - name: Compile and test
         run: |
-          python -m py_compile wildfire/terrain/prepare_landscape.py
-          python -m pytest -q wildfire/terrain/tests
+          python -m py_compile wildfire/terrain/prepare_landscape.py wildfire/ingestion/validate_catalog.py
+          python -m pytest -q wildfire/terrain/tests wildfire/ingestion/tests
+      - name: Validate official source catalogue
+        run: python wildfire/ingestion/validate_catalog.py --catalog wildfire/ingestion/sources.euskadi-gipuzkoa.json
