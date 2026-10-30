@@ -84,12 +84,18 @@ def audit_one(row, geometry, crs, timeout, max_bytes):
                 crs_params = src.crs.to_dict() if src.crs else {}
                 legacy_projection_matches = (
                     legacy_signature
-                    and crs_params.get("proj") == "tmerc"
-                    and math.isclose(float(crs_params.get("lon_0", 999)), -3.0, abs_tol=1e-8)
-                    and math.isclose(float(crs_params.get("k", 0)), 0.9996, abs_tol=1e-8)
-                    and math.isclose(float(crs_params.get("x_0", 0)), 500000.0, abs_tol=1e-6)
-                    and math.isclose(float(crs_params.get("y_0", 999)), 0.0, abs_tol=1e-8)
+                    and crs_params.get("proj") in {"utm", "tmerc"}
+                    and (
+                        crs_params.get("zone") == 30
+                        or (
+                            math.isclose(float(crs_params.get("lon_0", 999)), -3.0, abs_tol=1e-8)
+                            and math.isclose(float(crs_params.get("k", 0)), 0.9996, abs_tol=1e-8)
+                            and math.isclose(float(crs_params.get("x_0", 0)), 500000.0, abs_tol=1e-6)
+                            and math.isclose(float(crs_params.get("y_0", 999)), 0.0, abs_tol=1e-8)
+                        )
+                    )
                     and str(crs_params.get("ellps", "")).upper() == "GRS80"
+                    and crs_params.get("units") in {"m", "metre", "meter"}
                 )
                 result["crs_matches_epsg25830"] = native_crs_matches or legacy_projection_matches
                 if not result["crs_matches_epsg25830"]:
