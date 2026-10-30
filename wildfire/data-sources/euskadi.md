@@ -89,3 +89,13 @@ Para el piloto se prefiere ahora la capa **Límites municipales oficiales de Gip
 - GPKG: https://b5m.gipuzkoa.eus/datasets/GFA_DSET_MB.gpkg
 
 Se incorpora `prepare_gipuzkoa_boundary.py` para descargar, verificar CRS, revisar/reparar geometrías inválidas, mantener municipios y generar el polígono disuelto EPSG:25830 con informe de calidad. La ejecución real sigue pendiente porque el entorno de esta sesión no ha podido transferir el binario del portal.
+
+
+## Contraste del límite administrativo con CNIG
+
+Se registra además el producto **Límites y Unidades Administrativas Actuales** del CNIG, con fecha de julio/agosto de 2026 y licencia compatible con CC-BY 4.0. La distribución nacional SHP indicada por el catálogo ocupa 156,96 MB; se mantiene como referencia de contraste y no se descarga automáticamente hasta resolver el enlace directo y verificar cómo filtrar la provincia sin procesar innecesariamente toda España.
+
+- Ficha CNIG: https://centrodedescargas.cnig.es/CentroDescargas/detalleArchivo?sec=9000029
+- Catálogo de producto: https://centrodedescargas.cnig.es/CentroDescargas/catalogo.do?Serie=LILIM
+
+La capa geoEuskadi de Territorios Históricos sigue siendo una fuente de trabajo regional útil, pero sus advertencias de límites provisionales impiden tratarla como delimitación jurídica definitiva. La geometría del piloto debe contrastarse con CNIG antes de recortar los MDT.
