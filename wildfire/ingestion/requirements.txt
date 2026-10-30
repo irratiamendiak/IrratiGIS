@@ -1,0 +1,2 @@
+geopandas>=1.0,<2
+pyogrio>=0.10,<1
