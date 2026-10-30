@@ -130,3 +130,17 @@ Se recibió y abrió localmente `mdt_110_6_5.zip`; el ZIP original no se ha inco
 - La tesela no intersecta el límite del piloto: queda al oeste, con una separación horizontal mínima aproximada de 54,4 km. Se descarta como tesela de cobertura para el mosaico de Gipuzkoa; se conserva únicamente como muestra de formato y prueba del inspector.
 
 La inspección ha revelado que el formato real de esta distribución es ESRI ASCII Grid, no GeoTIFF. El inspector y sus pruebas se han ampliado para admitir ambos formatos y leer el sidecar `.prj`. La inferencia EPSG se limita a la combinación explícita de identificadores del archivo de proyección; no sustituye una validación geodésica independiente.
+
+
+## Índice espacial oficial para seleccionar hojas MDT
+
+Se ha localizado una fuente cartográfica oficial que puede resolver la selección espacial sin enumerar ni descargar a ciegas todos los ZIPs:
+
+- Servicio ArcGIS REST de cartografía geoEuskadi: https://www.geo.euskadi.eus/geoeuskadi/rest/services/U11/KARTOGRAFIA_CAS/MapServer
+- Capa **Hojas 5000**: ID 80 (polígonos de hojas cartográficas).
+- Capa **Malla UTM 1×1 km**: ID 83 (cuadrículas UTM).
+- El servicio publica también capas de hojas 10.000, 25.000 y 50.000 (IDs 79, 78 y 77).
+
+La capa de hojas 5000 es la candidata inicial para investigar la correspondencia entre el identificador cartográfico y los nombres ZIP `mdt_NNN_i_j.zip`; no se da por hecho que ambos esquemas coincidan. La malla UTM 1×1 km puede servir como control espacial complementario, no como sustituto de las huellas reales de los rásteres.
+
+Siguiente validación: consultar las geometrías que intersectan el límite del piloto, comparar sus códigos con el índice de directorios Hxxxx y descargar solo una pequeña muestra de ZIPs candidatos para verificar sus bbox internos. La selección final se hará por intersección de bbox/huella ráster real con Gipuzkoa, comprobando huecos y solapes. Fuente de licencia del servicio: CC BY 3.0; atribución Eusko Jaurlaritza / Gobierno Vasco.
