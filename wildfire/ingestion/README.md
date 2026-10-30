@@ -49,3 +49,20 @@ Descarga y extracción segura (no se ejecuta durante CI):
       --output data/raw
 
 El comando conserva el ZIP original, calcula SHA-256, extrae de forma segura (rechaza rutas ZIP que escapen del destino y enlaces simbólicos) y escribe `download_manifest.json`. No filtra automáticamente el polígono de Gipuzkoa porque primero hay que inspeccionar los campos, CRS y geometrías reales. El MDT50cm CNIG se seleccionará por hojas que intersecten el área, sin descarga masiva indiscriminada.
+
+## Límite del piloto: fuente preferida de Gipuzkoa
+
+La capa preferida pasa a ser **Límites municipales oficiales de Gipuzkoa**, publicada por la Diputación Foral de Gipuzkoa en B5M y actualizada el 26-10-2026. Se descarga como SHP ZIP (2,56 MB) y contiene atributos de municipio y comarca. La licencia del portal es CC BY 4.0, con atribución y enlace a B5M. La propia Diputación advierte que la información es informativa y debe contrastarse con las fuentes administrativas correspondientes.
+
+    pip install -r wildfire/ingestion/requirements.txt
+    python wildfire/ingestion/prepare_gipuzkoa_boundary.py
+
+El proceso conserva el ZIP original y su SHA-256, comprueba que el CRS esté declarado, conserva los polígonos municipales, repara geometrías inválidas cuando sea posible, reproyecta a EPSG:25830 y genera una capa disuelta del piloto. El informe registra el área, extensión, número de municipios y avisos de plausibilidad. No corrige límites ni elimina enclaves automáticamente.
+
+## MDT 1 m: descarga por teselas
+
+El catálogo oficial ofrece un directorio de teselas individuales bajo:
+
+https://www.geo.euskadi.eus/lidar/DatosDescarga/MDE/MAX_ACTUALIDAD/MDT_LIDAR_2017_ETRS89/MDT/
+
+No se debe descargar el archivo multipartito regional de 1 m (15 partes, aproximadamente 15 GB) para este piloto. Se necesita identificar las hojas/teselas que intersectan el límite preparado y descargar solo esos ZIP individuales. La selección de teselas queda pendiente de ejecutar tras obtener y revisar el polígono real.
