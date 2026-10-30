@@ -79,3 +79,13 @@ https://www.geo.euskadi.eus/cartografia/DatosDescarga/Limites/TERRITORIOS_5000_E
 El catálogo indica ETRS89 / UTM huso 30 y atribución obligatoria al Gobierno Vasco. También advierte que el conjunto no cumple los requisitos para considerarse cartografía oficial y que algunas líneas pueden ser provisionales o estar en disputa. Por tanto, se utilizará solo para delimitar el área de trabajo tras inspección geométrica y de metadatos, no como delimitación jurídica definitiva.
 
 Se ha añadido un descargador que conserva el ZIP original, calcula SHA-256, genera manifiesto de procedencia y extrae archivos ZIP con controles contra path traversal y enlaces simbólicos. La descarga real y la selección de la geometría de Gipuzkoa quedan pendientes de ejecución y revisión.
+
+## 7. Fuente de límite del piloto actualizada
+
+Para el piloto se prefiere ahora la capa **Límites municipales oficiales de Gipuzkoa** de la Diputación Foral de Gipuzkoa (B5M), actualizada el 26-10-2026, en lugar de la capa regional de Territorios Históricos de geoEuskadi. Permite conservar los polígonos y atributos municipales y disolverlos para el área de estudio. Licencia CC BY 4.0 con atribución a B5M. El portal advierte que la información es informativa y debe contrastarse con las fuentes administrativas oficiales.
+
+- Ficha: https://b5m.gipuzkoa.eus/web5000/es/conjuntos-datos/limites-municipales
+- SHP ZIP: https://b5m.gipuzkoa.eus/datasets/GFA_DSET_MB_SHP.zip
+- GPKG: https://b5m.gipuzkoa.eus/datasets/GFA_DSET_MB.gpkg
+
+Se incorpora `prepare_gipuzkoa_boundary.py` para descargar, verificar CRS, revisar/reparar geometrías inválidas, mantener municipios y generar el polígono disuelto EPSG:25830 con informe de calidad. La ejecución real sigue pendiente porque el entorno de esta sesión no ha podido transferir el binario del portal.
