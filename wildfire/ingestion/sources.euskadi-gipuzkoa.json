@@ -15,6 +15,25 @@
   },
   "sources": [
     {
+      "id": "euskadi_historical_territories_boundary",
+      "theme": "administrative_boundary",
+      "title": "Límites administrativos del País Vasco · Territorios Históricos",
+      "publisher": "Gobierno Vasco / geoEuskadi",
+      "landing_page": "https://www.geo.euskadi.eus/limites-administrativos-del-pais-vasco/webgeo00-dataset/es/",
+      "distribution_url": "https://www.geo.euskadi.eus/cartografia/DatosDescarga/Limites/TERRITORIOS_5000_ETRS89.zip",
+      "format": "ESRI Shapefile ZIP",
+      "reference_date": "Catalogue updated 2025-05-07; directory file dated 2025-03-26",
+      "status": "candidate_boundary_pending_review",
+      "spatial_role": "clip boundary for Gipuzkoa pilot; not legally authoritative cadastral delimitation",
+      "known_limitations": [
+        "The catalogue explicitly states this dataset does not meet the requirements to be considered official cartography under Spanish cartography regulations.",
+        "Some boundary lines may be provisional or disputed; inspect metadata and geometry before use."
+      ],
+      "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
+      "license": "Reuse permitted with attribution per official catalogue",
+      "checksum_sha256": null
+    },
+    {
       "id": "euskadi_dem_1m",
       "theme": "terrain",
       "title": "Modelo Digital de Elevaciones (1 metro) del País Vasco",
