@@ -173,3 +173,14 @@ La ficha describe el vuelo LAS con hojas de 500 × 500 m, ETRS89 / UTM 30 y altu
 La ficha advierte además que hubo zonas con errores importantes que no se publicaron y que la ausencia de datos de descarga puede corresponder a esas zonas. Esto refuerza la necesidad de usar huellas reales y registrar huecos, en vez de asumir cobertura continua a partir de una malla teórica.
 
 Fuente: ficha oficial "Vuelo LIDAR 2017 de la Comunidad Autónoma del País Vasco", Gobierno Vasco; atribución requerida: Eusko Jaurlaritza / Gobierno Vasco.
+
+
+### Relación entre el MDT 1 m y la malla cartográfica PNOA 1:5.000
+
+Se ha localizado una confirmación importante en los metadatos del propio MDT 1 m de geoEuskadi: la distribución se describe como archivos ASCII por hojas con corte de malla 1:5.000 del PNOA. Por tanto, la capa `MC_HOJAS_5000` (ID 67) es la referencia cartográfica pertinente para seleccionar candidatos del MDT, a diferencia del SHP de distribución de LAS de 500 × 500 m, que es otro producto y otra unidad de descarga.
+
+El servicio REST de la capa 67 declara EPSG:25830 y los atributos `CCFF`, `CFXMTN50`, `SC50CLAS` y `HOJA`. El descargador conserva todos esos atributos para que la correspondencia con el nombre de archivo `mdt_NNN_i_j.zip` se pueda verificar de forma explícita. La relación de nombres parece seguir el corte de hojas PNOA, pero no se codifica una conversión automática hasta contrastar registros reales del servicio y nombres reales de archivos.
+
+Fuentes:
+- Metadatos MDT 1 m 2017: https://www.geo.euskadi.eus/geonetwork/srv/spa/metadata.show?uuid=md_IDEEu_MDT_LIDAR_2017_es
+- Servicio cartográfico `MC_HOJAS_5000`: https://www.geo.euskadi.eus/geoeuskadi/rest/services/U11/WMS_KARTOGRAFIA/MapServer/67
