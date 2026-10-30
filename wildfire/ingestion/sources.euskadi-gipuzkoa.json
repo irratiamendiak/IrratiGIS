@@ -15,6 +15,26 @@
   },
   "sources": [
     {
+      "id": "cnig_admin_boundaries_current_2026",
+      "theme": "administrative_boundary",
+      "title": "Límites y Unidades Administrativas Actuales · CNIG",
+      "publisher": "CNIG / Instituto Geográfico Nacional",
+      "landing_page": "https://centrodedescargas.cnig.es/CentroDescargas/detalleArchivo?sec=9000029",
+      "distribution_url": null,
+      "format": "Shapefile (ZIP) or GML; nationwide distribution",
+      "reference_date": "2026-07-28 (Shapefile product; catalogue also lists GML 2026-08-10)",
+      "status": "official_boundary_reference_download_url_to_resolve",
+      "spatial_role": "authoritative cross-check for Gipuzkoa provincial boundary; nationwide package may be large",
+      "known_limitations": [
+        "Catalogue lists a nationwide Shapefile package of 156.96 MB; do not download until the exact distribution link and filtering workflow are confirmed.",
+        "Metadata lists ETRS89 coordinates; inspect the actual file CRS and administrative code fields before filtering.",
+        "Use this source to verify the territorial boundary, not as terrain or vegetation data."
+      ],
+      "attribution": "CNIG / Instituto Geográfico Nacional",
+      "license": "Compatible with CC-BY 4.0 under the product's stated conditions",
+      "checksum_sha256": null
+    },
+    {
       "id": "gipuzkoa_b5m_municipal_boundaries",
       "theme": "administrative_boundary",
       "title": "Límites municipales oficiales de Gipuzkoa",
