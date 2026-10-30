@@ -32,7 +32,7 @@ def safe_extract_zip(archive: Path, destination: Path) -> list[str]:
             if not name or "\x00" in name:
                 raise ValueError("ZIP contains an invalid member name")
             pure = PurePosixPath(name)
-            if pure.is_absolute() or "\\\\" in name or ":" in pure.parts[0] or any(part in ("..", "") for part in pure.parts):
+            if pure.is_absolute() or "\\" in name or ":" in pure.parts[0] or any(part in ("..", "") for part in pure.parts):
                 raise ValueError(f"Unsafe ZIP path: {name}")
             mode = member.external_attr >> 16
             if stat.S_ISLNK(mode):
