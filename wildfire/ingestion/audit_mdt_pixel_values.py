@@ -75,14 +75,25 @@ def audit_one(row, geometry, crs, timeout, max_bytes):
                 native_crs_matches = bool(src.crs and src.crs.to_epsg() == 25830)
                 result.update({
                     "raster_crs": raster_crs or ("legacy .prj signature: AI_ETRS89 / UTM zone 30 / GRS80" if legacy_signature else None),
-                    "crs_matches_epsg25830": native_crs_matches or (src.crs is None and legacy_signature),
+                    "crs_matches_epsg25830": native_crs_matches or legacy_signature,
                     "prj_signature_matches_epsg25830": legacy_signature,
                     "width": src.width, "height": src.height,
                     "pixel_x": abs(src.transform.a), "pixel_y": abs(src.transform.e),
                     "nodata": src.nodata,
                 })
-                if not native_crs_matches and not (src.crs is None and legacy_signature):
-                    raise ValueError(f"CRS not verifiable as EPSG:25830; GDAL CRS={src.crs}, legacy PRJ signature={legacy_signature}, PRJ={prj_text[:300]!r}")
+                crs_params = src.crs.to_dict() if src.crs else {}
+                legacy_projection_matches = (
+                    legacy_signature
+                    and crs_params.get("proj") == "tmerc"
+                    and math.isclose(float(crs_params.get("lon_0", 999)), -3.0, abs_tol=1e-8)
+                    and math.isclose(float(crs_params.get("k", 0)), 0.9996, abs_tol=1e-8)
+                    and math.isclose(float(crs_params.get("x_0", 0)), 500000.0, abs_tol=1e-6)
+                    and math.isclose(float(crs_params.get("y_0", 999)), 0.0, abs_tol=1e-8)
+                    and str(crs_params.get("ellps", "")).upper() == "GRS80"
+                )
+                result["crs_matches_epsg25830"] = native_crs_matches or legacy_projection_matches
+                if not result["crs_matches_epsg25830"]:
+                    raise ValueError(f"CRS not verifiable as EPSG:25830; GDAL params={crs_params}, legacy PRJ signature={legacy_signature}, PRJ={prj_text[:300]!r}")
                 if not math.isclose(abs(src.transform.a), 1.0, abs_tol=1e-6) or not math.isclose(abs(src.transform.e), 1.0, abs_tol=1e-6):
                     raise ValueError(f"Unexpected pixel size: {src.transform}")
                 count = 0
@@ -131,6 +142,7 @@ def main():
     parser.add_argument("--workers", type=int, default=3)
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--max-mb", type=int, default=500)
+    parser.add_argument("--limit", type=int, default=0, help="Optional maximum number of sorted tiles for a quick smoke test")
     args = parser.parse_args()
 
     import geopandas as gpd
@@ -143,7 +155,9 @@ def main():
         parser.error("Pilot boundary geometry is empty or invalid")
 
     source = json.loads(args.availability.read_text(encoding="utf-8"))
-    rows = [r for r in source.get("results", []) if r.get("available") is True]
+    rows = sorted((r for r in source.get("results", []) if r.get("available") is True), key=lambda r: r["HOJA"])
+    if args.limit > 0:
+        rows = rows[:args.limit]
     args.output_dir.mkdir(parents=True, exist_ok=True)
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
