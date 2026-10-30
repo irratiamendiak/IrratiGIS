@@ -19,14 +19,14 @@ from pathlib import Path, PurePosixPath
 
 import numpy as np
 import rasterio
-from rasterio.features import geometry_mask
+from rasterio.features import geometry_mask\nfrom rasterio.warp import transform_geom
 from rasterio.windows import Window
 
 
 def audit_one(row, geometry, crs, timeout, max_bytes):
     result = {
         "HOJA": row["HOJA"], "url": row["url"], "sha256": None,
-        "raster_crs": None, "crs_matches_epsg25830": False,
+        "raster_crs": None, "crs_matches_epsg25830": False, "prj_signature_matches_epsg25830": False,
         "width": None, "height": None, "pixel_x": None, "pixel_y": None,
         "nodata": None, "pilot_cells_examined": 0, "valid_cells_inside_pilot": 0,
         "nodata_cells_inside_pilot": 0, "valid_percent_inside_tile_intersection": None,
@@ -64,16 +64,24 @@ def audit_one(row, geometry, crs, timeout, max_bytes):
                 asc_path.write_bytes(archive.read(asc_name))
                 if prj_name:
                     (Path(td) / "tile.prj").write_bytes(archive.read(prj_name))
+            prj_text = (Path(td) / "tile.prj").read_text(encoding="utf-8", errors="replace") if prj_name else ""
+            prj_norm = " ".join(prj_text.lower().replace("_", "").split())
+            legacy_signature = all(token in prj_norm for token in (
+                "projection utm", "zone 30", "datum aietrs89", "spheroid grs80", "units meters"
+            ))
             with rasterio.open(asc_path) as src:
+                raster_crs = src.crs.to_string() if src.crs else None
+                native_crs_matches = bool(src.crs and src.crs.to_epsg() == 25830)
                 result.update({
-                    "raster_crs": src.crs.to_string() if src.crs else None,
-                    "crs_matches_epsg25830": bool(src.crs and src.crs.to_epsg() == 25830),
+                    "raster_crs": raster_crs or ("legacy .prj signature: AI_ETRS89 / UTM zone 30 / GRS80" if legacy_signature else None),
+                    "crs_matches_epsg25830": native_crs_matches or (src.crs is None and legacy_signature),
+                    "prj_signature_matches_epsg25830": legacy_signature,
                     "width": src.width, "height": src.height,
                     "pixel_x": abs(src.transform.a), "pixel_y": abs(src.transform.e),
                     "nodata": src.nodata,
                 })
-                if not src.crs or src.crs.to_epsg() != 25830:
-                    raise ValueError(f"Unexpected CRS: {src.crs}")
+                if not native_crs_matches and not (src.crs is None and legacy_signature):
+                    raise ValueError(f"CRS not verifiable as EPSG:25830; GDAL CRS={src.crs}, legacy PRJ signature={legacy_signature}, PRJ={prj_text[:300]!r}")
                 if not math.isclose(abs(src.transform.a), 1.0, abs_tol=1e-6) or not math.isclose(abs(src.transform.e), 1.0, abs_tol=1e-6):
                     raise ValueError(f"Unexpected pixel size: {src.transform}")
                 count = 0
@@ -83,7 +91,7 @@ def audit_one(row, geometry, crs, timeout, max_bytes):
                 for _, window in src.block_windows(1):
                     data = src.read(1, window=window, masked=False)
                     inside = geometry_mask(
-                        [geometry], out_shape=data.shape,
+                        [geometry.__geo_interface__], out_shape=data.shape,
                         transform=src.window_transform(window), invert=True, all_touched=False,
                     )
                     if not inside.any():
@@ -165,7 +173,7 @@ def main():
         "elevation_min_m": min((r["min_elevation_m"] for r in results if r["min_elevation_m"] is not None), default=None),
         "elevation_max_m": max((r["max_elevation_m"] for r in results if r["max_elevation_m"] is not None), default=None),
         "resolution_values_m": sorted({r["pixel_x"] for r in results if r["pixel_x"] is not None}),
-        "crs_all_epsg25830": all(r["crs_matches_epsg25830"] for r in results if not r["error"]),
+        "crs_all_epsg25830": all(r["crs_matches_epsg25830"] for r in results if not r["error"]),\n        "legacy_prj_signature_count": sum(r["prj_signature_matches_epsg25830"] for r in results),
         "note": "Per-tile actual pixel-value audit inside the pilot polygon. Overlaps are counted once per tile; a final mosaic-level unique-cell audit is still required.",
         "results": results,
     }
