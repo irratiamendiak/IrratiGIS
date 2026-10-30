@@ -1,0 +1,94 @@
+{
+  "catalog_version": "1.0.0",
+  "pilot": {
+    "name": "Gipuzkoa",
+    "admin_boundary_source": "pending_official_boundary",
+    "target_crs": "EPSG:25830",
+    "working_cell_size_m": 10
+  },
+  "generated_at": "2026-10-30",
+  "policy": {
+    "preserve_originals": true,
+    "require_sha256": true,
+    "never_promote_resampled_resolution": true,
+    "require_expert_review_for_fuel_crosswalk": true
+  },
+  "sources": [
+    {
+      "id": "euskadi_dem_1m",
+      "theme": "terrain",
+      "title": "Modelo Digital de Elevaciones (1 metro) del País Vasco",
+      "publisher": "Gobierno Vasco / geoEuskadi",
+      "landing_page": "https://www.geo.euskadi.eus/modelo-digital-elevaciones-1-metro-del-pais-vasco/webgeo00-dataset/es/",
+      "distribution_url": null,
+      "format": "GeoTIFF or service tiles; confirm per distribution",
+      "reference_date": "2008-2017 with later change updates described in metadata",
+      "status": "candidate_metadata_review",
+      "spatial_role": "primary terrain candidate",
+      "known_limitations": [
+        "Inspect per-tile lineage and dates; page offers historical and maximum-current distributions.",
+        "Verify vertical datum and tile completeness before processing."
+      ],
+      "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
+      "license": "Reuse permitted with attribution per dataset metadata",
+      "checksum_sha256": null
+    },
+    {
+      "id": "cnig_mdt50cm_lidar3_provisional",
+      "theme": "terrain",
+      "title": "MDT50cm provisional V1 · 3rd PNOA-LiDAR coverage",
+      "publisher": "CNIG / IGN",
+      "landing_page": "https://centrodedescargas.cnig.es/CentroDescargas/novedades?codSerie=MDT01",
+      "distribution_url": null,
+      "format": "MDT GeoTIFF (distribution to resolve by tile)",
+      "reference_date": "Published 2026-05-25; provisional",
+      "status": "candidate_quality_assessment",
+      "spatial_role": "independent terrain comparison candidate",
+      "known_limitations": [
+        "Provisional V1 generated from initial point-cloud classification NPC01.",
+        "Do not assume 0.5 m effective accuracy or completeness from pixel size alone."
+      ],
+      "attribution": "CNIG / IGN",
+      "license": "Confirm on each downloaded product",
+      "checksum_sha256": null
+    },
+    {
+      "id": "euskadi_forest_map_2024_vector",
+      "theme": "vegetation",
+      "title": "Mapa Forestal CAE 2024 · distribución SHP",
+      "publisher": "Gobierno Vasco / geoEuskadi / HAZI",
+      "landing_page": "https://www.euskadi.eus/mapa-forestal-del-pais-vasco/web01-a3estbin/es/",
+      "distribution_url": "https://www.geo.euskadi.eus/cartografia/DatosDescarga/Agricultura/INV_FORESTAL_2024_10000_ETRS89.zip",
+      "format": "ESRI Shapefile ZIP",
+      "reference_date": "2024",
+      "status": "candidate_spatial_baseline",
+      "spatial_role": "vegetation and forest-structure context; not a fire-behaviour fuel model",
+      "known_limitations": [
+        "Minimum homogeneous polygon stated as 0.10 ha.",
+        "Do not translate classes to fuel models without a reviewed crosswalk.",
+        "Confirm field schema and coverage after download."
+      ],
+      "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
+      "license": "Reuse permitted with attribution per official catalogue",
+      "checksum_sha256": null
+    },
+    {
+      "id": "euskadi_forest_map_2025_stats",
+      "theme": "vegetation_statistics",
+      "title": "Mapa Forestal CAE 2025 · tablas estadísticas",
+      "publisher": "Gobierno Vasco / HAZI",
+      "landing_page": "https://www.euskadi.eus/mapa-forestal-cae-2025/web01-a3estbin/es/",
+      "distribution_url": null,
+      "format": "Official statistical tables / report",
+      "reference_date": "2025",
+      "status": "context_only_spatial_distribution_unconfirmed",
+      "spatial_role": "territorial/comarcal statistics and currency check; not a spatial raster/vector layer",
+      "known_limitations": [
+        "The inspected page exposes tables including Gipuzkoa; a downloadable 2025 spatial dataset was not confirmed."
+      ],
+      "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
+      "license": "Confirm for each table/report",
+      "checksum_sha256": null
+    }
+  ]
+}
