@@ -29,3 +29,5 @@ jobs:
 # Validates ingestion provenance and ZIP extraction safety.
 
 # Boundary preparation is compiled in CI; live source download is a separate data task.
+
+# Trigger validation after source catalogue updates.
