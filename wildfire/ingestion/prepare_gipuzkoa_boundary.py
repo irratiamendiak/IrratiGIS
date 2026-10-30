@@ -22,6 +22,16 @@ def find_shapefile(root: Path) -> Path:
     return matches[0]
 
 
+def write_boundary_layers(gpkg: Path, municipalities: gpd.GeoDataFrame,
+                          boundary: gpd.GeoDataFrame) -> None:
+    """Write both source municipalities and dissolved pilot outline to one GPKG."""
+    if gpkg.exists():
+        gpkg.unlink()
+    municipalities.to_file(gpkg, layer="municipalities", driver="GPKG")
+    # GeoPandas defaults to mode="w"; append explicitly to preserve layer 1.
+    boundary.to_file(gpkg, layer="pilot_boundary", driver="GPKG", mode="a")
+
+
 def prepare(catalog: Path, output: Path, force: bool = False) -> dict:
     raw = output / "raw"
     record = download_source(
@@ -62,10 +72,7 @@ def prepare(catalog: Path, output: Path, force: bool = False) -> dict:
 
     output.mkdir(parents=True, exist_ok=True)
     gpkg = output / "gipuzkoa_boundary.gpkg"
-    if gpkg.exists():
-        gpkg.unlink()
-    municipalities.to_file(gpkg, layer="municipalities", driver="GPKG")
-    boundary.to_file(gpkg, layer="pilot_boundary", driver="GPKG")
+    write_boundary_layers(gpkg, municipalities, boundary)
 
     area_km2 = float(boundary.geometry.area.iloc[0] / 1_000_000)
     minx, miny, maxx, maxy = boundary.total_bounds
