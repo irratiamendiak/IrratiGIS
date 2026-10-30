@@ -33,3 +33,35 @@ jobs:
 # Boundary preparation is compiled in CI; live source download is a separate data task.
 
 # Trigger validation after source catalogue updates.
+
+  gipuzkoa-sheet-index:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install ingestion dependencies
+        run: pip install -r wildfire/ingestion/requirements.txt
+      - name: Prepare official Gipuzkoa boundary
+        run: |
+          python wildfire/ingestion/prepare_gipuzkoa_boundary.py \
+            --catalog wildfire/ingestion/sources.euskadi-gipuzkoa.json \
+            --output data/processed/gipuzkoa
+      - name: Fetch intersecting official 1:5,000 sheets
+        run: |
+          python wildfire/ingestion/fetch_arcgis_sheet_index.py \
+            --boundary data/processed/gipuzkoa/gipuzkoa_boundary.gpkg \
+            --boundary-layer pilot_boundary \
+            --output data/processed/gipuzkoa/mdt_5000_sheet_index.gpkg
+      - name: Upload sheet index artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gipuzkoa-mdt-5000-sheet-index
+          path: |
+            data/processed/gipuzkoa/mdt_5000_sheet_index.gpkg
+            data/processed/gipuzkoa/mdt_5000_sheet_index.json
+          if-no-files-found: error
+          retention-days: 14
