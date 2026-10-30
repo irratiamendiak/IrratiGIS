@@ -36,13 +36,16 @@ def read_tile(row, workdir):
                 raise ValueError(f"{row['HOJA']}: unrecognized PRJ signature")
         asc_path = workdir / (row["HOJA"] + ".asc")
         asc_path.write_bytes(z.read(asc[0]))
-    ds = rasterio.open(asc_path)
-    if abs(ds.transform.a - 1) > 1e-6 or abs(ds.transform.e + 1) > 1e-6:
-        ds.close()
-        raise ValueError(f"{row['HOJA']}: expected 1 m cells")
-    # The source PRJ signature has been checked; set its recognized equivalent for processing.
-    ds.crs = CRS.from_epsg(25830)
-    return ds
+    with rasterio.open(asc_path) as src:
+        if abs(src.transform.a - 1) > 1e-6 or abs(src.transform.e + 1) > 1e-6:
+            raise ValueError(f"{row['HOJA']}: expected 1 m cells")
+        # The source PRJ signature has been checked; write an equivalent, explicit EPSG:25830 working copy.
+        profile = src.profile.copy()
+        profile.update(driver="GTiff", crs=CRS.from_epsg(25830), compress="DEFLATE", predictor=3)
+        tile_tif = workdir / (row["HOJA"] + ".tif")
+        with rasterio.open(tile_tif, "w", **profile) as dst:
+            dst.write(src.read(1), 1)
+    return rasterio.open(tile_tif)
 
 
 def main():
