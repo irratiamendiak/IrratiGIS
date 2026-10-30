@@ -27,27 +27,32 @@ class ArcGisSheetIndexTests(unittest.TestCase):
                 calls.append(params)
                 if params.get("returnIdsOnly") == "true":
                     return {"objectIds": [11, 12]}
+                all_features = [
+                    {
+                        "type": "Feature",
+                        "id": 11,
+                        "properties": {
+                            "OBJECTID": 11, "CCFF": "A", "CFXMTN50": "A",
+                            "SC50CLAS": "A", "HOJA": "inside"
+                        },
+                        "geometry": mapping(box(150, 150, 250, 250)),
+                    },
+                    {
+                        "type": "Feature",
+                        "id": 12,
+                        "properties": {
+                            "OBJECTID": 12, "CCFF": "B", "CFXMTN50": "B",
+                            "SC50CLAS": "B", "HOJA": "outside"
+                        },
+                        "geometry": mapping(box(300, 300, 400, 400)),
+                    },
+                ]
+                requested_ids = {int(value) for value in params["objectIds"].split(",")}
                 return {
                     "type": "FeatureCollection",
                     "features": [
-                        {
-                            "type": "Feature",
-                            "id": 11,
-                            "properties": {
-                                "OBJECTID": 11, "CCFF": "A", "CFXMTN50": "A",
-                                "SC50CLAS": "A", "HOJA": "inside"
-                            },
-                            "geometry": mapping(box(150, 150, 250, 250)),
-                        },
-                        {
-                            "type": "Feature",
-                            "id": 12,
-                            "properties": {
-                                "OBJECTID": 12, "CCFF": "B", "CFXMTN50": "B",
-                                "SC50CLAS": "B", "HOJA": "outside"
-                            },
-                            "geometry": mapping(box(300, 300, 400, 400)),
-                        },
+                        feature for feature in all_features
+                        if feature["id"] in requested_ids
                     ],
                 }
 
