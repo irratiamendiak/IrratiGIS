@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import rasterio
 from rasterio.transform import from_origin
-from rasterio.warp import Resampling, reproject, transform_bounds
+from rasterio.warp import Resampling, reproject, transform as transform_coords, transform_bounds
 
 BANDS = [
     ("elevation", "m", 1.0, "Elevation (m)"),
@@ -32,20 +32,17 @@ OPTIONAL_BANDS = [
 ]
 
 
-def source_resolution(dataset: rasterio.DatasetReader) -> float:
-    """Approximate native pixel size in metres, including geographic grids."""
+def source_resolution(dataset: rasterio.DatasetReader, target_crs) -> float:
+    """Approximate native pixel size in target-CRS metres at raster centre."""
     t = dataset.transform
-    if dataset.crs and dataset.crs.is_projected:
-        axes = dataset.crs.axis_info
-        factor = axes[0].unit_conversion_factor if axes else 1.0
-        return max(abs(t.a), abs(t.e)) * factor
-    if dataset.crs and dataset.crs.is_geographic:
-        geod = dataset.crs.get_geod()
-        x0, y0 = t * (dataset.width / 2, dataset.height / 2)
-        _, _, dx = geod.inv(x0, y0, x0 + t.a, y0)
-        _, _, dy = geod.inv(x0, y0, x0, y0 + t.e)
-        return max(abs(dx), abs(dy))
-    return max(abs(t.a), abs(t.e))
+    x0, y0 = t * (dataset.width / 2, dataset.height / 2)
+    x1, y1 = t * (dataset.width / 2 + 1, dataset.height / 2)
+    x2, y2 = t * (dataset.width / 2, dataset.height / 2 + 1)
+    xs, ys = transform_coords(dataset.crs, target_crs,
+                              [x0, x1, x2], [y0, y1, y2])
+    dx = math.hypot(xs[1] - xs[0], ys[1] - ys[0])
+    dy = math.hypot(xs[2] - xs[0], ys[2] - ys[0])
+    return max(dx, dy)
 
 
 def make_target_grid(dem_path: Path, target_crs: str, resolution: float):
@@ -84,7 +81,7 @@ def warp_band(path: Path, dst_crs, dst_transform, width, height, categorical=Fal
         return data, {
             "path": str(path),
             "crs": src.crs.to_string(),
-            "native_resolution_m_approx": source_resolution(src),
+            "native_resolution_m_approx": source_resolution(src, dst_crs),
             "nodata": src.nodata,
             "resampling": "nearest" if categorical else "bilinear",
         }
