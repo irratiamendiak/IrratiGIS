@@ -160,3 +160,16 @@ Para obtener el índice candidato desde la geometría local preparada:
 El script consulta primero los OBJECTID por la extensión del piloto, descarga geometrías por lotes y realiza el cruce geométrico exacto localmente. Produce un GeoPackage y un informe JSON con los códigos y las áreas de intersección. El script necesita conexión a Internet cuando se ejecuta; CI solo compila y prueba su lógica con respuestas simuladas, no consulta servicios externos.
 
 **Precaución:** una hoja cartográfica 1:5.000 no se presume equivalente a un ZIP MDT ni a una carpeta Hxxxx. Los códigos solo se utilizarán para orientar la búsqueda; la selección final de datos de elevación seguirá dependiendo de comprobar la extensión, CRS y resolución de cada ráster real.
+
+
+### Índice de distribución LiDAR 2017: fuente complementaria, no índice MDT
+
+La ficha oficial del vuelo LiDAR 2017 publica un SHP denominado "Distribución Hojas" en:
+
+https://www.geo.euskadi.eus/lidar/DatosDescarga/LIDAR/LIDAR_2017_ETRS89/HOJAS_LAS_LIDAR_2017_ETRS89.zip
+
+La ficha describe el vuelo LAS con hojas de 500 × 500 m, ETRS89 / UTM 30 y alturas ortométricas EGM08_REDNAP. Esta distribución documenta la disponibilidad de ficheros LAS del vuelo, no necesariamente la distribución de los archivos MDT ASCII de 1 m. Por ello no se utilizará como índice primario para seleccionar `mdt_NNN_i_j.zip`; solo podrá emplearse como control complementario si se demuestra la relación geométrica y de nomenclatura.
+
+La ficha advierte además que hubo zonas con errores importantes que no se publicaron y que la ausencia de datos de descarga puede corresponder a esas zonas. Esto refuerza la necesidad de usar huellas reales y registrar huecos, en vez de asumir cobertura continua a partir de una malla teórica.
+
+Fuente: ficha oficial "Vuelo LIDAR 2017 de la Comunidad Autónoma del País Vasco", Gobierno Vasco; atribución requerida: Eusko Jaurlaritza / Gobierno Vasco.
