@@ -9,6 +9,8 @@ permissions:
 jobs:
   generate-sheet-index:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
     steps:
       - name: Checkout ingestion implementation from PR branch
         uses: actions/checkout@v4
