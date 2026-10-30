@@ -87,7 +87,7 @@ def prepare(catalog: Path, output: Path, force: bool = False) -> dict:
     if not 1800 <= area_km2 <= 2200:
         report["quality_flags"].append("Dissolved area outside broad expected 1800-2200 km2 range; inspect CRS, enclaves and source geometry.")
     report_path = output / "gipuzkoa_boundary_report.json"
-    report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8")
+    report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return report
 
 
