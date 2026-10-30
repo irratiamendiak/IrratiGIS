@@ -1020,6 +1020,7 @@ function geoEuskadiRasterLayer(layerId, opacity){
   };
   return layer;
 }
+const geoEuskadiElevation=geoEuskadiRasterLayer(5,.78); // Fondo hipsométrico LiDAR
 const geoEuskadiHillshade=geoEuskadiRasterLayer(8,.72);
 const geoEuskadiSlope=geoEuskadiRasterLayer(7,.68);
 const geoEuskadiAspect=geoEuskadiRasterLayer(6,.68);
@@ -1053,6 +1054,7 @@ const layersControl=new GroupedLayersControl(
   "Waypoint-ak":waypointLayer,
   "🔥 Baimendutako erreketak":controlledBurnLayer,
   "🔥 Suteak 2010-2025 (EGIF)":egifLayer,
+  "⛰️ GeoEuskadi · Fondo hipsométrico LiDAR":geoEuskadiElevation,
   "⛰️ GeoEuskadi · Sombras LiDAR 1 m (2017)":geoEuskadiHillshade,
   "📐 GeoEuskadi · Pendiente LiDAR 25 m":geoEuskadiSlope,
   "🧭 GeoEuskadi · Orientación LiDAR 25 m":geoEuskadiAspect,
@@ -1063,7 +1065,8 @@ const layersControl=new GroupedLayersControl(
     position:"topright",
     groupHeads:{
       "Eskuz marraztutako track-a":"✏️ Edizioa",
-      "🔥 Baimendutako erreketak":"🗺️ Geruzak"
+      "🔥 Baimendutako erreketak":"🗺️ Geruzak",
+      "⛰️ GeoEuskadi · Fondo hipsométrico LiDAR":"⛰️ Terreno · LiDAR 2017"
     }
   }
 ).addTo(map);
