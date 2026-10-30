@@ -16,6 +16,24 @@ class SafeZipExtractionTests(unittest.TestCase):
             self.assertEqual(extracted, ["boundary/territories.shp"])
             self.assertEqual((root / "out/boundary/territories.shp").read_bytes(), b"shape")
 
+    def test_rejects_windows_path_separators(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "windows.zip"
+            with zipfile.ZipFile(archive, "w") as zf:
+                zf.writestr("..\\\\escape.txt", b"bad")
+            with self.assertRaises(ValueError):
+                safe_extract_zip(archive, root / "out")
+
+    def test_rejects_drive_prefixed_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "drive.zip"
+            with zipfile.ZipFile(archive, "w") as zf:
+                zf.writestr("C:escape.txt", b"bad")
+            with self.assertRaises(ValueError):
+                safe_extract_zip(archive, root / "out")
+
     def test_rejects_parent_traversal(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
