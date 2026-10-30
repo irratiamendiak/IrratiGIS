@@ -2,7 +2,7 @@
   "catalog_version": "1.0.0",
   "pilot": {
     "name": "Gipuzkoa",
-    "admin_boundary_source": "pending_official_boundary",
+    "admin_boundary_source": "euskadi_historical_territories_boundary",
     "target_crs": "EPSG:25830",
     "working_cell_size_m": 10
   },
