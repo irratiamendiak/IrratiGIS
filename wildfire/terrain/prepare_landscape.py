@@ -202,7 +202,7 @@ def main(argv=None):
             layers[name], sources[name] = warp_band(path, args.crs, transform, width, height)
 
     # All landscape bands must share one valid-data footprint.
-    common_valid = np.logical_and.reduce([np.isfinite(layers[name]) for name, _, _, _ in BANDS])
+    common_valid = np.logical_and.reduce([np.isfinite(data) for data in layers.values()])
     for name in list(layers):
         layers[name][~common_valid] = np.nan
 
