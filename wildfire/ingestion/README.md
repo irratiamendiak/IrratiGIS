@@ -116,4 +116,17 @@ Tras descargarla, ejecutar:
 
     python wildfire/ingestion/inspect_raster_archive.py mdt_110_6_5.zip --output mdt_110_6_5_report.json
 
-El inspector extrae en un directorio temporal con validación de rutas ZIP y reporta CRS, dimensiones, resolución, transformación, bbox, NoData, tipo de dato y bloques de cada GeoTIFF. No crea mosaicos ni afirma que la tesela cubra el piloto; la extensión se compara con el límite Gipuzkoa en el siguiente paso.
+El inspector extrae en un directorio temporal con validación de rutas ZIP y reporta CRS, dimensiones, resolución, transformación, bbox, NoData, tipo de dato y bloques de los rásteres GeoTIFF o ESRI ASCII Grid (`.asc`). Conserva el texto del archivo `.prj` y reconoce la firma explícita ETRS89 / UTM zona 30 / GRS80 como EPSG:25830, dejando constancia de que esa autoridad se infiere del sidecar. No crea mosaicos ni afirma que la tesela cubra el piloto.
+
+### Resultado de inspección de la muestra MDT (30-10-2026)
+
+Se recibió y abrió localmente `mdt_110_6_5.zip`; el ZIP original no se ha incorporado al repositorio.
+
+- SHA-256: `c92f60af55eeaf6eed617f30a83de8cab5e9ded8b4a169bb1a3c607766f87efc` (2.360.209 bytes).
+- Contenido: `mdt_110_6_5.asc` (rejilla ESRI ASCII, 52.733.287 bytes descomprimidos) y `mdt_110_6_5.prj`.
+- Rejilla: 3.520 columnas × 2.430 filas, celda de 1 m, una banda, float32, NoData = -9999.
+- Extensión EPSG:25830, interpretada a partir del sidecar ETRS89 / UTM 30 / GRS80: X=474430..477950; Y=4749230..4751660.
+- 987.806 celdas con datos y 7.565.794 celdas NoData (aprox. 88,5 % NoData). Elevaciones válidas observadas: 903,72..1.089,38 m.
+- La tesela no intersecta el límite del piloto: queda al oeste, con una separación horizontal mínima aproximada de 54,4 km. Se descarta como tesela de cobertura para el mosaico de Gipuzkoa; se conserva únicamente como muestra de formato y prueba del inspector.
+
+La inspección ha revelado que el formato real de esta distribución es ESRI ASCII Grid, no GeoTIFF. El inspector y sus pruebas se han ampliado para admitir ambos formatos y leer el sidecar `.prj`. La inferencia EPSG se limita a la combinación explícita de identificadores del archivo de proyección; no sustituye una validación geodésica independiente.
