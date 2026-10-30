@@ -33,7 +33,19 @@ OPTIONAL_BANDS = [
 
 
 def source_resolution(dataset: rasterio.DatasetReader) -> float:
-    return max(abs(dataset.transform.a), abs(dataset.transform.e))
+    """Approximate native pixel size in metres, including geographic grids."""
+    t = dataset.transform
+    if dataset.crs and dataset.crs.is_projected:
+        axes = dataset.crs.axis_info
+        factor = axes[0].unit_conversion_factor if axes else 1.0
+        return max(abs(t.a), abs(t.e)) * factor
+    if dataset.crs and dataset.crs.is_geographic:
+        geod = dataset.crs.get_geod()
+        x0, y0 = t * (dataset.width / 2, dataset.height / 2)
+        _, _, dx = geod.inv(x0, y0, x0 + t.a, y0)
+        _, _, dy = geod.inv(x0, y0, x0, y0 + t.e)
+        return max(abs(dx), abs(dy))
+    return max(abs(t.a), abs(t.e))
 
 
 def make_target_grid(dem_path: Path, target_crs: str, resolution: float):
@@ -189,6 +201,11 @@ def main(argv=None):
         if path:
             layers[name], sources[name] = warp_band(path, args.crs, transform, width, height)
 
+    # All landscape bands must share one valid-data footprint.
+    common_valid = np.logical_and.reduce([np.isfinite(layers[name]) for name, _, _, _ in BANDS])
+    for name in list(layers):
+        layers[name][~common_valid] = np.nan
+
     warnings = []
     for name, data in layers.items():
         validate_layer(name, data)
@@ -201,7 +218,8 @@ def main(argv=None):
     raster_paths = {}
     for name, data in layers.items():
         filename = args.output / f"{name}.tif"
-        write_raster(filename, data, args.crs, transform, dict(BANDS + OPTIONAL_BANDS)[name])
+        descriptions = {n: desc for n, _, _, desc in BANDS + OPTIONAL_BANDS}
+        write_raster(filename, data, args.crs, transform, descriptions[name])
         raster_paths[name] = filename.name
 
     # Multiband GeoTIFF follows the documented landscape theme order.
