@@ -2,7 +2,7 @@
   "catalog_version": "1.0.0",
   "pilot": {
     "name": "Gipuzkoa",
-    "admin_boundary_source": "euskadi_historical_territories_boundary",
+    "admin_boundary_source": "gipuzkoa_b5m_municipal_boundaries",
     "target_crs": "EPSG:25830",
     "working_cell_size_m": 10
   },
@@ -15,22 +15,23 @@
   },
   "sources": [
     {
-      "id": "euskadi_historical_territories_boundary",
+      "id": "gipuzkoa_b5m_municipal_boundaries",
       "theme": "administrative_boundary",
-      "title": "Límites administrativos del País Vasco · Territorios Históricos",
-      "publisher": "Gobierno Vasco / geoEuskadi",
-      "landing_page": "https://www.geo.euskadi.eus/limites-administrativos-del-pais-vasco/webgeo00-dataset/es/",
-      "distribution_url": "https://www.geo.euskadi.eus/cartografia/DatosDescarga/Limites/TERRITORIOS_5000_ETRS89.zip",
+      "title": "Límites municipales oficiales de Gipuzkoa",
+      "publisher": "Diputación Foral de Gipuzkoa · B5M",
+      "landing_page": "https://b5m.gipuzkoa.eus/web5000/es/conjuntos-datos/limites-municipales",
+      "distribution_url": "https://b5m.gipuzkoa.eus/datasets/GFA_DSET_MB_SHP.zip",
       "format": "ESRI Shapefile ZIP",
-      "reference_date": "Catalogue updated 2025-05-07; directory file dated 2025-03-26",
-      "status": "candidate_boundary_pending_review",
-      "spatial_role": "clip boundary for Gipuzkoa pilot; not legally authoritative cadastral delimitation",
+      "reference_date": "Updated 2026-10-26",
+      "status": "preferred_pilot_boundary_pending_download_and_geometry_qa",
+      "spatial_role": "official municipality boundaries to dissolve into Gipuzkoa pilot boundary",
       "known_limitations": [
-        "The catalogue explicitly states this dataset does not meet the requirements to be considered official cartography under Spanish cartography regulations.",
-        "Some boundary lines may be provisional or disputed; inspect metadata and geometry before use."
+        "Portal terms say geographic information is informative and users should verify currency and accuracy against the corresponding official administrative sources.",
+        "Inspect CRS, geometry validity, multipart features and enclaves before dissolve.",
+        "Retain municipal features and municipality attributes in addition to the dissolved pilot outline."
       ],
-      "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
-      "license": "Reuse permitted with attribution per official catalogue",
+      "attribution": "Diputación Foral de Gipuzkoa · https://b5m.gipuzkoa.eus",
+      "license": "CC BY 4.0; attribution required and link to b5m.gipuzkoa.eus",
       "checksum_sha256": null
     },
     {
@@ -107,6 +108,27 @@
       ],
       "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
       "license": "Confirm for each table/report",
+      "checksum_sha256": null
+    },
+    {
+      "id": "euskadi_mdt_lidar_2017_1m_tiles",
+      "theme": "terrain",
+      "title": "MDT LiDAR 2017 · 1 m · teselas individuales",
+      "publisher": "Gobierno Vasco / geoEuskadi",
+      "landing_page": "https://www.geo.euskadi.eus/modelo-digital-elevaciones-1-metro-del-pais-vasco/webgeo00-dataset/es/",
+      "distribution_url": null,
+      "distribution_index_url": "https://www.geo.euskadi.eus/lidar/DatosDescarga/MDE/MAX_ACTUALIDAD/MDT_LIDAR_2017_ETRS89/MDT/",
+      "format": "ZIP por tesela; directorios de hojas Hxxxx",
+      "reference_date": "2017 terrain model; maximum-current package directory dated 2020-04-22",
+      "status": "candidate_tile_index_confirmed_tile_selection_pending",
+      "spatial_role": "primary 1 m terrain candidate for Gipuzkoa after per-tile lineage review",
+      "known_limitations": [
+        "Do not download the statewide 1 m multipart archive (15 parts, approximately 15 GB); use individual ZIPs from the tile directories after a spatial tile index is built.",
+        "The current distribution includes change updates, but its base LiDAR acquisition and change lineage must be checked per tile.",
+        "Verify vertical datum EGM08_REDNAP and raster NoData/edge coverage."
+      ],
+      "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
+      "license": "Reuse permitted with attribution per dataset metadata",
       "checksum_sha256": null
     }
   ]
