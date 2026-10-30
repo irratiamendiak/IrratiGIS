@@ -44,7 +44,7 @@ def main() -> int:
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
-    text = json.dumps(report, indent=2, ensure_ascii=False) + "\\n"
+    text = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
     if args.output:
         args.output.write_text(text, encoding="utf-8")
     print(text, end="")
