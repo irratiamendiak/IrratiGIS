@@ -1,0 +1,24 @@
+name: Wildfire terrain pipeline tests
+
+on:
+  pull_request:
+    paths:
+      - "wildfire/terrain/**"
+      - ".github/workflows/wildfire-terrain-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  terrain-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r wildfire/terrain/requirements-dev.txt
+      - name: Compile and test
+        run: |
+          python -m py_compile wildfire/terrain/prepare_landscape.py
+          pytest -q wildfire/terrain/tests
