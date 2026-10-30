@@ -19,7 +19,8 @@ from pathlib import Path, PurePosixPath
 
 import numpy as np
 import rasterio
-from rasterio.features import geometry_mask\nfrom rasterio.warp import transform_geom
+from rasterio.features import geometry_mask
+from rasterio.warp import transform_geom
 from rasterio.windows import Window
 
 
