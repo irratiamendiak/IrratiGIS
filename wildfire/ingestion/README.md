@@ -66,3 +66,13 @@ El catálogo oficial ofrece un directorio de teselas individuales bajo:
 https://www.geo.euskadi.eus/lidar/DatosDescarga/MDE/MAX_ACTUALIDAD/MDT_LIDAR_2017_ETRS89/MDT/
 
 No se debe descargar el archivo multipartito regional de 1 m (15 partes, aproximadamente 15 GB) para este piloto. Se necesita identificar las hojas/teselas que intersectan el límite preparado y descargar solo esos ZIP individuales. La selección de teselas queda pendiente de ejecutar tras obtener y revisar el polígono real.
+
+
+## Contraste del límite administrativo con CNIG
+
+Se registra además el producto **Límites y Unidades Administrativas Actuales** del CNIG, con fecha de julio/agosto de 2026 y licencia compatible con CC-BY 4.0. La distribución nacional SHP indicada por el catálogo ocupa 156,96 MB; se mantiene como referencia de contraste y no se descarga automáticamente hasta resolver el enlace directo y verificar cómo filtrar la provincia sin procesar innecesariamente toda España.
+
+- Ficha CNIG: https://centrodedescargas.cnig.es/CentroDescargas/detalleArchivo?sec=9000029
+- Catálogo de producto: https://centrodedescargas.cnig.es/CentroDescargas/catalogo.do?Serie=LILIM
+
+La capa geoEuskadi de Territorios Históricos sigue siendo una fuente de trabajo regional útil, pero sus advertencias de límites provisionales impiden tratarla como delimitación jurídica definitiva. La geometría del piloto debe contrastarse con CNIG antes de recortar los MDT.
