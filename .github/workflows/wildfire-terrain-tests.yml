@@ -21,7 +21,7 @@ jobs:
         run: pip install -r wildfire/terrain/requirements-dev.txt
       - name: Compile and test
         run: |
-          python -m py_compile wildfire/terrain/prepare_landscape.py wildfire/ingestion/validate_catalog.py
+          python -m py_compile wildfire/terrain/prepare_landscape.py wildfire/ingestion/validate_catalog.py wildfire/ingestion/download_source.py
           python -m pytest -q wildfire/terrain/tests wildfire/ingestion/tests
       - name: Validate official source catalogue
         run: python wildfire/ingestion/validate_catalog.py --catalog wildfire/ingestion/sources.euskadi-gipuzkoa.json
