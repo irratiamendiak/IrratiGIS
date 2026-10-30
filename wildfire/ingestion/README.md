@@ -104,3 +104,16 @@ La ficha oficial del **MDT LiDAR 2017 de 1 m** confirma que representa terreno d
 El tamaño de píxel de 1 m no equivale a una exactitud vertical de 1 m. La selección final de ZIPs debe basarse en la extensión real de cada ráster, no solo en el nombre de la hoja. Como muestra de descarga pequeña para inspeccionar el formato y los metadatos internos se ha identificado `H0110/mdt_110_6_5.zip` (2.360.209 bytes en el índice consultado). No se considera aún tesela confirmada para el mosaico hasta verificar su CRS, transformación afín, dimensiones, NoData y bbox.
 
 El servicio declara una extensión general EPSG:25830 de X=461031..606516 e Y=4700735..4811755; sirve para comprobar cobertura global del servicio, no para afirmar cobertura completa del límite de Gipuzkoa. Antes del mosaico se construirá un índice de teselas a partir de los metadatos internos de cada archivo y se comprobarán huecos y solapes.
+
+
+### Inspección de una tesela MDT antes de descargar el conjunto
+
+Para probar el formato sin bajar un gran volumen, el índice oficial de geoEuskadi publica esta tesela de ejemplo (2.360.209 bytes en el listado):
+
+https://www.geo.euskadi.eus/lidar/DatosDescarga/MDE/MAX_ACTUALIDAD/MDT_LIDAR_2017_ETRS89/MDT/H0110/mdt_110_6_5.zip
+
+Tras descargarla, ejecutar:
+
+    python wildfire/ingestion/inspect_raster_archive.py mdt_110_6_5.zip --output mdt_110_6_5_report.json
+
+El inspector extrae en un directorio temporal con validación de rutas ZIP y reporta CRS, dimensiones, resolución, transformación, bbox, NoData, tipo de dato y bloques de cada GeoTIFF. No crea mosaicos ni afirma que la tesela cubra el piloto; la extensión se compara con el límite Gipuzkoa en el siguiente paso.
