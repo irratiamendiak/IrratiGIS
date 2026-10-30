@@ -90,3 +90,17 @@ Se recibió el archivo `GFA_DSET_MB_SHP.zip` y se inspeccionó localmente, sin a
 - Las cuatro entidades especiales se conservan separadas y se incluyen en el contorno general del piloto.
 
 La geometría supera controles estructurales y una comprobación de plausibilidad de área; esto no constituye certificación jurídica ni contraste independiente con CNIG. Antes de recortar los modelos de elevación, el límite debe contrastarse con la fuente CNIG y revisar explícitamente enclaves y entidades especiales.
+
+
+## MDT geoEuskadi 1 m: servicio y distribución verificados (30-10-2026)
+
+La ficha oficial del **MDT LiDAR 2017 de 1 m** confirma que representa terreno desnudo y que su linaje no es un vuelo homogéneo de 2017: parte del MDT 2016, incorpora actualización estereoscópica en zonas urbanas con vuelo de 10 cm de 2017 y actualización LiDAR 2017 fuera de zonas urbanas, además de mejoras donde los datos LiDAR de 2008/2012 definían peor el relieve. Las alturas son ortométricas referidas a **EGM08_REDNAP**. Licencia CC BY 3.0; atribución: Eusko Jaurlaritza / Gobierno Vasco.
+
+- Metadatos: https://www.geo.euskadi.eus/geonetwork/srv/spa/metadata.show?uuid=md_IDEEu_MDT_LIDAR_2017_es
+- Servicio ArcGIS REST: https://www.geo.euskadi.eus/geoeuskadi/rest/services/U11/WCS_KARTOGRAFIA/MapServer
+- Capa raster: `MDT_LIDAR_2017_1M` (ID 20), EPSG:25830.
+- Directorio de descargas por hojas: https://www.geo.euskadi.eus/lidar/DatosDescarga/MDE/MAX_ACTUALIDAD/MDT_LIDAR_2017_ETRS89/MDT/
+
+El tamaño de píxel de 1 m no equivale a una exactitud vertical de 1 m. La selección final de ZIPs debe basarse en la extensión real de cada ráster, no solo en el nombre de la hoja. Como muestra de descarga pequeña para inspeccionar el formato y los metadatos internos se ha identificado `H0110/mdt_110_6_5.zip` (2.360.209 bytes en el índice consultado). No se considera aún tesela confirmada para el mosaico hasta verificar su CRS, transformación afín, dimensiones, NoData y bbox.
+
+El servicio declara una extensión general EPSG:25830 de X=461031..606516 e Y=4700735..4811755; sirve para comprobar cobertura global del servicio, no para afirmar cobertura completa del límite de Gipuzkoa. Antes del mosaico se construirá un índice de teselas a partir de los metadatos internos de cada archivo y se comprobarán huecos y solapes.
