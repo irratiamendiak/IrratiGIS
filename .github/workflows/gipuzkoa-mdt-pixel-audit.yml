@@ -1,0 +1,58 @@
+name: Audit Gipuzkoa MDT pixel values
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pixel-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      PYTHONPATH: .
+    steps:
+      - name: Checkout ingestion implementation
+        uses: actions/checkout@v4
+        with:
+          ref: feature/wildfire-intelligence-foundation
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install raster and vector dependencies
+        run: pip install "numpy>=1.26,<3" "rasterio>=1.4,<2" "geopandas>=1.0,<2" "pyogrio>=0.10,<1"
+      - name: Prepare official Gipuzkoa boundary
+        run: |
+          python wildfire/ingestion/prepare_gipuzkoa_boundary.py \
+            --catalog wildfire/ingestion/sources.euskadi-gipuzkoa.json \
+            --output data/processed/gipuzkoa
+      - name: Fetch official 1:5,000 sheet index
+        run: |
+          python wildfire/ingestion/fetch_arcgis_sheet_index.py \
+            --boundary data/processed/gipuzkoa/gipuzkoa_boundary.gpkg \
+            --boundary-layer pilot_boundary \
+            --output data/processed/gipuzkoa/mdt_5000_sheet_index.gpkg
+      - name: Check selected MDT ZIP URLs
+        run: |
+          python wildfire/ingestion/check_mdt_zip_availability.py \
+            --index data/processed/gipuzkoa/mdt_5000_sheet_index.json \
+            --output-dir data/processed/gipuzkoa/mdt_zip_check
+      - name: Audit actual elevation pixels and NoData inside pilot boundary
+        run: |
+          python wildfire/ingestion/audit_mdt_pixel_values.py \
+            --availability data/processed/gipuzkoa/mdt_zip_check/mdt_2017_zip_availability.json \
+            --boundary data/processed/gipuzkoa/gipuzkoa_boundary.gpkg \
+            --boundary-layer pilot_boundary \
+            --output-dir data/processed/gipuzkoa/mdt_pixel_audit \
+            --workers 3
+      - name: Upload pixel-audit reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: gipuzkoa-mdt-pixel-audit
+          path: |
+            data/processed/gipuzkoa/mdt_pixel_audit/mdt_2017_pixel_audit.csv
+            data/processed/gipuzkoa/mdt_pixel_audit/mdt_2017_pixel_audit.json
+          if-no-files-found: error
+          retention-days: 14
