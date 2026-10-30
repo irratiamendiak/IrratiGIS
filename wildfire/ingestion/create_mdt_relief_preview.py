@@ -68,7 +68,7 @@ def main():
         profile = datasets[0].profile.copy()
         profile.update(driver="GTiff", height=mosaic.shape[1], width=mosaic.shape[2],
                        transform=transform, crs="EPSG:25830", nodata=-9999,
-                       compress="DEFLATE", predictor=3, tiled=True)
+                       compress="DEFLATE", predictor=3, tiled=True, blockxsize=256, blockysize=256)
         mosaic_path = workdir / "three_tile_mosaic.tif"
         with rasterio.open(mosaic_path, "w", **profile) as dst:
             dst.write(mosaic)
@@ -76,7 +76,8 @@ def main():
             clipped, clipped_transform = mask(src, [geom.__geo_interface__], crop=True, nodata=-9999)
             clipped_profile = src.profile.copy()
             clipped_profile.update(height=clipped.shape[1], width=clipped.shape[2],
-                                   transform=clipped_transform, nodata=-9999)
+                                   transform=clipped_transform, nodata=-9999,
+                                   tiled=True, blockxsize=256, blockysize=256)
             out_tif = a.output_dir / "gipuzkoa_mdt_relief_preview_3_tiles.tif"
             with rasterio.open(out_tif, "w", **clipped_profile) as dst:
                 dst.write(clipped)
