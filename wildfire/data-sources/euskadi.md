@@ -69,3 +69,13 @@ Fuentes:
 - https://centrodedescargas.cnig.es/CentroDescargas/novedades?codSerie=MDT01
 
 **Estado:** catálogo y scaffolding incorporados; todavía no se han descargado ni procesado los datos geoespaciales reales de Gipuzkoa.
+
+
+## 6. Límite territorial del piloto Gipuzkoa
+
+Se ha incorporado como candidato técnico el SHP de **Territorios Históricos** de geoEuskadi:
+https://www.geo.euskadi.eus/cartografia/DatosDescarga/Limites/TERRITORIOS_5000_ETRS89.zip
+
+El catálogo indica ETRS89 / UTM huso 30 y atribución obligatoria al Gobierno Vasco. También advierte que el conjunto no cumple los requisitos para considerarse cartografía oficial y que algunas líneas pueden ser provisionales o estar en disputa. Por tanto, se utilizará solo para delimitar el área de trabajo tras inspección geométrica y de metadatos, no como delimitación jurídica definitiva.
+
+Se ha añadido un descargador que conserva el ZIP original, calcula SHA-256, genera manifiesto de procedencia y extrae archivos ZIP con controles contra path traversal y enlaces simbólicos. La descarga real y la selección de la geometría de Gipuzkoa quedan pendientes de ejecución y revisión.
