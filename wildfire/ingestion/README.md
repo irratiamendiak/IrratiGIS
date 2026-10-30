@@ -148,7 +148,7 @@ Siguiente validación: consultar las geometrías que intersectan el límite del 
 
 ### Descarga reproducible del índice oficial de hojas 1:5.000
 
-La capa consultada se ha afinado al servicio ArcGIS REST de cartografía geoEuskadi, que expone `MC_HOJAS_5000` (ID 67) directamente en EPSG:25830 y con los campos `CCFF`, `CFXMTN50`, `SC50CLAS` y `HOJA`. Su extensión publicada alcanza el área del piloto. La capa distinta del servicio U11/KARTOGRAFIA_CAS (ID 80) también se ha localizado, pero el flujo de descarga utiliza la capa 67 de U11/WMS_KARTOGRAFIA, cuya referencia espacial es la adecuada para este cruce.
+La capa consultada se ha afinado al servicio ArcGIS REST de cartografía geoEuskadi, que expone `MC_HOJAS_5000` (ID 67) directamente en EPSG:25830. El catálogo REST confirma los campos `OBJECTID`, `CCFF`, `CFXMTN50`, `SC50CLAS` y `HOJA`, además de la geometría. La extensión declarada para la capa es X=461076,0977..603127,9435 e Y=4700742,3814..4811749,5984; contiene la extensión rectangular del límite B5M del piloto (X=532391,9707..603082,1649; Y=4749442,28..4805496,8647). Esto demuestra cobertura de la extensión, no que cada hoja concreta ni cada tesela MDT tenga cobertura útil. La capa distinta del servicio U11/KARTOGRAFIA_CAS (ID 80) usa EPSG:3857; se descarta para el cruce directo y el flujo utiliza la capa 67 de U11/WMS_KARTOGRAFIA.
 
 Para obtener el índice candidato desde la geometría local preparada:
 
