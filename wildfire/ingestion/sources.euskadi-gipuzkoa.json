@@ -150,6 +150,26 @@
       "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
       "license": "Reuse permitted with attribution per dataset metadata",
       "checksum_sha256": null
+    },
+    {
+      "id": "euskadi_cartographic_sheet_grid_index",
+      "theme": "cartographic_index",
+      "title": "Mallas cartográficas: distribución de hojas y cuadrículas UTM",
+      "publisher": "Gobierno Vasco / geoEuskadi",
+      "landing_page": "https://www.geo.euskadi.eus/geonetwork/srv/spa/metadata.show?uuid=md_IDEEu_M_CARTOGRAFICAS_es",
+      "distribution_url": "https://www.geo.euskadi.net/cartografia/DatosDescarga/Cartografia_Basica/Mallas_Cartograficas/Hojas_Cartografia.zip",
+      "format": "Shapefile ZIP",
+      "reference_date": "Dataset metadata published 2013-02-06; derived from IGN sheet grids",
+      "status": "download_url_resolved_pending_download_and_schema_inspection",
+      "spatial_role": "spatial index to select 1:50,000 map sheets and PNOA grid cells intersecting the Gipuzkoa pilot boundary",
+      "known_limitations": [
+        "The catalogue describes multiple grid types and scales; inspect layer names, scale attributes, CRS and sheet identifiers before selecting a grid.",
+        "This index identifies sheet footprints; it is not terrain data and does not prove raster coverage or quality.",
+        "Metadata lineage says the grids were derived computationally from IGN-provided data."
+      ],
+      "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
+      "license": "Creative Commons Attribution (CC-BY 3.0) per dataset metadata",
+      "checksum_sha256": null
     }
   ]
 }
