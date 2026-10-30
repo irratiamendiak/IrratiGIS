@@ -30,12 +30,11 @@ jobs:
 
 # Validates ingestion provenance and ZIP extraction safety.
 
-# Boundary preparation is compiled in CI; live source download is a separate data task.
+# The live sheet-index job below runs on PR validation and manual dispatch.
 
 # Trigger validation after source catalogue updates.
 
   gipuzkoa-sheet-index:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
