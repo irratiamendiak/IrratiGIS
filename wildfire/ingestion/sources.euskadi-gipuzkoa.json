@@ -43,7 +43,7 @@
       "distribution_url": "https://b5m.gipuzkoa.eus/datasets/GFA_DSET_MB_SHP.zip",
       "format": "ESRI Shapefile ZIP",
       "reference_date": "Updated 2026-10-26",
-      "status": "preferred_pilot_boundary_pending_download_and_geometry_qa",
+      "status": "received_locally_geometry_qa_passed_cnig_crosscheck_pending",
       "spatial_role": "official municipality boundaries to dissolve into Gipuzkoa pilot boundary",
       "known_limitations": [
         "Portal terms say geographic information is informative and users should verify currency and accuracy against the corresponding official administrative sources.",
@@ -52,7 +52,7 @@
       ],
       "attribution": "Diputación Foral de Gipuzkoa · https://b5m.gipuzkoa.eus",
       "license": "CC BY 4.0; attribution required and link to b5m.gipuzkoa.eus",
-      "checksum_sha256": null
+      "checksum_sha256": "f69745502d30e63baf2c0a03267e5a1b682314aa00254b703cb8565cb795ee32"
     },
     {
       "id": "euskadi_dem_1m",
