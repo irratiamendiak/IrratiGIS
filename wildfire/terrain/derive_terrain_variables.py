@@ -92,10 +92,13 @@ def main():
                     r1, c1 = min(src.height, row + h + 1), min(src.width, col + w + 1)
                     halo = src.read(1, window=Window(c0, r0, c1-c0, r1-r0)).astype("float64")
                     valid_halo = np.isfinite(halo) & (halo != src.nodata)
-                    fill = np.where(valid_halo, halo, 0.0)
+                    # Pad the outer raster boundary as invalid so edge windows use
+                    # the same 3x3 logic and never create empty NumPy slices.
+                    fill = np.pad(np.where(valid_halo, halo, 0.0), 1, mode="constant", constant_values=0.0)
+                    valid_halo = np.pad(valid_halo, 1, mode="constant", constant_values=False)
 
-                    # The inner block coordinates within the halo buffer.
-                    ir, ic = row-r0, col-c0
+                    # The inner block coordinates within the padded halo buffer.
+                    ir, ic = row-r0+1, col-c0+1
                     center = fill[ir:ir+h, ic:ic+w]
                     center_valid = valid_halo[ir:ir+h, ic:ic+w]
                     neighbourhood = np.ones((h, w), dtype=bool)
