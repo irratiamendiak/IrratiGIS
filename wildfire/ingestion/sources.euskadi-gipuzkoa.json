@@ -139,17 +139,26 @@
       "distribution_url": null,
       "distribution_index_url": "https://www.geo.euskadi.eus/lidar/DatosDescarga/MDE/MAX_ACTUALIDAD/MDT_LIDAR_2017_ETRS89/MDT/",
       "format": "ZIP por tesela; directorios de hojas Hxxxx",
-      "reference_date": "2017 terrain model; maximum-current package directory dated 2020-04-22",
-      "status": "candidate_tile_index_confirmed_tile_selection_pending",
+      "reference_date": "Published 2020-04-01; temporal lineage 2008-02-08 to 2017-10-11",
+      "status": "candidate_service_and_metadata_verified_tile_selection_pending",
       "spatial_role": "primary 1 m terrain candidate for Gipuzkoa after per-tile lineage review",
       "known_limitations": [
-        "Do not download the statewide 1 m multipart archive (15 parts, approximately 15 GB); use individual ZIPs from the tile directories after a spatial tile index is built.",
-        "The current distribution includes change updates, but its base LiDAR acquisition and change lineage must be checked per tile.",
-        "Verify vertical datum EGM08_REDNAP and raster NoData/edge coverage."
+        "1 m pixel spacing is a grid interval, not a guarantee of 1 m vertical accuracy or uniform effective detail.",
+        "Lineage: based on the 2016 1 m MDT; urban changes updated by stereoscopic editing from 2017 10 cm aerial imagery, non-urban terrain updated with 2017 LiDAR, with improvements in areas poorly defined by 2008/2012 LiDAR.",
+        "Vertical values are orthometric heights referred to EGM08_REDNAP.",
+        "Metadata spatial reference reports ETRS89; the downloadable raster/service is exposed in EPSG:25830. Inspect each downloaded tile's actual CRS.",
+        "Service extent and layer footprint do not identify individual download tiles. Build a tile-to-footprint index before bulk download; do not infer tile selection from sheet-folder names alone.",
+        "Dataset license is Creative Commons Attribution 3.0; attribute Eusko Jaurlaritza / Gobierno Vasco.",
+        "Compare coverage, NoData, seam consistency and source lineage by tile before producing a Gipuzkoa mosaic."
       ],
       "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
-      "license": "Reuse permitted with attribution per dataset metadata",
-      "checksum_sha256": null
+      "license": "CC BY 3.0; attribution: Eusko Jaurlaritza / Gobierno Vasco",
+      "checksum_sha256": null,
+      "service_url": "https://www.geo.euskadi.eus/geoeuskadi/rest/services/U11/WCS_KARTOGRAFIA/MapServer",
+      "service_layer_id": 20,
+      "service_layer_name": "MDT_LIDAR_2017_1M",
+      "service_crs": "EPSG:25830",
+      "vertical_datum": "EGM08_REDNAP (orthometric heights)"
     },
     {
       "id": "euskadi_cartographic_sheet_grid_index",
