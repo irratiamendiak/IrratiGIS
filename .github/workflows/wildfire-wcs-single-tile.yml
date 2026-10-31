@@ -1,0 +1,61 @@
+name: Wildfire single-tile WCS ingestion smoke test
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/wildfire-wcs-single-tile.yml"
+      - "wildfire/ingestion/download_wcs_aoi.py"
+  workflow_dispatch:
+
+jobs:
+  single-tile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ingestion dependencies
+        run: python -m pip install geopandas rasterio shapely
+      - name: Create a bounded 100m test AOI
+        run: |
+          python - <<'PY'
+          import geopandas as gpd
+          from shapely.geometry import box
+          gpd.GeoDataFrame(
+              {"name": ["single_wcs_test_tile"]},
+              geometry=[box(580000, 4780000, 580100, 4780100)],
+              crs="EPSG:25830",
+          ).to_file("single_tile_boundary.gpkg", layer="pilot_boundary", driver="GPKG")
+          PY
+      - name: Download and clip exactly one real WCS tile
+        run: |
+          python wildfire/ingestion/download_wcs_aoi.py \
+            --boundary single_tile_boundary.gpkg \
+            --output wcs-single-tile-output \
+            --tile-size 100 \
+            --max-tiles 1 \
+            --timeout 180
+      - name: Validate output raster and manifest
+        run: |
+          python - <<'PY'
+          import json
+          import rasterio
+          from pathlib import Path
+          root = Path("wcs-single-tile-output")
+          manifest = json.loads((root / "wcs_aoi_manifest.json").read_text())
+          assert manifest["requested_tiles"] == 1, manifest
+          tile = manifest["tiles"][0]
+          assert tile["status"] == "downloaded_clipped", tile
+          assert tile["valid_pixel_count"] > 0, tile
+          with rasterio.open(root / tile["file"]) as ds:
+              assert ds.width > 0 and ds.height > 0
+              assert ds.dataset_mask().any()
+          print(json.dumps({"manifest": manifest, "raster": tile["file"]}, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wildfire-wcs-single-tile-smoke-test
+          path: wcs-single-tile-output/
+          retention-days: 7
