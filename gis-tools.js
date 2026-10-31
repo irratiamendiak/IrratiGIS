@@ -382,52 +382,48 @@
   else { init(); }
 })();
 
-/* Captura de pantalla: requiere que el usuario elija y autorice la pestaña/pantalla. */
+/* Captura exclusiva del mapa IrratiGIS, sin selector de pantalla. */
 (function(){
-  function addScreenCaptureButton(){
+  function addMapCaptureButton(){
     const bar=document.querySelector(".icon-tools");
-    if(!bar || document.getElementById("captureScreenBtn")) return;
+    const mapEl=document.getElementById("map");
+    if(!bar || !mapEl || document.getElementById("captureScreenBtn")) return;
     const btn=document.createElement("button");
     btn.id="captureScreenBtn";
     btn.type="button";
-    btn.title="Capturar pantalla visible";
-    btn.setAttribute("aria-label","Capturar pantalla visible");
+    btn.title="Capturar solo el mapa de IrratiGIS";
+    btn.setAttribute("aria-label","Capturar solo el mapa de IrratiGIS");
     btn.textContent="📸";
     btn.addEventListener("click",async()=>{
-      if(!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
-        alert("Este navegador no permite capturar la pantalla desde esta página.");
-        return;
-      }
-      let stream;
+      btn.disabled=true;
       try{
-        stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:1},audio:false});
-        const track=stream.getVideoTracks()[0];
-        const video=document.createElement("video");
-        video.srcObject=stream;
-        video.muted=true;
-        await video.play();
-        await new Promise(resolve=>requestAnimationFrame(resolve));
-        const canvas=document.createElement("canvas");
-        canvas.width=video.videoWidth;
-        canvas.height=video.videoHeight;
-        canvas.getContext("2d").drawImage(video,0,0,canvas.width,canvas.height);
+        if(!window.html2canvas){
+          await new Promise((resolve,reject)=>{
+            const s=document.createElement("script");
+            s.src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+            s.onload=resolve; s.onerror=()=>reject(new Error("No se pudo cargar el capturador"));
+            document.head.appendChild(s);
+          });
+        }
+        const canvas=await window.html2canvas(mapEl,{
+          useCORS:true, allowTaint:false, backgroundColor:"#ffffff",
+          scale:window.devicePixelRatio||1, logging:false
+        });
         const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
         if(!blob) throw new Error("No se pudo crear la imagen");
         const url=URL.createObjectURL(blob);
         const a=document.createElement("a");
         a.href=url;
-        a.download="IrratiGIS-captura-"+new Date().toISOString().replace(/[:.]/g,"-")+".png";
-        document.body.appendChild(a);a.click();a.remove();
+        a.download="IrratiGIS-mapa-"+new Date().toISOString().replace(/[:.]/g,"-")+".png";
+        document.body.appendChild(a); a.click(); a.remove();
         setTimeout(()=>URL.revokeObjectURL(url),1000);
       }catch(err){
-        if(err && err.name!=="AbortError") alert("No se pudo capturar la pantalla: "+(err.message||err));
-      }finally{
-        if(stream) stream.getTracks().forEach(track=>track.stop());
-      }
+        alert("No se pudo capturar el mapa: "+(err.message||err));
+      }finally{btn.disabled=false;}
     });
     bar.appendChild(btn);
   }
-  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",addScreenCaptureButton);
-  else addScreenCaptureButton();
-  [500,1500,3500].forEach(ms=>setTimeout(addScreenCaptureButton,ms));
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",addMapCaptureButton);
+  else addMapCaptureButton();
+  [500,1500,3500].forEach(ms=>setTimeout(addMapCaptureButton,ms));
 })();
