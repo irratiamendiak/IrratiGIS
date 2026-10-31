@@ -382,48 +382,52 @@
   else { init(); }
 })();
 
-/* Captura exclusiva del mapa IrratiGIS, sin selector de pantalla. */
+/* Captura y editor previo a descarga: solo mapa IrratiGIS. */
 (function(){
   function addMapCaptureButton(){
-    const bar=document.querySelector(".icon-tools");
-    const mapEl=document.getElementById("map");
-    if(!bar || !mapEl || document.getElementById("captureScreenBtn")) return;
-    const btn=document.createElement("button");
-    btn.id="captureScreenBtn";
-    btn.type="button";
-    btn.title="Capturar solo el mapa de IrratiGIS";
-    btn.setAttribute("aria-label","Capturar solo el mapa de IrratiGIS");
-    btn.textContent="📸";
+    const bar=document.querySelector(".icon-tools"), mapEl=document.getElementById("map");
+    if(!bar||!mapEl||document.getElementById("captureScreenBtn")) return;
+    const btn=document.createElement("button"); btn.id="captureScreenBtn"; btn.type="button";
+    btn.title="Capturar y editar el mapa"; btn.setAttribute("aria-label",btn.title); btn.textContent="📸";
     btn.addEventListener("click",async()=>{
       btn.disabled=true;
       try{
-        if(!window.html2canvas){
-          await new Promise((resolve,reject)=>{
-            const s=document.createElement("script");
-            s.src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-            s.onload=resolve; s.onerror=()=>reject(new Error("No se pudo cargar el capturador"));
-            document.head.appendChild(s);
-          });
-        }
-        const canvas=await window.html2canvas(mapEl,{
-          useCORS:true, allowTaint:false, backgroundColor:"#ffffff",
-          scale:window.devicePixelRatio||1, logging:false
+        if(!window.html2canvas) await new Promise((resolve,reject)=>{
+          const s=document.createElement("script"); s.src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+          s.onload=resolve; s.onerror=()=>reject(new Error("No se pudo cargar el capturador")); document.head.appendChild(s);
         });
-        const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
-        if(!blob) throw new Error("No se pudo crear la imagen");
-        const url=URL.createObjectURL(blob);
-        const a=document.createElement("a");
-        a.href=url;
-        a.download="IrratiGIS-mapa-"+new Date().toISOString().replace(/[:.]/g,"-")+".png";
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(()=>URL.revokeObjectURL(url),1000);
-      }catch(err){
-        alert("No se pudo capturar el mapa: "+(err.message||err));
-      }finally{btn.disabled=false;}
+        const shot=await window.html2canvas(mapEl,{useCORS:true,allowTaint:false,backgroundColor:"#fff",scale:window.devicePixelRatio||1,logging:false});
+        openEditor(shot);
+      }catch(err){alert("No se pudo capturar el mapa: "+(err.message||err));}
+      finally{btn.disabled=false;}
     });
     bar.appendChild(btn);
   }
-  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",addMapCaptureButton);
-  else addMapCaptureButton();
+  function openEditor(original){
+    const overlay=document.createElement("div");
+    overlay.style.cssText="position:fixed;inset:0;z-index:99999;background:#111b;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box";
+    const panel=document.createElement("div");
+    panel.style.cssText="background:white;border-radius:12px;padding:14px;max-width:95vw;max-height:95vh;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 40px #0006";
+    const toolbar=document.createElement("div"); toolbar.style.cssText="display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+    const canvas=document.createElement("canvas"); canvas.width=original.width; canvas.height=original.height;
+    canvas.style.cssText="max-width:88vw;max-height:72vh;object-fit:contain;border:1px solid #ddd;touch-action:none";
+    const ctx=canvas.getContext("2d"); ctx.drawImage(original,0,0);
+    let mode="draw",drawing=false,last=null;
+    function tool(label,fn){const b=document.createElement("button");b.textContent=label;b.type="button";b.onclick=fn;b.style.cssText="padding:7px 10px;cursor:pointer";toolbar.appendChild(b);return b;}
+    tool("✏️ Dibujar",()=>mode="draw");
+    tool("T Añadir texto",()=>{const text=prompt("Texto para añadir:");if(text){const x=canvas.width/2,y=canvas.height/2;ctx.font=Math.max(18,canvas.width/45)+"px sans-serif";ctx.lineWidth=3;ctx.strokeStyle="white";ctx.fillStyle="#c62828";ctx.strokeText(text,x,y);ctx.fillText(text,x,y);}});
+    tool("↶ Deshacer",()=>ctx.drawImage(original,0,0));
+    const color=document.createElement("input");color.type="color";color.value="#e53935";color.title="Color del lápiz";toolbar.appendChild(color);
+    const width=document.createElement("select");width.innerHTML='<option value="3">Fino</option><option value="7">Medio</option><option value="14">Grueso</option>';toolbar.appendChild(width);
+    const status=document.createElement("span");status.textContent="Edita la imagen y luego descárgala.";status.style.cssText="font:13px system-ui;color:#555";toolbar.appendChild(status);
+    tool("Descargar PNG",()=>{canvas.toBlob(blob=>{if(!blob)return;const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="IrratiGIS-mapa-editado-"+new Date().toISOString().replace(/[:.]/g,"-")+".png";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);},"image/png");});
+    tool("Cerrar",()=>overlay.remove());
+    function pos(e){const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)*canvas.width/r.width,y:(e.clientY-r.top)*canvas.height/r.height};}
+    canvas.addEventListener("pointerdown",e=>{drawing=true;last=pos(e);canvas.setPointerCapture(e.pointerId);});
+    canvas.addEventListener("pointermove",e=>{if(!drawing||mode!=="draw")return;const p=pos(e);ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.strokeStyle=color.value;ctx.lineWidth=Number(width.value)*canvas.width/canvas.clientWidth;ctx.lineCap="round";ctx.lineJoin="round";ctx.stroke();last=p;});
+    canvas.addEventListener("pointerup",()=>drawing=false);canvas.addEventListener("pointercancel",()=>drawing=false);
+    panel.append(toolbar,canvas);overlay.append(panel);document.body.append(overlay);
+  }
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",addMapCaptureButton);else addMapCaptureButton();
   [500,1500,3500].forEach(ms=>setTimeout(addMapCaptureButton,ms));
 })();
