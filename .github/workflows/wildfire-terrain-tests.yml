@@ -45,6 +45,8 @@ jobs:
       - name: Install ingestion dependencies
         run: pip install -r wildfire/ingestion/requirements.txt
       - name: Prepare official Gipuzkoa boundary
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           python wildfire/ingestion/prepare_gipuzkoa_boundary.py \
             --catalog wildfire/ingestion/sources.euskadi-gipuzkoa.json \
