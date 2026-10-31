@@ -388,27 +388,18 @@
     const bar=document.querySelector(".icon-tools"),mapEl=document.getElementById("map");
     if(!bar||!mapEl||document.getElementById("captureScreenBtn"))return;
     const btn=document.createElement("button");btn.id="captureScreenBtn";btn.type="button";btn.title="Capturar y editar mapa";btn.textContent="📸";
-    btn.title="Capturar pantalla completa y recortar";
+    btn.title="Capturar toda la vista de IrratiGIS y recortar";
     btn.addEventListener("click",async()=>{
       btn.disabled=true;
-      let stream;
       try{
-        if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia)throw Error("Tu navegador no permite capturar pantalla. Usa Chrome o Edge actualizado.");
-        stream=await navigator.mediaDevices.getDisplayMedia({video:{displaySurface:"browser"},audio:false});
-        const video=document.createElement("video");
-        video.srcObject=stream;video.muted=true;video.playsInline=true;
-        await video.play();
-        await new Promise(resolve=>{if(video.videoWidth&&video.videoHeight)resolve();else video.addEventListener("loadedmetadata",resolve,{once:true});});
-        const shot=document.createElement("canvas");
-        shot.width=video.videoWidth;shot.height=video.videoHeight;
-        shot.getContext("2d").drawImage(video,0,0,shot.width,shot.height);
-        stream.getTracks().forEach(track=>track.stop());stream=null;
+        if(!window.html2canvas)await new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";s.onload=resolve;s.onerror=()=>reject(Error("No se pudo cargar el capturador"));document.head.appendChild(s);});
+        const scale=window.devicePixelRatio||1, w=window.innerWidth, h=window.innerHeight, sy=window.scrollY;
+        const shot=await window.html2canvas(document.documentElement,{useCORS:true,allowTaint:false,backgroundColor:"#fff",scale,width:w,height:h,windowWidth:w,windowHeight:h,scrollX:0,scrollY:sy,x:0,y:sy,logging:false,onclone:doc=>{const cloned=doc.getElementById("map");if(cloned)cloned.querySelectorAll("canvas").forEach(c=>c.style.visibility="hidden");}});
+        const mapRect=mapEl.getBoundingClientRect(),ctx=shot.getContext("2d");
+        mapEl.querySelectorAll("canvas").forEach(layer=>{const r=layer.getBoundingClientRect();if(!r.width||!r.height)return;try{ctx.drawImage(layer,r.left*scale,r.top*scale,r.width*scale,r.height*scale);}catch(err){console.warn("No se pudo incluir una capa canvas en la captura",err);}});
         openEditor(shot);
-      }catch(e){
-        if(stream)stream.getTracks().forEach(track=>track.stop());
-        if(e&&e.name!=="AbortError")alert("No se pudo capturar la pantalla: "+(e.message||e));
-      }finally{btn.disabled=false;}
-    });bar.appendChild(btn);bar.appendChild(btn);
+      }catch(e){alert("No se pudo capturar IrratiGIS: "+(e.message||e));}finally{btn.disabled=false;}
+    });bar.appendChild(btn);bar.appendChild(btn);bar.appendChild(btn);
   }
   function openEditor(original){
     const overlay=document.createElement("div");overlay.style.cssText="position:fixed;inset:0;z-index:99999;background:#111b;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box";
