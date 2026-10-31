@@ -1,6 +1,10 @@
 name: geoEuskadi WCS probe
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/geoeuskadi-wcs-probe.yml"
+      - "wildfire/ingestion/**"
   workflow_dispatch:
 
 jobs:
