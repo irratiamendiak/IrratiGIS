@@ -1,0 +1,26 @@
+name: geoEuskadi WCS probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe-wcs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Request official WCS capabilities
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --max-time 90 \
+            'https://www.geo.euskadi.eus/WCS_KARTOGRAFIA?service=WCS&version=1.0.0&request=GetCapabilities' \
+            --output wcs-capabilities.xml
+          test -s wcs-capabilities.xml
+          echo "WCS GetCapabilities returned $(wc -c < wcs-capabilities.xml) bytes"
+          grep -Eo '<(Name|ows:Identifier)>[^<]+' wcs-capabilities.xml | head -80 || true
+      - name: Preserve capabilities response
+        uses: actions/upload-artifact@v4
+        with:
+          name: geoeuskadi-wcs-capabilities
+          path: wcs-capabilities.xml
+          if-no-files-found: error
+          retention-days: 7
