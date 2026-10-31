@@ -10,21 +10,40 @@ on:
 jobs:
   probe-wcs:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Request official WCS capabilities
+      - name: Get WCS capabilities and identify MDT 2017 coverage
         run: |
           set -euo pipefail
+          BASE='https://www.geo.euskadi.eus/geoeuskadi/services/U11/WCS_KARTOGRAFIA/MapServer/WCSServer'
           curl --fail --location --silent --show-error --max-time 90 \
-            'https://www.geo.euskadi.eus/WCS_KARTOGRAFIA?service=WCS&version=1.0.0&request=GetCapabilities' \
-            --output wcs-capabilities.xml
-          test -s wcs-capabilities.xml
-          echo "WCS GetCapabilities returned $(wc -c < wcs-capabilities.xml) bytes"
-          grep -Eo '<(Name|ows:Identifier)>[^<]+' wcs-capabilities.xml | head -80 || true
-      - name: Preserve capabilities response
+            "$BASE?service=WCS&version=1.0.0&request=GetCapabilities" -o wcs-capabilities.xml
+          grep -q 'MDT_LIDAR_2017_1M' wcs-capabilities.xml
+          echo "Confirmed WCS coverage MDT_LIDAR_2017_1M"
+      - name: Describe the 1m coverage
+        run: |
+          set -euo pipefail
+          BASE='https://www.geo.euskadi.eus/geoeuskadi/services/U11/WCS_KARTOGRAFIA/MapServer/WCSServer'
+          curl --fail --location --silent --show-error --max-time 90 \
+            --get "$BASE" \
+            --data-urlencode 'service=WCS' \
+            --data-urlencode 'version=1.0.0' \
+            --data-urlencode 'request=DescribeCoverage' \
+            --data-urlencode 'coverage=MDT_LIDAR_2017_1M' \
+            -o wcs-describe-coverage.xml
+          if grep -qi '<ServiceException' wcs-describe-coverage.xml; then
+            cat wcs-describe-coverage.xml
+            exit 1
+          fi
+          test -s wcs-describe-coverage.xml
+          echo "DescribeCoverage returned $(wc -c < wcs-describe-coverage.xml) bytes"
+          head -c 2500 wcs-describe-coverage.xml
+      - name: Upload WCS metadata
         uses: actions/upload-artifact@v4
         with:
-          name: geoeuskadi-wcs-capabilities
-          path: wcs-capabilities.xml
+          name: geoeuskadi-wcs-coverage-metadata
+          path: |
+            wcs-capabilities.xml
+            wcs-describe-coverage.xml
           if-no-files-found: error
           retention-days: 7
