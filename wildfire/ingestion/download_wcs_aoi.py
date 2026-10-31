@@ -22,6 +22,7 @@ import rasterio
 from rasterio.io import MemoryFile
 from rasterio.mask import mask
 from shapely.geometry import box, mapping
+from shapely.ops import unary_union
 
 WCS_URL = (
     "https://www.geo.euskadi.eus/geoeuskadi/services/U11/"
@@ -68,7 +69,7 @@ def run(boundary_path: Path, output: Path, tile_size: int, max_tiles: int,
     if boundary.crs is None:
         raise ValueError("Boundary has no CRS")
     boundary = boundary.to_crs(CRS)
-    geom = boundary.geometry.union_all()
+    geom = unary_union(list(boundary.geometry))
     candidates = [tile for tile in iter_windows(geom.bounds, tile_size) if tile.intersects(geom)]
     if len(candidates) > max_tiles:
         raise ValueError(
@@ -93,15 +94,19 @@ def run(boundary_path: Path, output: Path, tile_size: int, max_tiles: int,
                         filled=False
                     )
                     meta = src.meta.copy()
+                    nodata = src.nodata if src.nodata is not None else -9999.0
                     meta.update(
                         driver="GTiff", height=clipped.shape[1],
                         width=clipped.shape[2], transform=transform,
-                        compress="deflate", tiled=True,
+                        compress="deflate", tiled=True, nodata=nodata,
                     )
                     path = output / f"mdt_{idx:04d}.tif"
+                    valid_mask = ~clipped.mask
+                    valid = int(valid_mask.sum())
+                    filled = clipped.filled(nodata)
                     with rasterio.open(path, "w", **meta) as dst:
-                        dst.write(clipped)
-                    valid = int((~clipped.mask).sum()) if hasattr(clipped, "mask") else int(clipped.size)
+                        dst.write(filled)
+                        dst.write_mask(valid_mask[0].astype("uint8") * 255)
                     record.update({
                         "status": "downloaded_clipped",
                         "file": path.name, "bytes": path.stat().st_size,
