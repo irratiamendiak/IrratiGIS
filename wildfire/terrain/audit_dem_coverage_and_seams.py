@@ -81,7 +81,32 @@ def seam_audit(paths: list[Path]) -> list[dict]:
             left=max(a.bounds.left,b.bounds.left); right=min(a.bounds.right,b.bounds.right)
             bottom=max(a.bounds.bottom,b.bounds.bottom); top=min(a.bounds.top,b.bounds.top)
             if right <= left or top <= bottom:
-                results.append({"tile_a":str(left_path),"tile_b":str(right_path),"status":"no_overlap"})
+                # For touching aligned tiles, compare facing edge cells (not a pixel overlap).
+                tol = max(abs(a.transform.a), abs(a.transform.e), abs(b.transform.a), abs(b.transform.e)) * 1e-6
+                vertical = abs(a.bounds.right-b.bounds.left) <= tol or abs(b.bounds.right-a.bounds.left) <= tol
+                horizontal = abs(a.bounds.top-b.bounds.bottom) <= tol or abs(b.bounds.top-a.bounds.bottom) <= tol
+                if vertical and min(a.bounds.top,b.bounds.top) > max(a.bounds.bottom,b.bounds.bottom):
+                    a_left = a.bounds.right <= b.bounds.left
+                    wa = Window(a.width-1 if a_left else 0, 0, 1, a.height)
+                    wb = Window(0 if a_left else b.width-1, 0, 1, b.height)
+                elif horizontal and min(a.bounds.right,b.bounds.right) > max(a.bounds.left,b.bounds.left):
+                    a_above = a.bounds.top >= b.bounds.bottom
+                    wa = Window(0, a.height-1 if a_above else 0, a.width, 1)
+                    wb = Window(0, 0 if a_above else b.height-1, b.width, 1)
+                else:
+                    results.append({"tile_a":str(left_path),"tile_b":str(right_path),"status":"not_adjacent"})
+                    continue
+                aa=a.read(1,window=wa,masked=True); bb=b.read(1,window=wb,masked=True)
+                if aa.shape != bb.shape:
+                    results.append({"tile_a":str(left_path),"tile_b":str(right_path),"status":"edge_grid_mismatch"})
+                    continue
+                valid=~np.ma.getmaskarray(aa)&~np.ma.getmaskarray(bb)&np.isfinite(aa.data)&np.isfinite(bb.data)
+                dif=np.abs(aa.data.astype("float64")-bb.data.astype("float64")); n=int(valid.sum())
+                results.append({"tile_a":str(left_path),"tile_b":str(right_path),"status":"adjacent_edge_compared",
+                    "edge_cell_pairs":int(valid.size),"comparable_valid_pairs":n,
+                    "different_pairs":int((valid&(dif>0)).sum()),
+                    "max_abs_edge_step_m":float(dif[valid].max()) if n else None,
+                    "mean_abs_edge_step_m":float(dif[valid].mean()) if n else None})
                 continue
             wa=from_bounds(left,bottom,right,top,a.transform).round_offsets().round_lengths()
             wb=from_bounds(left,bottom,right,top,b.transform).round_offsets().round_lengths()
