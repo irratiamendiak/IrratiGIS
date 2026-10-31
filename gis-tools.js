@@ -392,7 +392,11 @@
       btn.disabled=true;
       try{
         if(!window.html2canvas)await new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";s.onload=resolve;s.onerror=()=>reject(Error("No se pudo cargar el capturador"));document.head.appendChild(s);});
-        openEditor(await window.html2canvas(mapEl,{useCORS:true,allowTaint:false,backgroundColor:"#fff",scale:window.devicePixelRatio||1,logging:false}));
+        const scale=window.devicePixelRatio||1;
+        const shot=await window.html2canvas(mapEl,{useCORS:true,allowTaint:false,backgroundColor:"#fff",scale,logging:false,onclone:doc=>{const cloned=doc.getElementById("map");if(cloned)cloned.querySelectorAll("canvas").forEach(c=>c.style.visibility="hidden");}});
+        const mapRect=mapEl.getBoundingClientRect(),ctx=shot.getContext("2d");
+        mapEl.querySelectorAll("canvas").forEach(layer=>{const r=layer.getBoundingClientRect();if(!r.width||!r.height)return;try{ctx.drawImage(layer,(r.left-mapRect.left)*scale,(r.top-mapRect.top)*scale,r.width*scale,r.height*scale);}catch(err){console.warn("No se pudo incluir una capa canvas en la captura",err);}});
+        openEditor(shot);
       }catch(e){alert("No se pudo capturar el mapa: "+(e.message||e));}finally{btn.disabled=false;}
     });bar.appendChild(btn);
   }
