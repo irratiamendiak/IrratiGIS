@@ -59,6 +59,13 @@ jobs:
           python wildfire/terrain/derive_terrain_variables.py
           --dem data/processed/gipuzkoa/mdt_relief_preview/gipuzkoa_mdt_relief_preview_3_tiles.tif
           --output-dir data/processed/gipuzkoa/terrain_derivatives
+      - name: Audit unique-cell coverage and NoData in sampled DEM
+        run: >-
+          python wildfire/terrain/audit_dem_coverage_and_seams.py
+          --mosaic data/processed/gipuzkoa/mdt_relief_preview/gipuzkoa_mdt_relief_preview_3_tiles.tif
+          --boundary data/processed/gipuzkoa/gipuzkoa_boundary.gpkg
+          --boundary-layer pilot_boundary
+          --output data/processed/gipuzkoa/terrain_derivatives/coverage_audit.json
       - name: Upload relief preview and terrain derivatives
         uses: actions/upload-artifact@v4
         with:
