@@ -2,6 +2,10 @@ name: Build Gipuzkoa MDT relief preview
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/gipuzkoa-mdt-relief-preview.yml
 
 permissions:
   contents: read
