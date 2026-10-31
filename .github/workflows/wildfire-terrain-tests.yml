@@ -23,7 +23,7 @@ jobs:
           pip install -r wildfire/ingestion/requirements.txt
       - name: Compile and test
         run: |
-          python -m py_compile wildfire/terrain/prepare_landscape.py wildfire/ingestion/validate_catalog.py wildfire/ingestion/download_source.py wildfire/ingestion/prepare_gipuzkoa_boundary.py wildfire/ingestion/inspect_raster_archive.py wildfire/ingestion/select_mdt_sheet_index.py wildfire/ingestion/fetch_arcgis_sheet_index.py
+          python -m py_compile wildfire/terrain/prepare_landscape.py wildfire/ingestion/validate_catalog.py wildfire/ingestion/download_source.py wildfire/ingestion/prepare_gipuzkoa_boundary.py wildfire/ingestion/inspect_raster_archive.py wildfire/ingestion/select_mdt_sheet_index.py wildfire/ingestion/fetch_arcgis_sheet_index.py wildfire/ingestion/inspect_mdt_zip_batch.py wildfire/ingestion/prepare_mdt_batches.py
           python -m pytest -q wildfire/terrain/tests wildfire/ingestion/tests
       - name: Validate official source catalogue
         run: python wildfire/ingestion/validate_catalog.py --catalog wildfire/ingestion/sources.euskadi-gipuzkoa.json
