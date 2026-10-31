@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="auth.js?v=20261011-deno" defer></script>
 <script src="gis-tools.js?v=25" defer></script>
+<script src="wildfire-intelligence.js?v=0.1.0" defer></script>
 <style>
 :root{--bg:#f4f7f5;--panel:#fff;--ink:#16231c;--muted:#65736b;--green:#176b43;--line:#dce5df;--blue:#175f8f}
 *{box-sizing:border-box}
@@ -998,6 +999,32 @@ let manualTrackPoints=[];
 let drawingTrack=false;
 let manualTrackClosed=false;
 
+/* GeoEuskadi raster dinamikoak: geruzak ofizialak dira, CAPV osoan estaldurarekin.
+   MapServer export erabiltzen da, Leaflet-eko 256 px tile bakoitza EPSG:3857-n eskatuz. */
+function geoEuskadiRasterLayer(layerId, opacity){
+  const layer=L.tileLayer("",{
+    tileSize:256, opacity, maxZoom:19, minZoom:5,
+    attribution:"Eusko Jaurlaritza / Gobierno Vasco · geoEuskadi (CC BY 3.0)"
+  });
+  layer.getTileUrl=function(coords){
+    const size=this.getTileSize().x;
+    const nw=map.unproject(L.point(coords.x*size,coords.y*size),coords.z);
+    const se=map.unproject(L.point((coords.x+1)*size,(coords.y+1)*size),coords.z);
+    const a=L.CRS.EPSG3857.project(se), b=L.CRS.EPSG3857.project(nw);
+    const params=new URLSearchParams({
+      bbox:[a.x,a.y,b.x,b.y].join(","),
+      bboxSR:"3857", imageSR:"3857", size:size+","+size,
+      format:"png32", transparent:"true", layers:"show:"+layerId, f:"image"
+    });
+    return "https://www.geo.euskadi.eus/geoeuskadi/rest/services/U11/KARTOGRAFIA_CAS/MapServer/export?"+params.toString();
+  };
+  return layer;
+}
+const geoEuskadiElevation=geoEuskadiRasterLayer(5,.78); // Fondo hipsométrico LiDAR
+const geoEuskadiHillshade=geoEuskadiRasterLayer(8,.72);
+const geoEuskadiSlope=geoEuskadiRasterLayer(7,.68);
+const geoEuskadiAspect=geoEuskadiRasterLayer(6,.68);
+
 /* Geruzen kontrola taldeekin: "Edizioa" (erabiltzailearen datuak) eta "Geruzak". */
 const GroupedLayersControl=L.Control.Layers.extend({
   _addItem:function(obj){
@@ -1027,6 +1054,10 @@ const layersControl=new GroupedLayersControl(
   "Waypoint-ak":waypointLayer,
   "🔥 Baimendutako erreketak":controlledBurnLayer,
   "🔥 Suteak 2010-2025 (EGIF)":egifLayer,
+  "⛰️ GeoEuskadi · Fondo hipsométrico LiDAR":geoEuskadiElevation,
+  "⛰️ GeoEuskadi · Sombras LiDAR 1 m (2017)":geoEuskadiHillshade,
+  "📐 GeoEuskadi · Pendiente LiDAR 25 m":geoEuskadiSlope,
+  "🧭 GeoEuskadi · Orientación LiDAR 25 m":geoEuskadiAspect,
   "Katastroko partzelak · WMS":cadastralWms
 },
   {
@@ -1034,7 +1065,8 @@ const layersControl=new GroupedLayersControl(
     position:"topright",
     groupHeads:{
       "Eskuz marraztutako track-a":"✏️ Edizioa",
-      "🔥 Baimendutako erreketak":"🗺️ Geruzak"
+      "🔥 Baimendutako erreketak":"🗺️ Geruzak",
+      "⛰️ GeoEuskadi · Fondo hipsométrico LiDAR":"⛰️ Terreno · LiDAR 2017"
     }
   }
 ).addTo(map);

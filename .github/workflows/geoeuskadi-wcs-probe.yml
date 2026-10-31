@@ -1,0 +1,73 @@
+name: geoEuskadi WCS probe
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/geoeuskadi-wcs-probe.yml"
+      - "wildfire/ingestion/**"
+  workflow_dispatch:
+
+jobs:
+  probe-wcs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Get WCS capabilities and identify MDT 2017 coverage
+        run: |
+          set -euo pipefail
+          BASE='https://www.geo.euskadi.eus/geoeuskadi/services/U11/WCS_KARTOGRAFIA/MapServer/WCSServer'
+          curl --fail --location --silent --show-error --max-time 90 \
+            "$BASE?service=WCS&version=1.0.0&request=GetCapabilities" -o wcs-capabilities.xml
+          grep -q 'MDT_LIDAR_2017_1M' wcs-capabilities.xml
+          echo "Confirmed WCS coverage MDT_LIDAR_2017_1M"
+      - name: Describe the 1m coverage
+        run: |
+          set -euo pipefail
+          BASE='https://www.geo.euskadi.eus/geoeuskadi/services/U11/WCS_KARTOGRAFIA/MapServer/WCSServer'
+          curl --fail --location --silent --show-error --max-time 90 \
+            --get "$BASE" \
+            --data-urlencode 'service=WCS' \
+            --data-urlencode 'version=1.0.0' \
+            --data-urlencode 'request=DescribeCoverage' \
+            --data-urlencode 'coverage=MDT_LIDAR_2017_1M' \
+            -o wcs-describe-coverage.xml
+          if grep -qi '<ServiceException' wcs-describe-coverage.xml; then
+            cat wcs-describe-coverage.xml
+            exit 1
+          fi
+          test -s wcs-describe-coverage.xml
+          echo "DescribeCoverage returned $(wc -c < wcs-describe-coverage.xml) bytes"
+      - name: Request a 100m by 100m sample in Gipuzkoa
+        run: |
+          set -euo pipefail
+          BASE='https://www.geo.euskadi.eus/geoeuskadi/services/U11/WCS_KARTOGRAFIA/MapServer/WCSServer'
+          curl --fail --location --silent --show-error --max-time 180 \
+            --get "$BASE" \
+            --data-urlencode 'service=WCS' \
+            --data-urlencode 'version=1.0.0' \
+            --data-urlencode 'request=GetCoverage' \
+            --data-urlencode 'coverage=MDT_LIDAR_2017_1M' \
+            --data-urlencode 'CRS=EPSG:25830' \
+            --data-urlencode 'BBOX=580000,4780000,580100,4780100' \
+            --data-urlencode 'resX=1' \
+            --data-urlencode 'resY=1' \
+            --data-urlencode 'format=GeoTIFF' \
+            --output mdt-wcs-sample.tif
+          file mdt-wcs-sample.tif
+          if grep -a -qi '<ServiceException' mdt-wcs-sample.tif; then
+            cat mdt-wcs-sample.tif
+            exit 1
+          fi
+          test "$(head -c 4 mdt-wcs-sample.tif)" = "II*"
+          test "$(stat -c%s mdt-wcs-sample.tif)" -gt 1000
+          echo "GeoTIFF sample downloaded: $(stat -c%s mdt-wcs-sample.tif) bytes"
+      - name: Upload WCS test data
+        uses: actions/upload-artifact@v4
+        with:
+          name: geoeuskadi-wcs-sample
+          path: |
+            wcs-capabilities.xml
+            wcs-describe-coverage.xml
+            mdt-wcs-sample.tif
+          if-no-files-found: error
+          retention-days: 7

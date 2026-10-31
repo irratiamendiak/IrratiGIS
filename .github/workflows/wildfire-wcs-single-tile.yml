@@ -1,0 +1,62 @@
+name: Wildfire bounded multi-tile WCS ingestion smoke test
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/wildfire-wcs-single-tile.yml"
+      - "wildfire/ingestion/download_wcs_aoi.py"
+  workflow_dispatch:
+
+jobs:
+  multi-tile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ingestion dependencies
+        run: python -m pip install geopandas rasterio shapely
+      - name: Create a bounded 200m test AOI
+        run: |
+          python - <<'PY'
+          import geopandas as gpd
+          from shapely.geometry import box
+          gpd.GeoDataFrame(
+              {"name": ["multi_wcs_test_aoi"]},
+              geometry=[box(580000, 4780000, 580200, 4780200)],
+              crs="EPSG:25830",
+          ).to_file("multi_tile_boundary.gpkg", layer="pilot_boundary", driver="GPKG")
+          PY
+      - name: Download and clip at most four real WCS tiles
+        run: |
+          python wildfire/ingestion/download_wcs_aoi.py \
+            --boundary multi_tile_boundary.gpkg \
+            --output wcs-multi-tile-output \
+            --tile-size 100 \
+            --max-tiles 4 \
+            --timeout 180
+      - name: Validate all output rasters and manifest entries
+        run: |
+          python - <<'PY'
+          import json
+          import rasterio
+          from pathlib import Path
+          root = Path("wcs-multi-tile-output")
+          manifest = json.loads((root / "wcs_aoi_manifest.json").read_text())
+          assert manifest["requested_tiles"] == 4, manifest
+          assert len(manifest["tiles"]) == 4, manifest
+          for tile in manifest["tiles"]:
+              assert tile["status"] == "downloaded_clipped", tile
+              assert tile["valid_pixel_count"] > 0, tile
+              with rasterio.open(root / tile["file"]) as ds:
+                  assert ds.width > 0 and ds.height > 0
+                  assert ds.dataset_mask().any()
+          print(json.dumps({"requested_tiles": manifest["requested_tiles"], "validated_tiles": len(manifest["tiles"]), "tiles": manifest["tiles"]}, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wildfire-wcs-multi-tile-smoke-test
+          path: wcs-multi-tile-output/
+          retention-days: 7
