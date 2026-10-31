@@ -118,7 +118,8 @@ def main():
                       "resolution_m":1, "valid_cells":int(valid.sum()),
                       "min_elevation_m":float(np.nanmin(dem[valid])),
                       "max_elevation_m":float(np.nanmax(dem[valid])),
-                      "source_tiles":[str(p) for p in sorted((a.output_dir / "source_tiles").glob("*.tif"))],\n                      "outputs":["gipuzkoa_mdt_relief_preview_3_tiles.png","gipuzkoa_mdt_relief_preview_3_tiles.tif"]}, indent=2))
+                      "source_tiles":[str(p) for p in sorted((a.output_dir / "source_tiles").glob("*.tif"))],
+                      "outputs":["gipuzkoa_mdt_relief_preview_3_tiles.png","gipuzkoa_mdt_relief_preview_3_tiles.tif"]}, indent=2))
 
 
 if __name__ == "__main__":
