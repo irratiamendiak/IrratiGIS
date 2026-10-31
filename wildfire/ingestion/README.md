@@ -184,3 +184,20 @@ El servicio REST de la capa 67 declara EPSG:25830 y los atributos `CCFF`, `CFXMT
 Fuentes:
 - Metadatos MDT 1 m 2017: https://www.geo.euskadi.eus/geonetwork/srv/spa/metadata.show?uuid=md_IDEEu_MDT_LIDAR_2017_es
 - Servicio cartográfico `MC_HOJAS_5000`: https://www.geo.euskadi.eus/geoeuskadi/rest/services/U11/WMS_KARTOGRAFIA/MapServer/67
+
+
+### Ejecución por lotes y reanudación
+
+Para dividir el manifiesto de disponibilidad en lotes deterministas (por defecto, 10 hojas):
+
+```bash
+python wildfire/ingestion/prepare_mdt_batches.py --availability availability.json --output-dir mdt-batches
+```
+
+Cada archivo `batch-NNN.json` contiene las hojas de ese lote. Inspecciona un lote de forma independiente:
+
+```bash
+python wildfire/ingestion/inspect_mdt_zip_batch.py --availability mdt-batches/batch-001.json --output-dir mdt-results --batch-id 1
+```
+
+Si el proceso se interrumpe, vuelve a ejecutar el mismo comando añadiendo `--resume`. El inspector conserva resultados de teselas previamente validadas cuyo nombre y URL sigan coincidiendo, reintenta las demás y actualiza los CSV/JSON tras cada tesela completada. Los lotes descargan ZIP temporalmente; no ejecutan un mosaico ni leen todos los valores de píxel. No se ejecuta la descarga completa de 304 hojas como parte de las pruebas automáticas.
