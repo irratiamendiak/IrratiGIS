@@ -117,7 +117,7 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=3)
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--retries", type=int, default=2)
-    parser.add_argument("--max-mb", type=int, default=500)
+    parser.add_argument("--max-mb", type=int, default=500)\n    parser.add_argument("--batch-id", type=int, help="Optional manifest batch number; labels outputs for independent reruns")
     args = parser.parse_args()
 
     source = json.loads(args.availability.read_text(encoding="utf-8"))
@@ -137,7 +137,7 @@ def main() -> int:
 
     inspected.sort(key=lambda r: r["HOJA"])
     fields = list(inspected[0].keys())
-    with (args.output_dir / "mdt_2017_raster_inspection.csv").open("w", newline="", encoding="utf-8") as handle:
+    with (args.output_dir / (f"mdt_2017_raster_inspection_batch-{args.batch_id:03d}.csv" if args.batch_id else "mdt_2017_raster_inspection.csv")).open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
         writer.writerows(inspected)
@@ -154,7 +154,7 @@ def main() -> int:
         "note": "ZIP archives were downloaded temporarily, SHA256 hashed and CRC-tested. ASCII-grid headers and sidecar PRJ text were inspected. Pixel values were not mosaicked or fully read.",
         "results": inspected,
     }
-    (args.output_dir / "mdt_2017_raster_inspection.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (args.output_dir / (f"mdt_2017_raster_inspection_batch-{args.batch_id:03d}.json" if args.batch_id else "mdt_2017_raster_inspection.json")).write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({k: v for k, v in summary.items() if k != "results"}, ensure_ascii=False, indent=2))
     return 0 if len(good) == len(inspected) else 1
 
