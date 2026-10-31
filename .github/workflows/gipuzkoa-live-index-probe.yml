@@ -1,0 +1,69 @@
+name: Gipuzkoa live sheet-index probe
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/gipuzkoa-live-index-probe.yml"
+      - "wildfire/ingestion/fetch_arcgis_sheet_index.py"
+      - "wildfire/ingestion/prepare_gipuzkoa_boundary.py"
+
+permissions:
+  contents: read
+
+jobs:
+  live-index-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install ingestion dependencies
+        run: pip install -r wildfire/ingestion/requirements.txt
+      - name: Build official Gipuzkoa boundary
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python wildfire/ingestion/prepare_gipuzkoa_boundary.py \
+            --catalog wildfire/ingestion/sources.euskadi-gipuzkoa.json \
+            --output data/probe
+      - name: Query official index for a bounded 200m x 200m sample
+        run: |
+          python - <<'PY'
+          import geopandas as gpd
+          from shapely.geometry import box
+          gpd.GeoDataFrame(
+              {"name": ["live_index_probe"]},
+              geometry=[box(580000, 4780000, 580200, 4780200)],
+              crs="EPSG:25830",
+          ).to_file("data/probe/probe_aoi.gpkg", layer="pilot_boundary", driver="GPKG")
+          PY
+          python wildfire/ingestion/fetch_arcgis_sheet_index.py \
+            --boundary data/probe/probe_aoi.gpkg \
+            --boundary-layer pilot_boundary \
+            --output data/probe/live_sheet_index.gpkg
+      - name: Validate nonempty live response and report
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import geopandas as gpd
+          gpkg = Path("data/probe/live_sheet_index.gpkg")
+          report = Path("data/probe/live_sheet_index.json")
+          assert gpkg.exists() and gpkg.stat().st_size > 0
+          assert report.exists() and report.stat().st_size > 0
+          data = json.loads(report.read_text())
+          print(json.dumps(data, indent=2, ensure_ascii=False))
+          gdf = gpd.read_file(gpkg)
+          assert gdf.crs is not None and len(gdf) > 0, "Live query returned no intersecting sheets"
+          print(f"Live sample: {len(gdf)} intersecting sheet(s); CRS={gdf.crs}")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gipuzkoa-live-index-probe
+          path: data/probe/
+          if-no-files-found: error
+          retention-days: 7
