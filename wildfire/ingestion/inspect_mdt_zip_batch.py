@@ -160,7 +160,7 @@ def main() -> int:
             "note": "ZIPs are temporary, SHA256 hashed and CRC-tested; ASCII-grid headers and PRJ sidecars are inspected, not raster pixels.",
             "results": inspected,
         }
-        json_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+        json_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     save_checkpoint()
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
