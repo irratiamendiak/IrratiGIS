@@ -117,7 +117,9 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=3)
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--retries", type=int, default=2)
-    parser.add_argument("--max-mb", type=int, default=500)\n    parser.add_argument("--batch-id", type=int, help="Optional manifest batch number; labels outputs for independent reruns")
+    parser.add_argument("--max-mb", type=int, default=500)
+    parser.add_argument("--batch-id", type=int, help="Optional manifest batch number; labels outputs for independent reruns")
+    parser.add_argument("--resume", action="store_true", help="Reuse valid results from an earlier run and retry failed tiles")
     args = parser.parse_args()
 
     source = json.loads(args.availability.read_text(encoding="utf-8"))
@@ -126,36 +128,51 @@ def main() -> int:
         parser.error("No available ZIPs in availability manifest")
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    inspected = []
+    stem = f"mdt_2017_raster_inspection_batch-{args.batch_id:03d}" if args.batch_id else "mdt_2017_raster_inspection"
+    json_path = args.output_dir / f"{stem}.json"
+    cached = {}
+    if args.resume and json_path.exists():
+        previous = json.loads(json_path.read_text(encoding="utf-8"))
+        url_by_sheet = {row["HOJA"]: row["url"] for row in rows}
+        cached = {
+            row["HOJA"]: row for row in previous.get("results", [])
+            if row.get("archive_valid") is True and url_by_sheet.get(row.get("HOJA")) == row.get("url")
+        }
+    inspected = list(cached.values())
+    pending = [row for row in rows if row["HOJA"] not in cached]
+
+    def save_checkpoint():
+        inspected.sort(key=lambda row: row["HOJA"])
+        fields = list(inspected[0].keys()) if inspected else []
+        with (args.output_dir / f"{stem}.csv").open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(inspected)
+        good = [row for row in inspected if row["archive_valid"]]
+        summary = {
+            "checked_zip_count": len(inspected),
+            "download_success_count": sum(row["download_ok"] for row in inspected),
+            "valid_ascii_grid_archive_count": len(good),
+            "failed_count": len(inspected) - len(good),
+            "total_downloaded_bytes": sum(row["download_bytes"] or 0 for row in inspected),
+            "cellsize_values": sorted({row["cellsize"] for row in good if row["cellsize"] is not None}),
+            "crs_sidecar_count": sum(bool(row["prj_file"]) for row in good),
+            "note": "ZIPs are temporary, SHA256 hashed and CRC-tested; ASCII-grid headers and PRJ sidecars are inspected, not raster pixels.",
+            "results": inspected,
+        }
+        json_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+
+    save_checkpoint()
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = [pool.submit(download_and_inspect, row, args.timeout, args.retries, args.max_mb * 1024 * 1024) for row in rows]
+        futures = [pool.submit(download_and_inspect, row, args.timeout, args.retries, args.max_mb * 1024 * 1024) for row in pending]
         for future in concurrent.futures.as_completed(futures):
             inspected.append(future.result())
-            done = len(inspected)
-            if done % 10 == 0 or done == len(rows):
-                print(f"Inspected {done}/{len(rows)} ZIPs", flush=True)
+            save_checkpoint()
+            print(f"Inspected {len(inspected)}/{len(rows)} ZIPs", flush=True)
 
-    inspected.sort(key=lambda r: r["HOJA"])
-    fields = list(inspected[0].keys())
-    with (args.output_dir / (f"mdt_2017_raster_inspection_batch-{args.batch_id:03d}.csv" if args.batch_id else "mdt_2017_raster_inspection.csv")).open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        writer.writerows(inspected)
-
-    good = [r for r in inspected if r["archive_valid"]]
-    summary = {
-        "checked_zip_count": len(inspected),
-        "download_success_count": sum(r["download_ok"] for r in inspected),
-        "valid_ascii_grid_archive_count": len(good),
-        "failed_count": len(inspected) - len(good),
-        "total_downloaded_bytes": sum(r["download_bytes"] or 0 for r in inspected),
-        "cellsize_values": sorted({r["cellsize"] for r in good if r["cellsize"] is not None}),
-        "crs_sidecar_count": sum(bool(r["prj_file"]) for r in good),
-        "note": "ZIP archives were downloaded temporarily, SHA256 hashed and CRC-tested. ASCII-grid headers and sidecar PRJ text were inspected. Pixel values were not mosaicked or fully read.",
-        "results": inspected,
-    }
-    (args.output_dir / (f"mdt_2017_raster_inspection_batch-{args.batch_id:03d}.json" if args.batch_id else "mdt_2017_raster_inspection.json")).write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({k: v for k, v in summary.items() if k != "results"}, ensure_ascii=False, indent=2))
+    inspected.sort(key=lambda row: row["HOJA"])
+    good = [row for row in inspected if row["archive_valid"]]
+    summary = json.loads(json_path.read_text(encoding="utf-8"))
     return 0 if len(good) == len(inspected) else 1
 
 
