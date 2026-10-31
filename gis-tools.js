@@ -401,7 +401,7 @@
     const panel=document.createElement("div");panel.style.cssText="background:#fff;border-radius:12px;padding:12px;max-width:96vw;max-height:96vh;display:flex;flex-direction:column;gap:9px;box-shadow:0 8px 40px #0006";
     const bar=document.createElement("div");bar.style.cssText="display:flex;gap:6px;flex-wrap:wrap;align-items:center";
     const canvas=document.createElement("canvas");canvas.width=original.width;canvas.height=original.height;canvas.style.cssText="max-width:90vw;max-height:76vh;object-fit:contain;border:1px solid #ddd;touch-action:none";
-    const ctx=canvas.getContext("2d");let history=[],redoStack=[],mode="draw",drawing=false,start=null,last=null,cropRect=null;
+    const ctx=canvas.getContext("2d");let history=[],redoStack=[],mode="draw",drawing=false,start=null,last=null,cropRect=null,cropBase=null;
     function snapshot(){history.push(ctx.getImageData(0,0,canvas.width,canvas.height));if(history.length>40)history.shift();redoStack=[];}
     function restore(data){canvas.width=data.width;canvas.height=data.height;ctx.putImageData(data,0,0);}
     function button(label,fn){const b=document.createElement("button");b.type="button";b.textContent=label;b.style.cssText="padding:7px 9px;cursor:pointer";b.onclick=fn;bar.appendChild(b);return b;}
@@ -411,7 +411,7 @@
     function drawCrop(){ctx.save();ctx.strokeStyle="#e53935";ctx.lineWidth=Math.max(2,canvas.width/700);ctx.setLineDash([8,5]);ctx.strokeRect(cropRect.x,cropRect.y,cropRect.w,cropRect.h);ctx.restore();}
     button("✏️ Lápiz",()=>setMode("draw"));
     button("▭ Recortar",()=>setMode("crop"));
-    button("Aplicar recorte",()=>{if(!cropRect||cropRect.w<3||cropRect.h<3)return;snapshot();const x=Math.round(cropRect.x),y=Math.round(cropRect.y),w=Math.round(cropRect.w),h=Math.round(cropRect.h);const cut=ctx.getImageData(x,y,w,h);canvas.width=w;canvas.height=h;ctx.putImageData(cut,0,0);cropRect=null;mode="draw";});
+    button("Aplicar recorte",()=>{if(!cropRect||cropRect.w<3||cropRect.h<3||!cropBase)return;snapshot();const x=Math.round(cropRect.x),y=Math.round(cropRect.y),w=Math.round(cropRect.w),h=Math.round(cropRect.h);const cut=new ImageData(w,h);for(let row=0;row<h;row++)cut.data.set(cropBase.data.subarray(((y+row)*cropBase.width+x)*4,((y+row)*cropBase.width+x+w)*4),row*w*4);canvas.width=w;canvas.height=h;ctx.putImageData(cut,0,0);cropRect=null;cropBase=null;mode="draw";});
     button("T Texto",()=>{const t=prompt("Texto que quieres añadir:");if(!t)return;snapshot();ctx.font=Math.max(18,canvas.width/45)+"px sans-serif";ctx.lineWidth=3;ctx.strokeStyle="#fff";ctx.fillStyle="#c62828";ctx.strokeText(t,canvas.width*.08,canvas.height*.12);ctx.fillText(t,canvas.width*.08,canvas.height*.12);});
     button("↶ Deshacer",()=>{if(!history.length)return;redoStack.push(ctx.getImageData(0,0,canvas.width,canvas.height));restore(history.pop());cropRect=null;});
     button("↷ Rehacer",()=>{if(!redoStack.length)return;history.push(ctx.getImageData(0,0,canvas.width,canvas.height));restore(redoStack.pop());cropRect=null;});
@@ -420,8 +420,8 @@
     button("Descargar PNG",()=>canvas.toBlob(blob=>{if(!blob)return;const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="IrratiGIS-mapa-editado-"+new Date().toISOString().replace(/[:.]/g,"-")+".png";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);},"image/png"));
     button("Cerrar",()=>overlay.remove());
     ctx.drawImage(original,0,0);
-    canvas.addEventListener("pointerdown",e=>{drawing=true;start=last=pos(e);canvas.setPointerCapture(e.pointerId);if(mode==="draw")snapshot();});
-    canvas.addEventListener("pointermove",e=>{if(!drawing)return;const p=pos(e);if(mode==="draw"){ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.strokeStyle=color.value;ctx.lineWidth=Number(size.value)*canvas.width/canvas.clientWidth;ctx.lineCap="round";ctx.lineJoin="round";ctx.stroke();last=p;}else{cropRect={x:Math.min(start.x,p.x),y:Math.min(start.y,p.y),w:Math.abs(p.x-start.x),h:Math.abs(p.y-start.y)};ctx.putImageData(history.length?history[history.length-1]:original,0,0);drawCrop();}});
+    canvas.addEventListener("pointerdown",e=>{drawing=true;start=last=pos(e);canvas.setPointerCapture(e.pointerId);if(mode==="draw")snapshot();else cropBase=ctx.getImageData(0,0,canvas.width,canvas.height);});
+    canvas.addEventListener("pointermove",e=>{if(!drawing)return;const p=pos(e);if(mode==="draw"){ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.strokeStyle=color.value;ctx.lineWidth=Number(size.value)*canvas.width/canvas.clientWidth;ctx.lineCap="round";ctx.lineJoin="round";ctx.stroke();last=p;}else{cropRect={x:Math.min(start.x,p.x),y:Math.min(start.y,p.y),w:Math.abs(p.x-start.x),h:Math.abs(p.y-start.y)};ctx.putImageData(cropBase,0,0);drawCrop();}});
     canvas.addEventListener("pointerup",()=>{drawing=false;});canvas.addEventListener("pointercancel",()=>drawing=false);
     panel.append(bar,canvas);overlay.append(panel);document.body.append(overlay);
   }
