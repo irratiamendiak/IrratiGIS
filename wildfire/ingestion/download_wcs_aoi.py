@@ -1,7 +1,7 @@
 """Fetch bounded WCS tiles intersecting the prepared Gipuzkoa boundary.
 
-This is a controlled ingestion utility, not a province-wide run. It clips each
-request to the boundary envelope, skips windows outside the actual geometry,
+This is a controlled ingestion utility, not a province-wide run. It requests
+intersecting grid windows, clips each raster to the actual AOI geometry,
 and writes a manifest for every requested tile. No-data assessment is left
 explicit in the manifest for downstream QA.
 """
@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import numpy as np
 import sys
 import urllib.error
 import urllib.parse
@@ -102,11 +103,12 @@ def run(boundary_path: Path, output: Path, tile_size: int, max_tiles: int,
                     )
                     path = output / f"mdt_{idx:04d}.tif"
                     valid_mask = ~clipped.mask
-                    valid = int(valid_mask.sum())
+                    spatial_valid = np.any(valid_mask, axis=0)
+                    valid = int(spatial_valid.sum())
                     filled = clipped.filled(nodata)
                     with rasterio.open(path, "w", **meta) as dst:
                         dst.write(filled)
-                        dst.write_mask(valid_mask[0].astype("uint8") * 255)
+                        dst.write_mask(spatial_valid.astype("uint8") * 255)
                     record.update({
                         "status": "downloaded_clipped",
                         "file": path.name, "bytes": path.stat().st_size,
