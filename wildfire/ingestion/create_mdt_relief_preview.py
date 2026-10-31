@@ -64,6 +64,13 @@ def main():
     with tempfile.TemporaryDirectory() as td:
         workdir = Path(td)
         datasets = [read_tile(row, workdir) for row in rows]
+        # Preserve the exact source rasters used in this preview so later QA can
+        # inspect tile edges instead of relying only on the merged raster.
+        source_dir = a.output_dir / "source_tiles"
+        source_dir.mkdir(parents=True, exist_ok=True)
+        for row in rows:
+            source_tile = workdir / (row["HOJA"] + ".tif")
+            (source_dir / source_tile.name).write_bytes(source_tile.read_bytes())
         mosaic, transform = merge(datasets, nodata=-9999, method="first")
         profile = datasets[0].profile.copy()
         profile.update(driver="GTiff", height=mosaic.shape[1], width=mosaic.shape[2],
@@ -111,7 +118,7 @@ def main():
                       "resolution_m":1, "valid_cells":int(valid.sum()),
                       "min_elevation_m":float(np.nanmin(dem[valid])),
                       "max_elevation_m":float(np.nanmax(dem[valid])),
-                      "outputs":["gipuzkoa_mdt_relief_preview_3_tiles.png","gipuzkoa_mdt_relief_preview_3_tiles.tif"]}, indent=2))
+                      "source_tiles":[str(p) for p in sorted((a.output_dir / "source_tiles").glob("*.tif"))],\n                      "outputs":["gipuzkoa_mdt_relief_preview_3_tiles.png","gipuzkoa_mdt_relief_preview_3_tiles.tif"]}, indent=2))
 
 
 if __name__ == "__main__":
