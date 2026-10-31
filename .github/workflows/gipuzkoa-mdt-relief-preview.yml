@@ -85,5 +85,7 @@ jobs:
             data/processed/gipuzkoa/mdt_relief_preview/gipuzkoa_mdt_relief_preview_3_tiles.tif
             data/processed/gipuzkoa/terrain_derivatives/*.tif
             data/processed/gipuzkoa/terrain_derivatives/terrain_derivatives_report.json
+            data/processed/gipuzkoa/terrain_derivatives/coverage_audit.json
+            data/processed/gipuzkoa/terrain_derivatives/coverage_and_seams_audit.json
           if-no-files-found: error
           retention-days: 14
