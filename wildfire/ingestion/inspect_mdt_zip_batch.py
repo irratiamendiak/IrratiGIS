@@ -110,6 +110,16 @@ def download_and_inspect(row: dict, timeout: int, retries: int, max_bytes: int) 
     return result
 
 
+def select_resumable_results(rows: list[dict], previous_results: list[dict]) -> dict[str, dict]:
+    """Return only successful cached rows whose source URL still matches."""
+    url_by_sheet = {row["HOJA"]: row["url"] for row in rows}
+    return {
+        row["HOJA"]: row for row in previous_results
+        if row.get("archive_valid") is True
+        and url_by_sheet.get(row.get("HOJA")) == row.get("url")
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--availability", required=True, type=Path)
@@ -133,11 +143,7 @@ def main() -> int:
     cached = {}
     if args.resume and json_path.exists():
         previous = json.loads(json_path.read_text(encoding="utf-8"))
-        url_by_sheet = {row["HOJA"]: row["url"] for row in rows}
-        cached = {
-            row["HOJA"]: row for row in previous.get("results", [])
-            if row.get("archive_valid") is True and url_by_sheet.get(row.get("HOJA")) == row.get("url")
-        }
+        cached = select_resumable_results(rows, previous.get("results", []))
     inspected = list(cached.values())
     pending = [row for row in rows if row["HOJA"] not in cached]
 
