@@ -6,7 +6,7 @@
 <title>IrratiGIS</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="auth.js?v=20261011-deno" defer></script>
-<script src="gis-tools.js?v=30" defer></script>
+<script src="gis-tools.js?v=31" defer></script>
 <style>
 :root{--bg:#f4f7f5;--panel:#fff;--ink:#16231c;--muted:#65736b;--green:#176b43;--line:#dce5df;--blue:#175f8f}
 *{box-sizing:border-box}
@@ -3224,7 +3224,7 @@ function fsOacel(b0,w0,Lh,osm){
 const fsPanel=L.DomUtil.create("div","",map.getContainer());
 fsPanel.style.cssText="display:none;position:absolute;left:12px;bottom:30px;z-index:1000;width:min(360px,calc(100% - 24px));max-height:72%;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.35);padding:10px 12px;font:12px/1.4 system-ui;color:#1d2b24;overflow-x:hidden;box-sizing:border-box";
 fsPanel.className="fs-panel";
-{ const st=document.createElement("style"); st.textContent=".fs-panel select,.fs-panel input[type=number]{max-width:100%;box-sizing:border-box}.fs-panel select{font-size:12px}"; document.head.appendChild(st); }
+{ const st=document.createElement("style"); st.textContent=".fs-panel,.fs-panel *{box-sizing:border-box}.fs-panel select,.fs-panel input,.fs-panel textarea{max-width:100%;width:100%;min-width:0;box-sizing:border-box}.fs-panel select,.fs-panel input{font-size:12px}.fs-panel button{max-width:100%;white-space:normal;line-height:1.25}.fs-panel details{max-width:100%;overflow-wrap:anywhere}"; document.head.appendChild(st); }
 L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation(fsPanel);
 {
   const bs="border:0;border-radius:8px;padding:6px 10px;font:700 12px system-ui;cursor:pointer;color:#fff;", row="margin-bottom:4px";
