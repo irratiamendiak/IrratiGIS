@@ -66,6 +66,16 @@ jobs:
           --boundary data/processed/gipuzkoa/gipuzkoa_boundary.gpkg
           --boundary-layer pilot_boundary
           --output data/processed/gipuzkoa/terrain_derivatives/coverage_audit.json
+      - name: Audit source-tile seams in sampled area
+        shell: bash
+        run: |
+          mapfile -t tiles < <(find data/processed/gipuzkoa/mdt_relief_preview/source_tiles -name '*.tif' -type f | sort)
+          python wildfire/terrain/audit_dem_coverage_and_seams.py
+            --mosaic data/processed/gipuzkoa/mdt_relief_preview/gipuzkoa_mdt_relief_preview_3_tiles.tif
+            --boundary data/processed/gipuzkoa/gipuzkoa_boundary.gpkg
+            --boundary-layer pilot_boundary
+            --tiles "${tiles[@]}"
+            --output data/processed/gipuzkoa/terrain_derivatives/coverage_and_seams_audit.json
       - name: Upload relief preview and terrain derivatives
         uses: actions/upload-artifact@v4
         with:
