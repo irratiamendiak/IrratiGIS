@@ -3213,7 +3213,7 @@ function fsFuelFromText(t){
 }
 async function fsCover(ll){
   fsCapP=fsCapP||getWmsCapabilities(FS_FOREST_WMS); const info=await fsCapP.catch(e=>{ fsCapP=null; throw e; });
-  const cand=info.layers.filter(l=>/forest|uso|especie|conifer|frondos|cubiert|vegeta|mfe|arbol/i.test(l.name+" "+l.title)).slice(0,3);
+  const cand=info.layers.filter(l=>/baso|forest|uso[_ ]del[_ ]suelo|distribucion[_ ]de[_ ]especies|conifer|frondos|matorral|pastizal|prados/i.test(l.name+" "+l.title) && !/riesgo|risk|altura|densidad|volumen|productividad/i.test(l.name+" "+l.title)).slice(0,5);
   if(!cand.length) throw new Error("sin capas de usos/especies");
   const [E,N]=proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[ll.lng,ll.lat]);
   const fmt=pickInfoFormat(info.infoFormats), v=info.version||"1.3.0", is13=v.startsWith("1.3"), out=[];
