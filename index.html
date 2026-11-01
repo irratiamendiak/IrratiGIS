@@ -3221,8 +3221,11 @@ async function fsCover(ll){
     const p=new URLSearchParams({SERVICE:"WMS",VERSION:v,REQUEST:"GetFeatureInfo",LAYERS:l.name,QUERY_LAYERS:l.name,STYLES:"",FORMAT:info.format||"image/png",
       INFO_FORMAT:fmt,FEATURE_COUNT:"3",WIDTH:"101",HEIGHT:"101",BBOX:[E-50,N-50,E+50,N+50].join(",")});
     p.set(is13?"CRS":"SRS","EPSG:25830"); p.set(is13?"I":"X","50"); p.set(is13?"J":"Y","50");
-    try{ const r=await fetch(FS_FOREST_WMS+"?"+p.toString()); if(!r.ok) continue;
-      const txt=await r.text(), html=featureInfoToHtml(txt,fmt); if(html) out.push({title:l.title||l.name,html,text:txt.replace(/<[^>]+>/g," ")}); }catch(_){ }
+    const url=FS_FOREST_WMS+"?"+p.toString();
+    try{
+      const r=await fetch(url), txt=await r.text(), html=featureInfoToHtml(txt,fmt);
+      out.push({title:l.title||l.name,layer:l.name,status:r.status,ok:r.ok,format:fmt,html:html||"",text:txt.replace(/<[^>]+>/g," ").trim(),url});
+    }catch(e){ out.push({title:l.title||l.name,layer:l.name,status:"error",ok:false,format:fmt,html:"",text:String(e),url}); }
   }
   return out;
 }
@@ -3479,7 +3482,7 @@ async function fsRun(){
     if(my!==fsBusy||!q(".fs-cov")) return;
     if(!res.length){ q(".fs-cov").innerHTML=`<span style="color:#65736b">Mapa forestal: sin datos en este punto.</span>`; return; }
     const sug=fsFuelFromText(res.map(r=>r.text).join(" ")), cur=fsCfg.fuel;
-    q(".fs-cov").innerHTML=`<details><summary style="cursor:pointer"><b>🌲 Cubierta en el punto de inicio</b> (mapa forestal, geoEuskadi)</summary><div style="max-height:130px;overflow:auto">${res.map(r=>`<div><b>${escapeHtml(r.title)}</b>${r.html}</div>`).join("")}</div></details>`+
+    q(".fs-cov").innerHTML=`<details><summary style="cursor:pointer"><b>🌲 Cubierta en el punto de inicio</b> (mapa forestal, geoEuskadi)</summary><div style="max-height:130px;overflow:auto">${res.map(r=>`<div><b>${escapeHtml(r.title)}</b>${r.html||`<span style="color:#8b2f2f">Sin atributos legibles; HTTP ${escapeHtml(r.status)}</span>`}</div>`).join("")}</div><details style="margin-top:5px"><summary>Diagnóstico WMS (respuesta literal)</summary>${res.map(r=>`<section style="border-top:1px solid #ddd;padding:5px 0"><b>${escapeHtml(r.layer)}</b> · HTTP ${escapeHtml(r.status)} · ${escapeHtml(r.format)}<pre style="white-space:pre-wrap;overflow-wrap:anywhere;font:10px/1.35 monospace">${escapeHtml(r.text||"(respuesta vacía)")}</pre><a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">Abrir consulta WMS</a></section>`).join("")}</details></details>`+
       (sug&&sug!==cur?`<div style="margin-top:3px">Categoría orientativa inferida del texto de cubierta: <b>${escapeHtml(FS_FUELS[sug].n)}</b> <button type="button" data-fs-fuel="${sug}" style="border:0;border-radius:6px;padding:3px 8px;background:#1b8a3a;color:#fff;font-weight:700;cursor:pointer">Seleccionar manualmente</button><div style="font-size:11px;color:#8b2f2f">No es un modelo oficial ni una equivalencia validada; al seleccionarla se cambia el combustible del escenario.</div></div>`:
        (sug?`<div style="margin-top:3px;color:#1b8a3a">La categoría inferida coincide con el combustible seleccionado (sin validación como modelo oficial).</div>`:`<div style="margin-top:3px;color:#65736b">No he podido deducir el combustible del texto; elígelo a mano.</div>`));
     // mugitzean zehar: erregai-karga handiagoko aldaketak
