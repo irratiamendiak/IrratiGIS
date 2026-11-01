@@ -3480,14 +3480,14 @@ async function fsRun(){
     if(!res.length){ q(".fs-cov").innerHTML=`<span style="color:#65736b">Mapa forestal: sin datos en este punto.</span>`; return; }
     const sug=fsFuelFromText(res.map(r=>r.text).join(" ")), cur=fsCfg.fuel;
     q(".fs-cov").innerHTML=`<details><summary style="cursor:pointer"><b>🌲 Cubierta en el punto de inicio</b> (mapa forestal, geoEuskadi)</summary><div style="max-height:130px;overflow:auto">${res.map(r=>`<div><b>${escapeHtml(r.title)}</b>${r.html}</div>`).join("")}</div></details>`+
-      (sug&&sug!==cur?`<div style="margin-top:3px">Sugerencia de combustible: <b>${escapeHtml(FS_FUELS[sug].n)}</b> <button type="button" data-fs-fuel="${sug}" style="border:0;border-radius:6px;padding:3px 8px;background:#1b8a3a;color:#fff;font-weight:700;cursor:pointer">Aplicar</button></div>`:
-       (sug?`<div style="margin-top:3px;color:#1b8a3a">Coincide con el combustible elegido.</div>`:`<div style="margin-top:3px;color:#65736b">No he podido deducir el combustible del texto; elígelo a mano.</div>`));
+      (sug&&sug!==cur?`<div style="margin-top:3px">Categoría orientativa inferida del texto de cubierta: <b>${escapeHtml(FS_FUELS[sug].n)}</b> <button type="button" data-fs-fuel="${sug}" style="border:0;border-radius:6px;padding:3px 8px;background:#1b8a3a;color:#fff;font-weight:700;cursor:pointer">Seleccionar manualmente</button><div style="font-size:11px;color:#8b2f2f">No es un modelo oficial ni una equivalencia validada; al seleccionarla se cambia el combustible del escenario.</div></div>`:
+       (sug?`<div style="margin-top:3px;color:#1b8a3a">La categoría inferida coincide con el combustible seleccionado (sin validación como modelo oficial).</div>`:`<div style="margin-top:3px;color:#65736b">No he podido deducir el combustible del texto; elígelo a mano.</div>`));
     // mugitzean zehar: erregai-karga handiagoko aldaketak
     let prev=sug||cur; const picks=[60,120,180,240].map(T=>prof.find(p=>p.t>=T)).filter(Boolean);
     return Promise.all(picks.map(p=>fsCover({lat:p.lat,lng:p.lon}).then(r=>({p,k:fsFuelFromText(r.map(x=>x.text).join(" "))})).catch(()=>null))).then(list=>{
       if(my!==fsBusy||!q(".fs-crit")) return;
       list.filter(Boolean).forEach(({p,k})=>{ if(k&&k!==prev&&(k==="garoa"||k==="pinudia")){
-          const c={t:p.t,lat:p.lat,lon:p.lon,why:`combustible de mayor carga/intensidad (${FS_FUELS[k].n}), según el mapa forestal`}; D.crit.push(c);
+          const c={t:p.t,lat:p.lat,lon:p.lon,why:`cambio de cubierta inferida (${FS_FUELS[k].n}); categoría orientativa, no modelo oficial`}; D.crit.push(c);
           L.marker([c.lat,c.lon],{icon:critIcon(D.crit.length),zIndexOffset:900}).bindTooltip(`Punto crítico ${D.crit.length} · ~${c.t} min`).addTo(fsGroup); }
         if(k) prev=k; });
       q(".fs-crit").innerHTML=fsDec(critHtml());
