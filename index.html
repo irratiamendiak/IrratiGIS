@@ -667,6 +667,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.vectorgrid@1.3.0/dist/Leaflet.VectorGrid.bundled.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/proj4@2.12.1/dist/proj4.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -828,6 +829,29 @@ b5mTopo.on("add",loadB5mTopo);
 /* Oinarrizko mapak: B5M ortoargazki bat hautatzean hauek kenduko dira.
    B5M kartografia-geruzak ez dira zerrenda honetan sartzen; overlay gisa mantentzen dira. */
 const standardBaseLayers=[osm,gipMap,pnoa,ignRaster,euHuts,b5mTopo];
+
+// 🌲 Cubierta forestal de Gipuzkoa (inventario 2024), vector tiles PBF.
+// El selector de capas la mantiene apagada hasta que el usuario marque la casilla.
+const forestCoverLayer = L.vectorGrid.protobuf(
+  "forest-tiles/{z}/{x}/{y}.pbf",
+  {
+    minZoom:7,
+    maxZoom:14,
+    pane:"wmsOverlayPane",
+    interactive:true,
+    vectorTileLayerStyles:{
+      "forestal_gipuzkoa_2024":{
+        weight:0.55,
+        color:"#315b2b",
+        opacity:0.9,
+        fill:true,
+        fillColor:"#5b8c42",
+        fillOpacity:0.58
+      }
+    },
+    attribution:"Inventario forestal de Gipuzkoa · 2024"
+  }
+);
 
 const cadastralWms=L.tileLayer.wms("https://b5m.gipuzkoa.eus/inspire/wms/gipuzkoa_wms",{
   layers:"CP.CadastralParcel", format:"image/png", transparent:true,
@@ -1027,6 +1051,7 @@ const layersControl=new GroupedLayersControl(
   "Waypoint-ak":waypointLayer,
   "🔥 Baimendutako erreketak":controlledBurnLayer,
   "🔥 Suteak 2010-2025 (EGIF)":egifLayer,
+  "🌲 Baso-estaldura · 2024":forestCoverLayer,
   "Katastroko partzelak · WMS":cadastralWms
 },
   {
