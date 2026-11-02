@@ -1,21 +1,9 @@
-# Cubierta forestal 2024 — publicación
+# Publicar las teselas forestales
 
-La capa se ha añadido como overlay opcional a IrratiGIS, en el grupo de capas de Leaflet.
+1. Ubica el MBTiles del inventario forestal 2024.
+2. Ejecuta: `python scripts/export_forest_tiles.py forestal_gipuzkoa.mbtiles --out forest-tiles`
+3. Publica la carpeta `forest-tiles/` en el mismo origen de GitHub Pages que `index.html`.
 
-## Teselas necesarias
+El script convierte la fila TMS de MBTiles a XYZ. No subas el MBTiles original al repositorio; comprueba tamaño y límites antes de publicar la carpeta exportada. La capa solo solicita teselas al marcar su casilla.
 
-El HTML solicita teselas vectoriales PBF con esta ruta relativa:
-
-`forest-tiles/{z}/{x}/{y}.pbf`
-
-El inventario MBTiles original usa esquema TMS y zooms 7–14. Antes de publicar la carpeta, extrae las teselas y convierte la coordenada Y a XYZ para cada zoom:
-
-`y_xyz = (2 ** z) - 1 - y_tms`
-
-Debe quedar una estructura como `forest-tiles/7/x/y.pbf`.
-
-## Nota importante
-
-El inventario original es vectorial. La capa está lista para solicitar teselas PBF, pero Leaflet base no dibuja PBF por sí solo. Para visualizar el contenido es necesario incorporar un renderer vectorial compatible (por ejemplo, Leaflet.VectorGrid) y configurar el nombre de la capa interna del MBTiles. No se activa hasta que el visor dispone de esas teselas y renderer.
-
-GitHub Pages workflow publica el contenido de la raíz del repositorio, por lo que la carpeta `forest-tiles/` puede servirse como contenido estático.
+El renderer espera la capa interna `forestal_gipuzkoa_2024`; si el nombre real difiere, actualiza `vectorTileLayerStyles` en `index.html`.
