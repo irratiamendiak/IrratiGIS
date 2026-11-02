@@ -1,0 +1,4 @@
+/* Cubierta forestal vectorial 2024 */
+.leaflet-pane .forest-cover-tiles {
+  filter: saturate(1.18) contrast(1.08);
+}
