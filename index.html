@@ -829,6 +829,21 @@ b5mTopo.on("add",loadB5mTopo);
    B5M kartografia-geruzak ez dira zerrenda honetan sartzen; overlay gisa mantentzen dira. */
 const standardBaseLayers=[osm,gipMap,pnoa,ignRaster,euHuts,b5mTopo];
 
+// 🌲 Cubierta forestal de Gipuzkoa (inventario 2024), teselas vectoriales MBTiles.
+const forestCoverLayer=L.tileLayer(
+  "forest-tiles/{z}/{x}/{y}.pbf",
+  {
+    minZoom:7,
+    maxZoom:14,
+    opacity:0.78,
+    pane:"wmsOverlayPane",
+    attribution:"Inventario forestal de Gipuzkoa · 2024",
+    // El archivo MBTiles usa esquema TMS; los PBF estáticos se publican en XYZ.
+    // La estructura publicada debe estar normalizada a XYZ al extraer las teselas.
+    className:"forest-cover-tiles"
+  }
+);
+
 const cadastralWms=L.tileLayer.wms("https://b5m.gipuzkoa.eus/inspire/wms/gipuzkoa_wms",{
   layers:"CP.CadastralParcel", format:"image/png", transparent:true,
   version:"1.3.0", opacity:0.8, pane:"wmsOverlayPane", attribution:"Gipuzkoako Foru Aldundia · Katastro INSPIRE"
@@ -1027,6 +1042,7 @@ const layersControl=new GroupedLayersControl(
   "Waypoint-ak":waypointLayer,
   "🔥 Baimendutako erreketak":controlledBurnLayer,
   "🔥 Suteak 2010-2025 (EGIF)":egifLayer,
+  "🌲 Baso-estaldura · 2024":forestCoverLayer,
   "Katastroko partzelak · WMS":cadastralWms
 },
   {
