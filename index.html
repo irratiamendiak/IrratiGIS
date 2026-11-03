@@ -1281,16 +1281,8 @@ map.on("click",e=>{
   queryB5mFeatureInfo(e.latlng);
 });
 
-/* ===== geoEuskadi: Suteen aurkako babesa (ekosistema-zerbitzuak) ===== */
+/* ===== geoEuskadi (ingurumena) WMS: Natura 2000 geruzak erabiltzen du ===== */
 const GEOEUSKADI_INGURUMENA="https://www.geo.euskadi.eus/geoeuskadi/services/S91B/WMS_INGURUMENA/MapServer/WMSServer";
-const SUTE_BABESA_LAYER="Asaldura_naturalen_kontrola_suteen_aurkako_babesa_Control_de_perturbaciones_naturales_Proteccion_contra_incendios";
-const suteBabesaInfo={version:"1.3.0",format:"image/png",infoFormats:["application/geo+json","text/html","text/plain"]};
-const suteBabesaLayer=L.tileLayer.wms(GEOEUSKADI_INGURUMENA,{
-  layers:SUTE_BABESA_LAYER, format:"image/png", transparent:true,
-  version:"1.3.0", opacity:.7, pane:"wmsOverlayPane",
-  attribution:"Eusko Jaurlaritza / Gobierno Vasco · geoEuskadi"
-});
-layersControl.addOverlay(suteBabesaLayer,"🛡️ Suteen aurkako babesa (geoEuskadi)");
 
 /* Legenda */
 const LegendControl=L.Control.extend({
@@ -1312,166 +1304,6 @@ const LegendControl=L.Control.extend({
 const legendControl=new LegendControl();
 map.addControl(legendControl);
 
-/* ===== Arrisku-eremuak EGIF historikotik (ZAR antzeko proposamena) =====
-   Sute bakoitzak bere inguruan pisua uzten du (kernel dentsitatea, 1,5 km),
-   500 m-ko saretan. Klaseak: suteek ukitutako gelaxken pertzentilak. */
-let egifListCache=null;
-async function getEgifList(){
-  if(egifListCache) return egifListCache;
-  const r=await fetch(EGIF_URL,{cache:"no-cache"});
-  if(!r.ok) throw new Error("HTTP "+r.status);
-  const j=await r.json();
-  egifListCache=(Array.isArray(j.suteak)?j.suteak:[])
-    .filter(s=>Number.isFinite(Number(s.lat))&&Number.isFinite(Number(s.lon)));
-  return egifListCache;
-}
-const zarCfg={mode:"freq",cell:500,bw:1500,opacity:.55};
-const ZAR_COLORS={4:"#b30000",3:"#f03b20",2:"#feb24c",1:"#d9ef8b",0:"#66bd63"};
-const zarLayer=L.layerGroup();
-const zarRenderer=L.canvas({padding:.5});
-layersControl.addOverlay(zarLayer,"🟥 Arrisku-eremuak (EGIF)");
-const UTM30_DEF="+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs";
-const WGS_DEF="+proj=longlat +datum=WGS84 +no_defs";
-let zarCount=0;
-
-/* Gipuzkoako muga (OpenStreetMap / Nominatim), mapa osoa margotzeko. */
-let gipuzkoaShape=null;
-async function getGipuzkoaShape(){
-  if(gipuzkoaShape) return gipuzkoaShape;
-  const url="https://nominatim.openstreetmap.org/search?"+new URLSearchParams({
-    q:"Gipuzkoa, España", format:"json", polygon_geojson:"1", polygon_threshold:"0.0005", limit:"1"
-  });
-  const r=await fetch(url,{headers:{"Accept":"application/json"}});
-  if(!r.ok) throw new Error("HTTP "+r.status);
-  const j=await r.json();
-  const g=j&&j[0]&&j[0].geojson;
-  if(!g||!/Polygon/.test(g.type)) throw new Error("Gipuzkoako muga ez da aurkitu");
-  gipuzkoaShape=turf.feature(g);
-  return gipuzkoaShape;
-}
-
-function zarStatus(txt,isErr){
-  legendControl.showHtml(`<strong>🟥 Arrisku-eremuak (EGIF)</strong>`+
-    `<div style="margin-top:4px;font-size:12px;color:${isErr?"#8b2f2f":"#65736b"}">${escapeHtml(txt)}</div>`);
-}
-let zarFullMap=true;
-async function buildZar(){
-  zarLayer.clearLayers();
-  zarStatus("Kalkulatzen…");
-  let list;
-  try{ list=await getEgifList(); }
-  catch(err){
-    console.error("Arrisku-eremuak:",err);
-    zarStatus("Ezin izan da «suteak-egif.json» irakurri ("+err.message+"). Egiaztatu fitxategia IrratiGIS biltegian dagoela.",true);
-    return;
-  }
-  zarCount=list.length;
-  if(!list.length){ zarStatus("EGIF fitxategian ez dago suterik.",true); return; }
-  let shape=null;
-  try{ shape=await getGipuzkoaShape(); }
-  catch(err){ console.warn("Gipuzkoako muga:",err); }
-  zarFullMap=!!shape;
-  try{
-  const pts=list.map(s=>{
-    const p=proj4(WGS_DEF,UTM30_DEF,[Number(s.lon),Number(s.lat)]);
-    const ha=Number(s.ha)||0;
-    return {x:p[0],y:p[1],w:zarCfg.mode==="freq"?1:1+Math.log(1+ha)};
-  });
-  const {cell,bw}=zarCfg;
-  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-  const ext=(x,y)=>{minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);};
-  if(shape){
-    const bb=turf.bbox(shape);   // [minLon,minLat,maxLon,maxLat]
-    [[bb[0],bb[1]],[bb[2],bb[1]],[bb[0],bb[3]],[bb[2],bb[3]]].forEach(c=>{const p=proj4(WGS_DEF,UTM30_DEF,c);ext(p[0],p[1]);});
-  }else{
-    pts.forEach(p=>ext(p.x,p.y));
-    minX-=bw; minY-=bw; maxX+=bw; maxY+=bw;
-  }
-  minX=Math.floor(minX/cell)*cell; minY=Math.floor(minY/cell)*cell;
-  maxX=Math.ceil(maxX/cell)*cell;  maxY=Math.ceil(maxY/cell)*cell;
-  const nx=Math.round((maxX-minX)/cell), ny=Math.round((maxY-minY)/cell);
-  const grid=new Float64Array(nx*ny);
-  const rr=Math.ceil(bw/cell);
-  pts.forEach(p=>{
-    const ci=Math.floor((p.x-minX)/cell), cj=Math.floor((p.y-minY)/cell);
-    for(let j=cj-rr;j<=cj+rr;j++){
-      if(j<0||j>=ny) continue;
-      for(let i=ci-rr;i<=ci+rr;i++){
-        if(i<0||i>=nx) continue;
-        const cx=minX+(i+.5)*cell, cy=minY+(j+.5)*cell;
-        const d2=((cx-p.x)**2+(cy-p.y)**2)/(bw*bw);
-        if(d2>=1) continue;
-        grid[j*nx+i]+=p.w*(1-d2)*(1-d2);
-      }
-    }
-  });
-  // Gipuzkoa barruko gelaxkak.
-  const inside=new Uint8Array(nx*ny);
-  const centers=new Array(nx*ny);
-  for(let j=0;j<ny;j++){
-    for(let i=0;i<nx;i++){
-      const k=j*nx+i;
-      const c=proj4(UTM30_DEF,WGS_DEF,[minX+(i+.5)*cell,minY+(j+.5)*cell]);
-      centers[k]=c;
-      inside[k]= shape ? (turf.booleanPointInPolygon(c,shape)?1:0) : (grid[k]>0?1:0);
-    }
-  }
-  const vals=[];
-  for(let k=0;k<nx*ny;k++) if(inside[k]&&grid[k]>0) vals.push(grid[k]);
-  vals.sort((a,b)=>a-b);
-  if(!vals.length){ zarStatus("Ez dago suterik eremuan.",true); return; }
-  const q=f=>vals[Math.min(vals.length-1,Math.floor(f*vals.length))];
-  const t50=q(.5), t75=q(.75), t90=q(.9);
-  for(let j=0;j<ny;j++){
-    for(let i=0;i<nx;i++){
-      const k=j*nx+i;
-      if(!inside[k]) continue;
-      const v=grid[k];
-      const cls= v<=0?0 : v<t50?1 : v<t75?2 : v<t90?3 : 4;
-      if(!shape && cls<2) continue;   // mugarik gabe: arrisku ertaina eta handiagoa bakarrik
-      const x0=minX+i*cell, y0=minY+j*cell;
-      const sw=proj4(UTM30_DEF,WGS_DEF,[x0,y0]), ne=proj4(UTM30_DEF,WGS_DEF,[x0+cell,y0+cell]);
-      L.rectangle([[sw[1],sw[0]],[ne[1],ne[0]]],{
-        renderer:zarRenderer, stroke:false, interactive:false,
-        fillColor:ZAR_COLORS[cls], fillOpacity:zarCfg.opacity
-      }).addTo(zarLayer);
-    }
-  }
-  console.log("Arrisku-eremuak:",zarCount,"sute,",zarLayer.getLayers().length,"gelaxka");
-  zarLegend();
-  }catch(err){
-    console.error("Arrisku-eremuak kalkulua:",err);
-    zarStatus("Errorea kalkuluan: "+err.message,true);
-  }
-}
-
-function zarLegend(){
-  const opt=(v,t)=>`<option value="${v}"${zarCfg.mode===v?" selected":""}>${t}</option>`;
-  const sw=(c,t)=>`<div><span style="display:inline-block;width:12px;height:12px;background:${c};margin-right:5px;vertical-align:-2px"></span>${t}</div>`;
-  const div=legendControl.showHtml(
-    `<strong>🟥 Arrisku-eremuak (EGIF)</strong>`+
-    `<div style="margin:5px 0 3px">Irizpidea: <select class="zar-mode">`+
-      opt("freq","Sute-kopurua")+opt("area","Kopurua + azalera")+`</select></div>`+
-    `<div style="margin-bottom:5px;display:flex;align-items:center;gap:6px">Ikusgarritasuna: `+
-      `<input type="range" class="zar-op" min="15" max="100" step="5" value="${Math.round(zarCfg.opacity*100)}" style="width:90px">`+
-      `<span class="zar-op-val">${Math.round(zarCfg.opacity*100)}%</span></div>`+
-    sw(ZAR_COLORS[4],"Oso altua (%10 goiena)")+
-    sw(ZAR_COLORS[3],"Altua (%10–25)")+
-    sw(ZAR_COLORS[2],"Ertaina (%25–50)")+
-    (zarFullMap?sw(ZAR_COLORS[1],"Baxua (%50 behekoa)")+sw(ZAR_COLORS[0],"Nulua (sute-historiarik ez)"):"")+
-    `<div style="color:#65736b;margin-top:4px;font-size:11px">${zarCount} sute · 2010–2025 · ez da ZAR ofiziala`+
-    (zarFullMap?"":" · Gipuzkoako muga ez da kargatu")+`</div>`
-  );
-  div.querySelector(".zar-mode").onchange=e=>{ zarCfg.mode=e.target.value; buildZar(); };
-  const op=div.querySelector(".zar-op"), opVal=div.querySelector(".zar-op-val");
-  op.oninput=()=>{
-    zarCfg.opacity=Number(op.value)/100;
-    zarLayer.eachLayer(l=>l.setStyle({fillOpacity:zarCfg.opacity}));
-    opVal.textContent=op.value+"%";
-  };
-}
-map.on("overlayadd",e=>{ if(e.layer===zarLayer) buildZar(); });
-map.on("overlayremove",e=>{ if(e.layer===zarLayer){ zarLayer.clearLayers(); legendControl.hide(); } });
 
 /* ===== Uxal-sektoreak (ehiza-batiden eremuak) · sektoreak.geojson ===== */
 const SEKTOREAK_URL="sektoreak.geojson";
@@ -1884,21 +1716,12 @@ async function loadToponimia(){
 }
 
 map.on("overlayadd",e=>{
-  if(e.layer===suteBabesaLayer){
-    b5mQueryLayers.set("suteBabesa",{baseUrl:GEOEUSKADI_INGURUMENA,name:SUTE_BABESA_LAYER,title:"Suteen aurkako babesa",info:suteBabesaInfo});
-    legendControl.show("Suteen aurkako babesa",
-      GEOEUSKADI_INGURUMENA+"?request=GetLegendGraphic&version=1.3.0&format=image/png&layer="+encodeURIComponent(SUTE_BABESA_LAYER));
-  }
   if(e.layer===toponimiaLayer){
     loadToponimia();
     if(toponimiaLoaded&&!b5mQueryLayers.has("toponimia")){/* kargatzen ari da */}
   }
 });
 map.on("overlayremove",e=>{
-  if(e.layer===suteBabesaLayer){
-    b5mQueryLayers.delete("suteBabesa");
-    legendControl.hide();
-  }
   if(e.layer===toponimiaLayer){
     b5mQueryLayers.delete("toponimia");
   }
@@ -6257,10 +6080,9 @@ if(window.visualViewport){
 <ul>
 <li><b>🔥 Baimendutako erreketak</b>: gaurko erreketa aktiboak (Diputazioa). Sakatu erreketa batean fitxa ikusteko (kodea, titularra, telefonoa, erregaia, herria, koordenatuak) eta <i>Kopiatu / Partekatu</i>. Aktibatzean «Erreketen historikoa» atala agertzen da.</li>
 <li><b>🔥 Suteak 2010-2025 (EGIF)</b>: suteen erregistro ofiziala; zirkuluaren tamaina eta kolorea azaleraren araberakoa.</li>
-<li><b>🟥 Arrisku-eremuak (EGIF)</b>: sute historikoen dentsitatetik kalkulatutako zonak (Nulua → Oso altua). Ez da ZAR ofiziala.</li>
 <li><b>⛰️ Campbell · lerrokadura</b>: malda (≥ %20), orientazioa eta haizea. 3/3: haizea H/HM/HE eta malda H/HM/HE; 2/3: haizea I/IM/IE eta malda I/IM/IE; 1/3: haizea hegoaldekoa eta malda I/IM/IE. Haizea automatikoa (Open-Meteo) edo eskuz; ordua eta ikusgarritasuna aukeran. Zoom 11tik aurrera.</li>
 <li><b>Katastroko partzelak · WMS</b>: partzelak; sakatu partzela batean bere datuak ikusteko.</li>
-<li><b>🛡️ Suteen aurkako babesa (geoEuskadi)</b>, <b>🌿 Natura 2000</b> eta <b>🏷️ Toponimia (B5M)</b>.</li>
+<li><b>🌿 Natura 2000</b> eta <b>🏷️ Toponimia (B5M)</b>.</li>
 <li><b>🐗 Ehizalekuak (batidak)</b>: ehiza-batiden sektoreak, kategoriaren arabera koloreztatuta; sakatu fitxa ikusteko.</li>
 <li><b>🚨 NASA FIRMS</b>: sateliteko detekzio termikoak.</li>
 </ul>
@@ -6346,10 +6168,9 @@ if(window.visualViewport){
 <ul>
 <li><b>🔥 Baimendutako erreketak</b>: quemas autorizadas activas hoy (Diputación). Pulsa una para ver su ficha (código, titular, teléfono, material, municipio, coordenadas) y <i>Kopiatu / Partekatu</i>. Al activarla aparece el apartado «Erreketen historikoa».</li>
 <li><b>🔥 Suteak 2010-2025 (EGIF)</b>: registro oficial de incendios; tamaño y color del círculo según superficie quemada.</li>
-<li><b>🟥 Arrisku-eremuak (EGIF)</b>: zonas calculadas por densidad de incendios históricos (Nulua → Oso altua). No es una ZAR oficial.</li>
 <li><b>⛰️ Campbell · lerrokadura</b>: pendiente (≥ 20%), orientación y viento. 3/3: viento S/SO/SE y ladera S/SO/SE; 2/3: viento N/NO/NE y ladera N/NO/NE; 1/3: viento del sur y ladera N/NO/NE. Viento automático (Open-Meteo) o manual; hora y visibilidad ajustables. Desde zoom 11.</li>
 <li><b>Katastroko partzelak · WMS</b>: parcelas catastrales; pulsa una para ver sus datos.</li>
-<li><b>🛡️ Protección contra incendios (geoEuskadi)</b>, <b>🌿 Natura 2000</b> y <b>🏷️ Toponimia (B5M)</b>.</li>
+<li><b>🌿 Natura 2000</b> y <b>🏷️ Toponimia (B5M)</b>.</li>
 <li><b>🐗 Ehizalekuak (batidas)</b>: sectores de batida coloreados por categoría; pulsa para ver la ficha.</li>
 <li><b>🚨 NASA FIRMS</b>: detecciones térmicas por satélite.</li>
 </ul>
