@@ -4030,7 +4030,7 @@ map.addControl(new StreetViewControl());
   function loadH2C(){
     if(window.html2canvas) return Promise.resolve();
     return new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
-      s.onload=res; s.onerror=()=>rej(new Error("no se pudo cargar html2canvas")); document.head.appendChild(s); });
+      s.onload=res; s.onerror=()=>rej(new Error("ezin izan da html2canvas kargatu")); document.head.appendChild(s); });
   }
   async function captureFast(r){
     await loadH2C(); const sx=window.scrollX||0, sy=window.scrollY||0;
@@ -4053,9 +4053,9 @@ map.addControl(new StreetViewControl());
     if(busy) return; busy=true;
     const root=ui("div",`position:fixed;inset:0;z-index:${Z};cursor:crosshair;background:rgba(0,0,0,.28);touch-action:none;user-select:none`);
     const bar=ui("div","position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.4);padding:8px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font:13px system-ui;color:#1d2b24;max-width:96vw;z-index:2;cursor:default");
-    bar.dataset.bar="1"; bar.appendChild(ui("span","font-weight:700","📷 Arrastra para elegir el área"));
-    const mode=ui("select","font:13px system-ui","<option value=\"fast\">Modo rápido (sin permisos)</option><option value=\"exact\">Modo exacto (pide permiso)</option>");
-    const bMap=bt("🗺️ Todo el mapa","Captura el mapa completo"), bPage=bt("🖥️ Página visible","Captura toda la ventana"), bX=bt("✕ Cancelar","Esc","background:#8b2f2f");
+    bar.dataset.bar="1"; bar.appendChild(ui("span","font-weight:700","📷 Arrastatu eremua hautatzeko"));
+    const mode=ui("select","font:13px system-ui","<option value=\"fast\">Modu azkarra (baimenik gabe)</option><option value=\"exact\">Modu zehatza (baimena eskatzen du)</option>");
+    const bMap=bt("🗺️ Mapa osoa","Mapa osoa harrapatu"), bPage=bt("🖥️ Ikusgai dagoen orria","Leiho osoa harrapatu"), bX=bt("✕ Utzi","Esc","background:#8b2f2f");
     [mode,bMap,bPage,bX].forEach(x=>bar.appendChild(x)); root.appendChild(bar);
     const box=ui("div","position:absolute;border:2px solid #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.45);display:none;pointer-events:none;box-sizing:border-box");
     const lab=ui("div","position:absolute;right:0;bottom:-22px;background:#111;color:#fff;font:12px system-ui;padding:1px 6px;border-radius:4px;white-space:nowrap"); box.appendChild(lab); root.appendChild(box);
@@ -4064,7 +4064,7 @@ map.addControl(new StreetViewControl());
     const draw=r=>{ Object.assign(box.style,{display:"block",left:r.left+"px",top:r.top+"px",width:r.width+"px",height:r.height+"px"}); lab.textContent=Math.round(r.width)+" × "+Math.round(r.height); };
     const onKey=e=>{ if(e.key==="Escape") cancel(); };
     const close=()=>{ root.remove(); document.removeEventListener("keydown",onKey,true); };
-    const cancel=()=>{ close(); busy=false; say("Captura cancelada."); };
+    const cancel=()=>{ close(); busy=false; say("Argazkia bertan behera utzi da."); };
     const go=r=>{ close(); run(r,mode.value); };
     root.addEventListener("pointerdown",e=>{ if(e.target.closest("[data-bar]")) return; e.preventDefault(); start={x:e.clientX,y:e.clientY}; if(root.setPointerCapture) root.setPointerCapture(e.pointerId); root.style.background="transparent"; draw(rectOf(e)); });
     root.addEventListener("pointermove",e=>{ if(start) draw(rectOf(e)); });
@@ -4076,10 +4076,10 @@ map.addControl(new StreetViewControl());
   }
   async function run(r,mode){
     try{
-      say("Capturando…"); await new Promise(res=>requestAnimationFrame(()=>setTimeout(res,80)));
+      say("Argazkia hartzen…"); await new Promise(res=>requestAnimationFrame(()=>setTimeout(res,80)));
       const cv=mode==="exact"?await captureExact(r):await captureFast(r);
       openEditor(cv,mode);
-    }catch(err){ busy=false; if(err&&err.name==="NotAllowedError") say("Captura cancelada."); else say("No se pudo capturar ("+(err.message||err)+"). Prueba el modo «exacto»."); }
+    }catch(err){ busy=false; if(err&&err.name==="NotAllowedError") say("Argazkia bertan behera utzi da."); else say("Ezin izan da argazkia hartu ("+(err.message||err)+"). Saiatu «modu zehatza»rekin."); }
   }
 
   /* ---------- 2) editorea ---------- */
@@ -4103,26 +4103,26 @@ map.addControl(new StreetViewControl());
       const k=Math.min(3,(window.innerWidth-40)/st.cur.width,(window.innerHeight-130)/st.cur.height);
       [view,live,wrap].forEach(e=>{ e.style.width=Math.round(st.cur.width*k)+"px"; e.style.height=Math.round(st.cur.height*k)+"px"; });
       bU.disabled=st.hi<=0; bR.disabled=st.hi>=st.hist.length-1; bU.style.opacity=bU.disabled?".4":""; bR.style.opacity=bR.disabled?".4":"";
-      note(`${st.cur.width} × ${st.cur.height} px · herramienta: ${TN[st.tool]}${st.crop?" · Enter = aplicar recorte, Esc = cancelar":""}`);
+      note(`${st.cur.width} × ${st.cur.height} px · tresna: ${TN[st.tool]}${st.crop?" · Enter = mozketa aplikatu, Esc = utzi":""}`);
     }
     const push=()=>{ st.hist=st.hist.slice(0,st.hi+1); st.hist.push(snap(st.cur)); if(st.hist.length>MAXH) st.hist.shift(); st.hi=st.hist.length-1; refresh(); };
     const undo=()=>{ if(st.hi>0){ st.hi--; st.cur=snap(st.hist[st.hi]); st.crop=null; refresh(); } };
     const redo=()=>{ if(st.hi<st.hist.length-1){ st.hi++; st.cur=snap(st.hist[st.hi]); st.crop=null; refresh(); } };
-    const TN={crop:"recortar",pen:"lápiz",hl:"resaltador",arrow:"flecha",rect:"rectángulo",ell:"elipse",text:"texto",num:"número"};
-    const bU=bt("↶","Deshacer (Ctrl+Z)"), bR=bt("↷","Rehacer (Ctrl+Y)"); bU.addEventListener("click",undo); bR.addEventListener("click",redo);
+    const TN={crop:"moztu",pen:"arkatza",hl:"nabarmentzailea",arrow:"gezia",rect:"laukizuzena",ell:"elipsea",text:"testua",num:"zenbakia"};
+    const bU=bt("↶","Desegin (Ctrl+Z)"), bR=bt("↷","Berregin (Ctrl+Y)"); bU.addEventListener("click",undo); bR.addEventListener("click",redo);
     tb.appendChild(bU); tb.appendChild(bR); tb.appendChild(sep());
     const toolBtns={};
-    [["crop","✂️ Recortar"],["pen","✏️ Lápiz"],["hl","🖍️ Resaltar"],["arrow","↗️ Flecha"],["rect","▭ Rectángulo"],["ell","⭕ Elipse"],["text","🔤 Texto"],["num","① Número"]].forEach(([k,l])=>{
+    [["crop","✂️ Moztu"],["pen","✏️ Arkatza"],["hl","🖍️ Nabarmendu"],["arrow","↗️ Gezia"],["rect","▭ Laukizuzena"],["ell","⭕ Elipsea"],["text","🔤 Testua"],["num","① Zenbakia"]].forEach(([k,l])=>{
       const b=bt(l,TN[k]); b.dataset.tool=k; b.addEventListener("click",()=>{ st.tool=k; st.crop=null; paintLive(); marks(); refresh(); }); toolBtns[k]=b; tb.appendChild(b); });
     const marks=()=>Object.keys(toolBtns).forEach(k=>{ toolBtns[k].style.background=k===st.tool?"#1565c0":"#2f3a35"; });
     tb.appendChild(sep());
     const sw=[]; COLORS.forEach(c=>{ const b=ui("button",`width:22px;height:22px;border-radius:50%;border:2px solid #fff;background:${c};cursor:pointer;padding:0`); b.type="button"; b.title=c; b.addEventListener("click",()=>{ st.color=c; sw.forEach(x=>x.style.boxShadow=x===b?"0 0 0 3px #1565c0":"none"); }); sw.push(b); tb.appendChild(b); }); sw[0].style.boxShadow="0 0 0 3px #1565c0";
-    const wsel=ui("select","font:13px system-ui","<option value=\"2\">Fino</option><option value=\"4\" selected>Medio</option><option value=\"7\">Grueso</option><option value=\"12\">Muy grueso</option>"); wsel.addEventListener("change",()=>{ st.w=+wsel.value; }); tb.appendChild(wsel);
-    const lab=ui("label","display:flex;align-items:center;gap:4px;cursor:pointer","<input type=\"checkbox\" checked> Pie con fecha y coordenadas"); lab.querySelector("input").addEventListener("change",e=>{ st.stamp=e.target.checked; }); tb.appendChild(lab);
+    const wsel=ui("select","font:13px system-ui","<option value=\"2\">Mehea</option><option value=\"4\" selected>Ertaina</option><option value=\"7\">Lodia</option><option value=\"12\">Oso lodia</option>"); wsel.addEventListener("change",()=>{ st.w=+wsel.value; }); tb.appendChild(wsel);
+    const lab=ui("label","display:flex;align-items:center;gap:4px;cursor:pointer","<input type=\"checkbox\" checked> Oina data eta koordenatuekin"); lab.querySelector("input").addEventListener("change",e=>{ st.stamp=e.target.checked; }); tb.appendChild(lab);
     tb.appendChild(sep());
-    const bO=bt("↺ Original","Volver a la captura original"), bRe=bt("📷 Recapturar","Elegir otra área"), bC=bt("📋 Copiar","Copiar al portapapeles"), bS=bt("⬇️ Guardar PNG","Descargar","background:#2e7d32"), bX=bt("✕","Cerrar (Esc)","background:#8b2f2f");
+    const bO=bt("↺ Jatorrizkoa","Jatorrizko argazkira itzuli"), bRe=bt("📷 Berriro hartu","Beste eremu bat hautatu"), bC=bt("📋 Kopiatu","Arbelera kopiatu"), bS=bt("⬇️ Gorde PNG","Deskargatu","background:#2e7d32"), bX=bt("✕","Itxi (Esc)","background:#8b2f2f");
     [bO,bRe,bC,bS,bX].forEach(x=>tb.appendChild(x));
-    const cropBar=ui("div","position:absolute;right:8px;top:8px;display:none;gap:6px"); const bOk=bt("✓ Aplicar recorte","Enter","background:#2e7d32"), bNo=bt("Cancelar","Esc","background:#8b2f2f"); cropBar.appendChild(bOk); cropBar.appendChild(bNo); wrap.appendChild(cropBar);
+    const cropBar=ui("div","position:absolute;right:8px;top:8px;display:none;gap:6px"); const bOk=bt("✓ Mozketa aplikatu","Enter","background:#2e7d32"), bNo=bt("Utzi","Esc","background:#8b2f2f"); cropBar.appendChild(bOk); cropBar.appendChild(bNo); wrap.appendChild(cropBar);
 
     /* marrazketa */
     const lwOf=()=>st.w*Math.max(1,st.cur.width/900), ratio=()=>st.cur.width/live.getBoundingClientRect().width;
@@ -4160,19 +4160,19 @@ map.addControl(new StreetViewControl());
     function cancelCrop(){ st.crop=null; cropBar.style.display="none"; paintLive(); refresh(); }
     bOk.addEventListener("click",applyCrop); bNo.addEventListener("click",cancelCrop);
     function askText(e,p){
-      const inp=ui("input",`position:fixed;left:${e.clientX}px;top:${e.clientY}px;z-index:${Z+2};font:600 ${16}px system-ui;color:${st.color};background:rgba(255,255,255,.9);border:1px dashed #1565c0;padding:2px 4px;min-width:120px;outline:none`); inp.type="text"; inp.placeholder="Texto…";
+      const inp=ui("input",`position:fixed;left:${e.clientX}px;top:${e.clientY}px;z-index:${Z+2};font:600 ${16}px system-ui;color:${st.color};background:rgba(255,255,255,.9);border:1px dashed #1565c0;padding:2px 4px;min-width:120px;outline:none`); inp.type="text"; inp.placeholder="Testua…";
       let done=false; const fin=ok=>{ if(done) return; done=true; const t=inp.value.trim(); inp.remove(); if(ok&&t){ const c=st.cur.getContext("2d"), fs=(12+st.w*3)*ratio(); c.save(); c.font=`700 ${fs}px system-ui,sans-serif`; c.textBaseline="top"; c.lineJoin="round"; c.lineWidth=fs/5; c.strokeStyle=(st.color==="#ffffff")?"#111":"#fff"; c.strokeText(t,p.x,p.y); c.fillStyle=st.color; c.fillText(t,p.x,p.y); c.restore(); push(); } };
       inp.addEventListener("keydown",ev=>{ ev.stopPropagation(); if(ev.key==="Enter") fin(true); else if(ev.key==="Escape") fin(false); }); inp.addEventListener("blur",()=>fin(true));
       document.body.appendChild(inp); setTimeout(()=>inp.focus(),0);
     }
     /* esportazioa */
     function stampOn(cv){ const g=cv.getContext("2d"), c=map.getCenter(), fs=Math.max(11,Math.round(cv.width/75)), pad=Math.round(fs*.6);
-      const t=`IrratiGIS · ${new Date().toLocaleString("es-ES")} · centro ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} · zoom ${map.getZoom()}`;
+      const t=`IrratiGIS · ${new Date().toLocaleString("eu-ES")} · erdigunea ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} · zooma ${map.getZoom()}`;
       g.font=`600 ${fs}px system-ui,sans-serif`; const w=Math.min(cv.width,g.measureText(t).width+pad*2), h=fs+pad*1.4; g.fillStyle="rgba(255,255,255,.88)"; g.fillRect(0,cv.height-h,w,h); g.fillStyle="#1d2b24"; g.textBaseline="middle"; g.textAlign="left"; g.fillText(t,pad,cv.height-h/2); }
     const blob=()=>{ const o=snap(st.cur); if(st.stamp) stampOn(o); return new Promise(r=>o.toBlob(r,"image/png")); };
     bS.addEventListener("click",async()=>{ const b=await blob(), n=new Date(), p=x=>String(x).padStart(2,"0"), name=`irratigis_${n.getFullYear()}${p(n.getMonth()+1)}${p(n.getDate())}_${p(n.getHours())}${p(n.getMinutes())}${p(n.getSeconds())}.png`;
-      const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); note("Guardado: "+name); });
-    bC.addEventListener("click",async()=>{ try{ if(!(navigator.clipboard&&window.ClipboardItem)) throw new Error("no disponible"); await navigator.clipboard.write([new window.ClipboardItem({"image/png":await blob()})]); note("Copiado al portapapeles."); }catch(err){ note("No se pudo copiar ("+(err.message||err)+"); usa «Guardar PNG»."); } });
+      const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); note("Gordeta: "+name); });
+    bC.addEventListener("click",async()=>{ try{ if(!(navigator.clipboard&&window.ClipboardItem)) throw new Error("ez dago erabilgarri"); await navigator.clipboard.write([new window.ClipboardItem({"image/png":await blob()})]); note("Arbelera kopiatu da."); }catch(err){ note("Ezin izan da kopiatu ("+(err.message||err)+"); erabili «Gorde PNG»."); } });
     bO.addEventListener("click",()=>{ st.cur=snap(st.hist[0]); st.crop=null; cropBar.style.display="none"; push(); });
     const closeAll=()=>{ document.removeEventListener("keydown",onKey,true); root.remove(); busy=false; say(""); };
     bX.addEventListener("click",closeAll); bRe.addEventListener("click",()=>{ closeAll(); busy=false; startSelect(); });
@@ -4184,14 +4184,14 @@ map.addControl(new StreetViewControl());
     document.addEventListener("keydown",onKey,true);
     window.addEventListener("resize",()=>{ if(root.isConnected) refresh(); });
     document.body.appendChild(root); marks(); refresh();
-    if(mode==="fast") note("Si falta alguna capa en la imagen, pulsa «Recapturar» y elige el modo exacto. "+status.textContent);
+    if(mode==="fast") note("Irudian geruzaren bat falta bada, sakatu «Berriro hartu» eta aukeratu modu zehatza. "+status.textContent);
   }
 
   const ShotControl=L.Control.extend({
     options:{position:"topleft"},
     onAdd:function(){
       const b=L.DomUtil.create("button","map-expand-control shot-btn");
-      b.type="button"; b.innerHTML="📷"; b.style.fontSize="18px"; b.title="Captura de pantalla: elegir área y editar"; b.setAttribute("aria-label",b.title);
+      b.type="button"; b.innerHTML="📷"; b.style.fontSize="18px"; b.title="Pantaila-argazkia: eremua hautatu eta editatu"; b.setAttribute("aria-label",b.title);
       L.DomEvent.disableClickPropagation(b); L.DomEvent.on(b,"click",e=>{ L.DomEvent.stop(e); startSelect(); });
       return b;
     }
