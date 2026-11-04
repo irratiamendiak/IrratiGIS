@@ -1012,6 +1012,44 @@ const GroupedLayersControl=L.Control.Layers.extend({
   }
 });
 
+/* ===== 🌳 Inventario forestal 2024 =====
+   GeoJSON gzip en la raíz. Se descarga solo al activar la capa. */
+const inventarioForestalLayer=L.geoJSON(null,{
+  renderer:L.canvas({padding:.25}),
+  style:()=>({color:"#39734b",weight:.35,opacity:.7,fillColor:"#75a982",fillOpacity:.22}),
+  onEachFeature:(feature,layer)=>{
+    const p=feature.properties||{};
+    const esc=v=>escapeHtml(v===null||v===undefined?"":v);
+    const row=(label,value)=>value!==null&&value!==undefined&&value!==""?
+      "<tr><td style=\"color:#65736b;padding:3px 10px 3px 0;vertical-align:top\">"+label+"</td><td><strong>"+esc(value)+"</strong></td></tr>":"";
+    const species=[p.SP1_es,p.SP2_es,p.SP3_es].filter(Boolean).join(", ");
+    layer.bindTooltip(esc(species||p.TIPES_es||"Masa forestal"),{sticky:true,direction:"top",opacity:.9});
+    layer.bindPopup("<strong>🌳 Inventario forestal</strong><table style=\"font-size:12px;margin-top:6px\">"+
+      row("Tipo",p.TIPES_es)+row("Especie 1",p.SP1_es)+row("Especie 2",p.SP2_es)+
+      row("Especie 3",p.SP3_es)+row("Fracción arbórea",p.FCCARB)+
+      row("Fracción matorral",p.FCCMAT)+row("Fracción herbácea",p.FCCHER)+
+      row("Altura media (m)",p.HMMAT)+"</table>",{maxWidth:320});
+  }
+});
+let inventarioForestalLoaded=false;
+async function loadInventarioForestal(){
+  if(inventarioForestalLoaded)return;
+  try{
+    const response=await fetch("inventario_forestal_optimizado.geojson.gz",{cache:"force-cache"});
+    if(!response.ok)throw new Error("HTTP "+response.status);
+    if(typeof DecompressionStream==="undefined")throw new Error("Este navegador no permite descomprimir el archivo gzip.");
+    const stream=response.body.pipeThrough(new DecompressionStream("gzip"));
+    const data=await new Response(stream).json();
+    inventarioForestalLayer.addData(data);
+    inventarioForestalLoaded=true;
+    console.info("Inventario forestal cargado:",inventarioForestalLayer.getLayers().length,"polígonos");
+  }catch(error){
+    console.error("Error cargando el inventario forestal:",error);
+    alert("No se pudo cargar el inventario forestal: "+error.message);
+    map.removeLayer(inventarioForestalLayer);
+  }
+}
+
 const layersControl=new GroupedLayersControl(
   {
     "OpenStreetMap":osm,
@@ -1027,6 +1065,7 @@ const layersControl=new GroupedLayersControl(
   "Waypoint-ak":waypointLayer,
   "🔥 Baimendutako erreketak":controlledBurnLayer,
   "🔥 Suteak 2010-2025 (EGIF)":egifLayer,
+  "🌳 Inventario forestal (2024)":inventarioForestalLayer,
   "Katastroko partzelak · WMS":cadastralWms
 },
   {
@@ -1040,6 +1079,7 @@ const layersControl=new GroupedLayersControl(
 ).addTo(map);
   /* 🔥 Cargar las quemas solo al activar su casilla */
 map.on("overlayadd", (e) => {
+  if (e.layer === inventarioForestalLayer) loadInventarioForestal();
   if (e.layer === egifLayer) loadEgif();
   if (e.layer === controlledBurnLayer) {
     controlledBurnsLoaded = false;
