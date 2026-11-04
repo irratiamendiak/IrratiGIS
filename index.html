@@ -1035,7 +1035,7 @@ let inventarioForestalLoaded=false;
 async function loadInventarioForestal(){
   if(inventarioForestalLoaded)return;
   try{
-    const response=await fetch("inventario_forestal_optimizado.geojson.gz",{cache:"force-cache"});
+    const response=await fetch("https://github.com/irratiamendiak/IrratiGIS/releases/download/inventario-2024-v1/inventario_forestal_corregido.geojson.gz",{cache:"no-cache"});
     if(!response.ok)throw new Error("HTTP "+response.status);
     if(typeof DecompressionStream==="undefined")throw new Error("Este navegador no permite descomprimir el archivo gzip.");
     const stream=response.body.pipeThrough(new DecompressionStream("gzip"));
