@@ -1042,6 +1042,25 @@ const inventarioForestalLayer=L.maplibreGL({
   },
   interactive:true
 });
+/* Tooltip de atributos forestales al pasar el ratón por los polígonos. */
+inventarioForestalLayer.on("add",()=>{
+  const gl=inventarioForestalLayer.getMaplibreMap();
+  if(!gl || inventarioForestalLayer._forestalHoverReady)return;
+  inventarioForestalLayer._forestalHoverReady=true;
+  const tip=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:10});
+  const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;',"'":"&#39;"}[c]));
+  gl.on("mousemove","forestal-poligonos",e=>{
+    const p=e.features&&e.features[0]&&e.features[0].properties||{};
+    const type=p.TIPES_es||p.TIPES||p.tipo||p.TYPE||"Vegetación forestal";
+    const species=[p.SP1_es,p.SP2_es,p.SP3_es].filter(Boolean).join(", ");
+    tip.setLngLat(e.lngLat).setHTML("<strong>"+esc(type)+"</strong>"+(species?"<br>"+esc(species):"")).addTo(gl);
+    gl.getCanvas().style.cursor="pointer";
+  });
+  gl.on("mouseleave","forestal-poligonos",()=>{
+    tip.remove();
+    gl.getCanvas().style.cursor="";
+  });
+});
 const layersControl=new GroupedLayersControl(
   {
     "OpenStreetMap":osm,
