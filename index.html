@@ -1048,12 +1048,11 @@ inventarioForestalLayer.on("add",()=>{
   if(!gl || inventarioForestalLayer._forestalHoverReady)return;
   inventarioForestalLayer._forestalHoverReady=true;
   const tip=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:10});
-  const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;',"'":"&#39;"}[c]));
   gl.on("mousemove","forestal-poligonos",e=>{
     const p=e.features&&e.features[0]&&e.features[0].properties||{};
     const type=p.TIPES_es||p.TIPES||p.tipo||p.TYPE||"Vegetación forestal";
     const species=[p.SP1_es,p.SP2_es,p.SP3_es].filter(Boolean).join(", ");
-    tip.setLngLat(e.lngLat).setHTML("<strong>"+esc(type)+"</strong>"+(species?"<br>"+esc(species):"")).addTo(gl);
+    tip.setLngLat(e.lngLat).setText(type+(species?" — "+species:"")).addTo(gl);
     gl.getCanvas().style.cursor="pointer";
   });
   gl.on("mouseleave","forestal-poligonos",()=>{
