@@ -3233,6 +3233,15 @@ async function fsRun(){
   let met, ffn=null, netNote="";
   try{
     met=await fsMeteo(); await fsLoadDem(fsIgn.lat,fsIgn.lng,6500);
+    // Comprobar cobertura DEM alrededor del área simulada; no asumir pendiente cero si faltan teselas.
+    const demChecks=[];
+    for(let r=0;r<=6000;r+=1000) for(let a=0;a<360;a+=45){
+      const dLat=r*Math.cos(a*fsRad)/111320;
+      const dLon=r*Math.sin(a*fsRad)/(111320*Math.max(.2,Math.cos(fsIgn.lat*fsRad)));
+      demChecks.push([fsIgn.lat+dLat,fsIgn.lng+dLon]);
+    }
+    const demMissing=demChecks.filter(([lat,lon])=>!Number.isFinite(fsElev(lat,lon))).length;
+    if(demMissing) throw new Error('Terreno incompleto: faltan datos de elevación en '+demMissing+' puntos de comprobación del área simulada. No se ha generado el perímetro; prueba otro punto o inténtalo más tarde.');
     fsCfg.modeEff=null;
     try{ const net=await fsNet(); ffn=fsFfmcNet(net,fsIgn); if(fsCfg.moistMode==="ffmcnet") fsCfg.ffmcEff=ffn.val; }
     catch(e){ if(fsCfg.moistMode==="ffmcnet"){ fsCfg.modeEff=met.hours.length?"calc":"inst"; netNote=`No se pudo leer el FFMC de la red de estaciones (${e.message||e}); se usa la humedad calculada.`; } }
