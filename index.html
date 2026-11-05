@@ -1018,8 +1018,13 @@ const GroupedLayersControl=L.Control.Layers.extend({
 });
 
 /* ===== 🌳 Inventario forestal 2024: PMTiles vectorial =====
-   Renderizado vectorial desde R2 mediante MapLibre integrado en Leaflet. */
+   Pane propio para mantener el inventario encima de cualquier mapa base. */
+if(!map.getPane("forestalPane")){
+  map.createPane("forestalPane");
+  map.getPane("forestalPane").style.zIndex="450";
+}
 const inventarioForestalLayer=L.maplibreGL({
+  pane:"forestalPane",
   style:{
     version:8,
     sources:{
