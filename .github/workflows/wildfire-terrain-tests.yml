@@ -1,6 +1,16 @@
 name: Wildfire terrain and ingestion tests
 
 on:
+  push:
+    branches:
+      - "feature/wildfire-recovery"
+    paths:
+      - "wildfire/terrain/**"
+      - "wildfire/ingestion/**"
+      - "wildfire/tests/**"
+      - "wildfire-intelligence.js"
+      - "index.html"
+      - ".github/workflows/wildfire-terrain-tests.yml"
   pull_request:
     paths:
       - "wildfire/terrain/**"
