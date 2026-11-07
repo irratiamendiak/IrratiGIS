@@ -28,9 +28,7 @@ function extractFunction(name) {
 const classifier = vm.runInNewContext([
   extractFunction("fsFuelFromInventoryProperties"),
   extractFunction("fsFuelFromCover")
-].join("
-") + "
-({ fsFuelFromInventoryProperties, fsFuelFromCover })");
+].join("\n") + "\n({ fsFuelFromInventoryProperties, fsFuelFromCover })");
 
 test("inventory use classes map only the explicit herbaceous and shrub classes", () => {
   const map = classifier.fsFuelFromInventoryProperties;
