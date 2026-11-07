@@ -70,8 +70,8 @@ test("cover aggregation refuses disagreement and unresolved inventory features",
 });
 
 test("inventory classification is structurally separate from textual WMS fallback", () => {
-  const inventory = vm.runInNewContext(extractFunction("fsFuelFromInventoryProperties") + "\\nfsFuelFromInventoryProperties");
-  const fallback = vm.runInNewContext(extractFunction("fsFuelFromText") + "\\nfsFuelFromText");
+  const inventory = vm.runInNewContext(extractFunction("fsFuelFromInventoryProperties") + "\nfsFuelFromInventoryProperties");
+  const fallback = vm.runInNewContext(extractFunction("fsFuelFromText") + "\nfsFuelFromText");
   assert.equal(fallback("bosque"), null);
   assert.equal(fallback("arbolado"), null);
   assert.equal(fallback("Eucalyptus globulus"), null);
@@ -83,7 +83,7 @@ test("cover diagnostics identify the effective source and expose classification 
   assert.match(html, /Origen efectivo:/);
   assert.match(html, /Diagnóstico de clasificación/);
   assert.match(html, /Resultado agregado:/);
-  assert.match(html, /row\\.inventoryStatus=local\\.status/);
+  assert.match(html, /row\.inventoryStatus=local\.status/);
 });
 test("inventory spatial query reports why the local layer did not provide features", () => {
   const run = ({ enabled = true, gl = null } = {}) => {
