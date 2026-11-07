@@ -17,6 +17,18 @@ Estado: integración de lectura local en desarrollo. La simulación existente se
 - Si el inventario local está apagado o no devuelve una entidad, se conserva el WMS forestal anterior como alternativa.
 - La sugerencia textual de combustible queda expresamente marcada como orientativa y no validada por la estructura del lecho.
 
+## Correspondencias prudentes añadidas
+
+La clasificación del inventario se realiza por campos, no concatenando todos los atributos en una cadena:
+
+- `TIPES_es` / `TIPES` identifica el uso: `Herbazal` y `Prado` se sugieren como `belarra`; `Matorral` como `garoa`.
+- `SP1_es`, `SP2_es` y `SP3_es` se usan para distinguir grupos de especies: coníferas identificadas (p. ej. `Pinus`, `Picea`, `Larix`, `Cryptomeria`, `Pseudotsuga`) pueden sugerir `pinudia`; frondosas identificadas (p. ej. `Fagus`, `Quercus`, `Castanea`, `Betula`) pueden sugerir `hostozabala`.
+- Si varias entidades consultadas discrepan, falta especie, el uso es mixto/genérico o no hay una correspondencia inequívoca, no se devuelve sugerencia automática.
+- Eucalyptus queda sin asignación automática: no se fuerza dentro de los parámetros de pinar o de frondosa genérica.
+- El WMS alternativo mantiene una heurística textual separada, más limitada; no se mezcla con la clasificación estructurada del PMTiles.
+
+Estas son **sugerencias de grupo de cubierta**, no equivalencias demostradas con modelos físicos de combustible. La fuente oficial publica usos como bosque, bosque de plantación, herbazal, matorral, pastizal-matorral y prado, además de especies y estados de masa. La tabla de superficies y especies de Gipuzkoa está en el [informe oficial del Mapa Forestal 2024](https://www.euskadi.eus/contenidos/informacion/mapa_forestal_2024/es_agripes/adjuntos/GIPUZKOA2024.pdf). La cartografía de uso/especie no describe por sí sola el combustible fino superficial.
+
 ## Límite físico importante
 
 El código actual describe su aproximación como «Rothermel simplificado» o «Rothermel-like». No debe presentarse como una implementación completa y validada del modelo original de Rothermel. La propagación usa parámetros empíricos propios en `FS_FUELS`, factores simplificados de viento y pendiente, una elipse de propagación y estimaciones de intensidad de Byram/longitud de llama.
