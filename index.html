@@ -3063,7 +3063,7 @@ function fsFuelFromInventoryProperties(p){
   p=p||{};
   const norm=v=>String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[_-]+/g," ").replace(/\s+/g," ").trim();
   const use=norm(p.TIPES_es??p.TIPES??p.tipo??p.TYPE??"");
-  if(/^(herbazal|prado|prado con setos|prado con sebes)$/.test(use)) return "belarra";
+  if(/^(herbazal|prado)$/.test(use)||/^prado con (setos|sebes)/.test(use)) return "belarra";
   if(/^matorral$/.test(use)) return "garoa";
   if(/helechal|helecho/.test(use)) return "iratzea";
   // Mixed pasture/shrub, generic forest, plantations without species, and
@@ -3071,8 +3071,8 @@ function fsFuelFromInventoryProperties(p){
   // the surface fuel bed or its load/continuity.
   const species=norm([p.SP1_es,p.SP2_es,p.SP3_es,p.SP1,p.SP2,p.SP3].filter(Boolean).join(" "));
   if(!species) return null;
-  const conifer=/pinus|picea|larix|alerce|cryptomeria|pseudotsuga|douglas|chamaecyparis|conifer|abeto/.test(species);
-  const broadleaf=/fagus|quercus|castanea|fraxinus|alnus|betula|salix|populus|platanus|robinia|frondosa|frondosas/.test(species);
+  const conifer=/pinus|pino|picea|larix|alerce|cryptomeria|pseudotsuga|douglas|chamaecyparis|conifer|abeto|sequoia|secoya/.test(species);
+  const broadleaf=/fagus|haya|quercus|roble|castanea|castan|fraxinus|fresno|alnus|aliso|betula|abedul|salix|sauce|populus|chopo|platanus|platano|robinia|acacia|frondosa|frondosas/.test(species);
   if(conifer===broadleaf) return null;
   return conifer?"pinudia":"hostozabala";
 }
