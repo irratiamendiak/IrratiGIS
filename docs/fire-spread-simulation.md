@@ -1,55 +1,41 @@
-# Diseño inicial: simulación de propagación de incendios
+# Suteen Bilakaera: integración del Inventario Forestal 2024
 
-Estado: definición técnica inicial; todavía no es un modelo operativo ni calcula perímetros.
+Estado: integración de lectura local en desarrollo. La simulación existente se conserva; esta fase conecta su consulta de cubierta con la capa forestal que ya utiliza IrratiGIS.
 
-## Objetivo del primer hito
+## Componentes existentes reutilizados
 
-Dado un punto de ignición, una hora de inicio y un escenario de combustible, terreno y meteorología, producir una secuencia temporal de perímetros simulados y métricas explicables. El primer alcance es el comportamiento y la propagación después de la ignición; no la probabilidad de que se inicie un incendio.
+- La capa PMTiles `forestal_gipuzkoa_2024`, servida desde el objeto `inventarioForestalLayer` en `index.html`.
+- La simulación interactiva de Suteen Bilakaera que ya vive en `index.html`: ignición, meteorología Open-Meteo o manual, terreno Terrarium, humedad estimada, escenarios y perímetros.
+- El conjunto de combustibles configurables `FS_FUELS` y las funciones `fsMoist`, `fsBehavior`, `fsR`, `fsSimulate`.
+- El análisis auxiliar de Campbell y los datos históricos EGIF ya presentes en la aplicación.
 
-## Lo que ya existe en IrratiGIS
+## Cambio incorporado en esta rama
 
-- El visor principal es una aplicación estática basada en Leaflet y MapLibre.
-- El inventario forestal 2024 de Gipuzkoa se consume como PMTiles vectorial, capa `forestal_gipuzkoa_2024`. En el tooltip se consultan `TIPES_es`, `TIPES`, `tipo`, `TYPE` y las especies `SP1_es`, `SP2_es`, `SP3_es`.
-- El visor ya consulta Open-Meteo para viento horario a 10 m: dirección, velocidad y rachas. Esa función pertenece al módulo de análisis Campbell y no constituye por sí sola un modelo de viento para incendios.
-- Se referencia un mosaico Terrarium de elevación para análisis visual de pendiente/orientación. No se ha verificado que exista un MDT local descargable y homogéneo para alimentar una simulación.
-- `basugix/fwi.py` calcula FFMC, DMC, DC, ISI, BUI y FWI. Son índices de peligro meteorológico; no calculan el avance del frente de llama.
-- BASUGIX es un backend FastAPI separado del visor estático. `auth.js` llama además a una API Deno distinta. No se debe acoplar el motor a una de estas APIs sin decidir antes su despliegue y ciclo de vida.
+`fsCoverFromInventory(ll)` consulta, cuando la capa del Inventario Forestal 2024 está activada, las entidades renderizadas de `forestal-poligonos` en la coordenada consultada. Recupera los atributos disponibles (priorizando `TIPES_es`, `TIPES`, `tipo`, `TYPE`, `SP1_es`, `SP2_es`, `SP3_es`) y los entrega al panel de cubierta de Suteen Bilakaera.
 
-## Arquitectura propuesta
+- La consulta es de solo lectura: no cambia la capa, sus atributos ni sus geometrías.
+- Si el inventario local está apagado o no devuelve una entidad, se conserva el WMS forestal anterior como alternativa.
+- La sugerencia textual de combustible queda expresamente marcada como orientativa y no validada por la estructura del lecho.
 
-1. **Adaptadores de datos**: lectura del inventario forestal, MDT y meteorología. Mantenerlos separados del núcleo físico.
-2. **Normalización de combustible**: traducir los atributos del inventario a modelos de combustible documentados. La traducción debe ser explícita, versionada y permitir el valor «desconocido»; no inferir un modelo sólo a partir del nombre de una especie.
-3. **Terreno**: trabajar en una malla proyectada métrica (ETRS89 / UTM 30N, EPSG:25830), con resolución fijada según la fuente real del MDT. Derivar pendiente y orientación; registrar resolución, fecha y nodata.
-4. **Meteorología**: permitir datos automáticos y edición manual. Guardar hora, fuente, altura de medida, unidades y calidad. El viento de Open-Meteo a 10 m es una condición de contorno, no viento local corregido por el relieve.
-5. **Núcleo de propagación**: implementar y verificar un modelo de propagación superficial basado en Rothermel, con propagación direccional y efecto de pendiente/viento. Mantener el modelo desacoplado de Leaflet y de los proveedores meteorológicos.
-6. **API de simulación**: ejecutar trabajos fuera del hilo de la interfaz, validar entradas y devolver resultados con versión del motor y parámetros usados.
-7. **Visor**: representar perímetros por instante, tiempo de llegada y metadatos; permitir comparar escenarios y exportar GeoJSON.
+## Límite físico importante
 
-## Contrato mínimo de una simulación
+El código actual describe su aproximación como «Rothermel simplificado» o «Rothermel-like». No debe presentarse como una implementación completa y validada del modelo original de Rothermel. La propagación usa parámetros empíricos propios en `FS_FUELS`, factores simplificados de viento y pendiente, una elipse de propagación y estimaciones de intensidad de Byram/longitud de llama.
 
-- Ignición: latitud/longitud, instante con zona horaria y tamaño inicial documentado.
-- Combustible: modelo de combustible superficial, carga por clases, profundidad del lecho, humedad de combustibles muertos/vivos cuando esté disponible y procedencia de cada valor.
-- Terreno: elevación, pendiente y orientación, con resolución y sistema de referencia.
-- Meteorología: temperatura, humedad relativa, precipitación antecedente, velocidad y dirección del viento, hora y altura de referencia.
-- Control: duración, paso temporal, tamaño de celda y límites espaciales.
-- Resultados: perímetros temporales, velocidad de propagación, intensidad de línea y tiempo de llegada, con unidades y metadatos.
+La clasificación de vegetación del inventario no contiene por sí sola todas las variables físicas necesarias para parametrizar un modelo de combustible: cargas por clases de tamaño, proporción vivo/muerto, profundidad del lecho, continuidad y humedad real. Por tanto, no se autoriza convertir automáticamente una especie o un tipo forestal en un modelo físico definitivo.
 
-## Criterios de aceptación antes de conectarlo al visor
+## Siguiente paso técnico
 
-- Pruebas unitarias de conversión de unidades, orientación del viento, pendiente y límites numéricos.
-- Casos de referencia publicados para verificar la implementación física, no sólo pruebas de que el código ejecuta.
-- Comprobación de que el fuego no se propaga sobre celdas sin combustible o nodata, salvo que exista una regla explícita.
-- Reproducibilidad: misma entrada y versión del motor producen el mismo resultado.
-- Advertencia visible: herramienta experimental para análisis y escenarios, no predicción operativa ni sustituto de servicios de emergencia.
+1. Inspeccionar valores y dominios reales de los atributos del PMTiles, no sólo los nombres de campo.
+2. Preparar una tabla de correspondencias versionada entre clases del inventario y los cinco combustibles actualmente admitidos por `FS_FUELS`.
+3. Para cada correspondencia, registrar evidencia, confianza, revisión y clases sin asignación.
+4. Mantener selección manual cuando no exista equivalencia validada.
+5. Probar consulta local en puntos y a lo largo del recorrido, con la capa activada y desactivada.
+6. Separar en una fase posterior el motor físico del HTML y contrastarlo con casos de referencia antes de llamarlo Rothermel validado.
 
-## Decisiones pendientes que bloquean una simulación físicamente defendible
+## Criterios de aceptación
 
-- Tabla de correspondencia revisada entre atributos del inventario forestal y modelos de combustible.
-- Fuente y resolución del MDT para el área de simulación.
-- Tratamiento de combustibles vivos/muertos y su humedad.
-- Validación del viento local y de su interacción con el relieve.
-- Casos reales o experimentales de referencia para calibración y evaluación.
-
-## Principio de integración
-
-No modificar `index.html`, `auth.js`, `gis-tools.js` ni el flujo actual de BASUGIX hasta que el núcleo y sus pruebas estén definidos. El desarrollo se mantiene en una rama independiente y los cambios de interfaz se harán como una fase posterior y pequeña.
+- La consulta del inventario no modifica ni reemplaza la fuente PMTiles.
+- La ausencia de entidad, fallo de MapLibre o capa desactivada no bloquea la simulación existente.
+- La interfaz identifica si la información procede del inventario local o del WMS alternativo.
+- Ninguna clase sin correspondencia revisada se convierte silenciosamente en combustible.
+- La salida se mantiene como análisis orientativo, no como predicción operativa ni recomendación táctica.
