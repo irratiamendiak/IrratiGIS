@@ -26,8 +26,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Test wildfire contract adapter
-        run: node --test wildfire/tests/contract-package.test.mjs
+      - name: Test wildfire contract adapter and fuel classification
+        run: node --test wildfire/tests/*.test.mjs
       - name: Compile and test
         run: |
           python -m py_compile wildfire/terrain/prepare_landscape.py wildfire/ingestion/validate_catalog.py wildfire/ingestion/download_source.py wildfire/ingestion/prepare_gipuzkoa_boundary.py wildfire/ingestion/inspect_raster_archive.py wildfire/ingestion/select_mdt_sheet_index.py wildfire/ingestion/fetch_arcgis_sheet_index.py wildfire/ingestion/inspect_mdt_zip_batch.py wildfire/ingestion/prepare_mdt_batches.py
