@@ -5,6 +5,8 @@ on:
     paths:
       - "wildfire/terrain/**"
       - "wildfire/ingestion/**"
+      - "wildfire/tests/**"
+      - "wildfire-intelligence.js"
       - ".github/workflows/wildfire-terrain-tests.yml"
   workflow_dispatch:
 
