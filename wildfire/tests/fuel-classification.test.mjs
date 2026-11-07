@@ -57,7 +57,7 @@ test("mixed species and ambiguous or incomplete map features remain unresolved",
   const map = classifier.fsFuelFromInventoryProperties;
   assert.equal(map({ SP1_es: "Pinus radiata", SP2_es: "Fagus sylvatica" }), null);
   assert.equal(map({ TIPES_es: "Bosque", SP1_es: "" }), null);
-  assert.equal(map({ TIPES_es: "Pastizal-matorral", SP1_es: "Pinus radiata" }), "pinudia");
+  assert.equal(map({ TIPES_es: "Pastizal-matorral", SP1_es: "Pinus radiata" }), null);
 });
 
 test("cover aggregation refuses disagreement and unresolved inventory features", () => {
