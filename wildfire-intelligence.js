@@ -82,6 +82,8 @@
                 <div class="iwf-field"><label for="iwf-direction">Dirección desde (°)</label><input id="iwf-direction" type="number" min="0" max="360" step="1" placeholder="0–360"></div>
                 <div class="iwf-field"><label for="iwf-temp">Temperatura (°C)</label><input id="iwf-temp" type="number" min="-30" max="60" step="0.1" placeholder="—"></div>
                 <div class="iwf-field"><label for="iwf-rh">Humedad relativa (%)</label><input id="iwf-rh" type="number" min="0" max="100" step="1" placeholder="—"></div>
+                <div class="iwf-field"><label for="iwf-weather-time">Fecha y hora de observación</label><input id="iwf-weather-time" type="datetime-local"></div>
+                <div class="iwf-field"><label for="iwf-weather-source">Fuente meteorológica</label><input id="iwf-weather-source" maxlength="160" placeholder="Estación / observación"></div>
                 <div class="iwf-field"><label for="iwf-fuel">Combustible / modelo</label><input id="iwf-fuel" maxlength="80" placeholder="Pendiente de asignar"></div>
               </div>
               <p class="iwf-note">Registrar fuente, hora de observación y estación asociada antes de usar estos datos en un modelo.</p>
@@ -195,11 +197,16 @@
     const temp = numberValue("iwf-temp");
     const rh = numberValue("iwf-rh");
     const fuel = state.root.querySelector("#iwf-fuel").value.trim();
+    const weatherTimeRaw = state.root.querySelector("#iwf-weather-time").value;
+    const weatherSource = state.root.querySelector("#iwf-weather-source").value.trim();
+    const weatherObservedAt = weatherTimeRaw ? new Date(weatherTimeRaw).toISOString() : null;
     const missing = [];
     if (wind === null) missing.push("viento medio");
     if (direction === null) missing.push("dirección del viento");
     if (temp === null) missing.push("temperatura");
     if (rh === null) missing.push("humedad relativa");
+    if (!weatherObservedAt) missing.push("hora de observación meteorológica");
+    if (!weatherSource) missing.push("fuente meteorológica");
     if (!fuel) missing.push("modelo de combustible");
     state.incident = {
       schemaVersion: "1.0.0",
@@ -213,6 +220,8 @@
         observedAt: null,
         source: null,
         quality: state.root.querySelector("#iwf-source").value,
+        observedAt: weatherObservedAt,
+        source: weatherSource || null,
         windSpeedKmh: wind,
         windGustKmh: gust,
         windDirectionFromDegrees: direction,
@@ -230,6 +239,53 @@
     } else {
       setStatus("Ficha creada · lista para completar", "Falta incorporar hora/fuente de observaciones, perímetro validado, DEM y combustible cartografiado. No se ha ejecutado una simulación.", "ready");
     }
+  }
+
+  // Adapter to wildfire/data-contract.json. Wind is converted from the UI's km/h to SI m/s.
+  // Missing terrain, fuel classification and observation metadata remain null/absent; never inferred.
+  function toContractPackage(incident) {
+    const weather = incident.weatherObservation;
+    const quality = weather.quality;
+    const source = weather.source;
+    const observedAt = weather.observedAt;
+    const observationId = "obs-" + incident.id;
+    return {
+      schemaVersion: "1.0.0",
+      incident: {
+        id: incident.id, name: incident.name, status: incident.status,
+        createdAt: incident.createdAt, startedAt: null, updatedAt: incident.createdAt,
+        location: { type: "Point", coordinates: [...incident.ignition.coordinates], crs: "EPSG:4326" },
+        source: "manual_map_capture", notes: ""
+      },
+      observation: {
+        id: observationId, incidentId: incident.id, kind: "ignition",
+        observedAt: incident.createdAt, geometry: structuredClone(incident.ignition),
+        source: "manual_map_capture", quality, properties: { weatherObservedAt: observedAt }
+      },
+      weather: {
+        validAt: observedAt, source,
+        windSpeed: weather.windSpeedKmh === null ? null : { value: weather.windSpeedKmh / 3.6, unit: "m/s" },
+        windGust: weather.windGustKmh === null ? null : { value: weather.windGustKmh / 3.6, unit: "m/s" },
+        windDirectionFrom: weather.windDirectionFromDegrees === null ? null : { value: weather.windDirectionFromDegrees, unit: "degree" },
+        temperature: weather.temperatureC === null ? null : { value: weather.temperatureC, unit: "degC" },
+        relativeHumidity: weather.relativeHumidityPercent === null ? null : { value: weather.relativeHumidityPercent, unit: "percent" },
+        precipitation: null, fuelMoisture: null
+      },
+      fuel: { dataset: null, classificationSystem: null, resolutionMeters: null, crs: null, moisture: null },
+      scenario: {
+        id: "scenario-" + incident.id, incidentId: incident.id,
+        name: incident.name + " · escenario inicial", createdAt: incident.createdAt,
+        model: null, modelVersion: null,
+        parameters: { horizonMinutes: incident.scenario.horizonMinutes },
+        inputSnapshot: { ignition: structuredClone(incident.ignition) },
+        status: "draft", uncertainty: null, outputs: []
+      },
+      provenance: {
+        source: source || "manual_entry", retrievedAt: incident.provenance.capturedAt,
+        validAt: observedAt, license: null, quality, notes: "Captura manual; no constituye una ejecución del modelo."
+      },
+      modelExecution: { executed: false, reason: "No hay motor de propagación conectado." }
+    };
   }
 
   function exportGeoJSON() {
@@ -272,6 +328,7 @@
     window.IrratiGISWildfire = {
       version: VERSION,
       getIncident: () => state.incident ? structuredClone(state.incident) : null,
+      getContractPackage: () => state.incident ? toContractPackage(state.incident) : null,
       getIgnitionLayer: () => state.ignitionLayer,
       clear: () => state.root?.querySelector('[data-action="clear"]')?.click()
     };
