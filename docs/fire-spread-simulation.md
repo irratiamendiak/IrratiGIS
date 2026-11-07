@@ -29,6 +29,18 @@ La clasificación del inventario se realiza por campos, no concatenando todos lo
 
 Estas son **sugerencias de grupo de cubierta**, no equivalencias demostradas con modelos físicos de combustible. La fuente oficial publica usos como bosque, bosque de plantación, herbazal, matorral, pastizal-matorral y prado, además de especies y estados de masa. La tabla de superficies y especies de Gipuzkoa está en el [informe oficial del Mapa Forestal 2024](https://www.euskadi.eus/contenidos/informacion/mapa_forestal_2024/es_agripes/adjuntos/GIPUZKOA2024.pdf). La cartografía de uso/especie no describe por sí sola el combustible fino superficial.
 
+## Pruebas automatizadas de clasificación
+
+El workflow `wildfire-terrain-tests.yml` ejecuta también `wildfire/tests/fuel-classification.test.mjs` cuando cambian `index.html` o los tests. Las pruebas extraen las funciones de clasificación reales del visor y comprueban:
+
+- clases de uso explícitas y clases mixtas;
+- especies coníferas/frondosas conocidas, nombres comunes y especies no reconocidas;
+- mezcla de especies en una misma entidad;
+- desacuerdo o ausencia de correspondencia entre entidades consultadas;
+- separación entre la clasificación estructurada del inventario y el fallback textual WMS.
+
+El workflow queda habilitado para la rama `feature/wildfire-recovery`, además de los eventos de pull request y ejecución manual. La existencia de estas pruebas no equivale a una validación en navegador de la consulta MapLibre ni a validación física del modelo.
+
 ## Límite físico importante
 
 El código actual describe su aproximación como «Rothermel simplificado» o «Rothermel-like». No debe presentarse como una implementación completa y validada del modelo original de Rothermel. La propagación usa parámetros empíricos propios en `FS_FUELS`, factores simplificados de viento y pendiente, una elipse de propagación y estimaciones de intensidad de Byram/longitud de llama.
