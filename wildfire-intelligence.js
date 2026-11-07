@@ -22,6 +22,15 @@
 
   const isoNow = () => new Date().toISOString();
 
+  function uuid() {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    return [...bytes].map((value, index) => ([4, 6, 8, 10].includes(index) ? "-" : "") + value.toString(16).padStart(2, "0")).join("");
+  }
+
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement("style");
@@ -214,7 +223,7 @@
     if (!fuel) missing.push("modelo de combustible");
     state.incident = {
       schemaVersion: "1.0.0",
-      id: (crypto.randomUUID ? crypto.randomUUID() : "iwf-" + Date.now()),
+      id: uuid(),
       name,
       status: "planning",
       createdAt: isoNow(),
@@ -251,7 +260,8 @@
     const quality = weather.quality;
     const source = weather.source;
     const observedAt = weather.observedAt;
-    const observationId = "obs-" + incident.id;
+    const observationId = uuid();
+    const scenarioId = uuid();
     return {
       schemaVersion: "1.0.0",
       incident: {
@@ -274,9 +284,10 @@
         relativeHumidity: weather.relativeHumidityPercent === null ? null : { value: weather.relativeHumidityPercent, unit: "percent" },
         precipitation: null, fuelMoisture: null
       },
+      terrain: { dem: null, resolutionMeters: null, crs: null, slope: null, aspect: null },
       fuel: { dataset: null, classificationSystem: null, resolutionMeters: null, crs: null, moisture: null },
       scenario: {
-        id: "scenario-" + incident.id, incidentId: incident.id,
+        id: scenarioId, incidentId: incident.id,
         name: incident.name + " · escenario inicial", createdAt: incident.createdAt,
         model: null, modelVersion: null,
         parameters: { horizonMinutes: incident.scenario.horizonMinutes },
