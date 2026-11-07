@@ -3130,7 +3130,7 @@ async function fsCover(ll){
       INFO_FORMAT:fmt,FEATURE_COUNT:"3",WIDTH:"101",HEIGHT:"101",BBOX:[E-50,N-50,E+50,N+50].join(",")});
     p.set(is13?"CRS":"SRS","EPSG:25830"); p.set(is13?"I":"X","50"); p.set(is13?"J":"Y","50");
     try{ const r=await fetch(FS_FOREST_WMS+"?"+p.toString()); if(!r.ok) continue;
-      const txt=await r.text(), html=featureInfoToHtml(txt,fmt); if(html) out.push({title:l.title||l.name,html,text:txt.replace(/<[^>]+>/g," ")}); }catch(_){ }
+      const txt=await r.text(), html=featureInfoToHtml(txt,fmt); if(html) out.push({title:l.title||l.name,source:"wms",html,text:txt.replace(/<[^>]+>/g," ")}); }catch(_){ }
   }
   return out;
 }
@@ -3419,9 +3419,16 @@ async function fsRun(){
     if(my!==fsBusy||!q(".fs-cov")) return;
     if(!res.length){ q(".fs-cov").innerHTML=`<span style="color:#65736b">Mapa forestal: sin datos en este punto.</span>`; return; }
     const sug=fsFuelFromCover(res), cur=fsCfg.fuel;
-    q(".fs-cov").innerHTML=`<details><summary style="cursor:pointer"><b>🌲 Cubierta en el punto de inicio</b> (Inventario Forestal 2024 si está activado; en su defecto, WMS externo)</summary><div style="max-height:130px;overflow:auto">${res.map(r=>`<div><b>${escapeHtml(r.title)}</b>${r.html}</div>`).join("")}</div></details>`+
-      (sug&&sug!==cur?`<div style="margin-top:3px">Sugerencia orientativa de combustible (no validada por estructura del lecho): <b>${escapeHtml(FS_FUELS[sug].n)}</b> <button type="button" data-fs-fuel="${sug}" style="border:0;border-radius:6px;padding:3px 8px;background:#1b8a3a;color:#fff;font-weight:700;cursor:pointer">Aplicar</button></div>`:
-       (sug?`<div style="margin-top:3px;color:#1b8a3a">Coincide con el combustible elegido.</div>`:`<div style="margin-top:3px;color:#65736b">No he podido deducir el combustible del texto; elígelo a mano.</div>`));
+    const inventoryRows=res.filter(r=>r.source==="inventory");
+    const sourceLabel=inventoryRows.length?"Inventario Forestal de Gipuzkoa 2024 · PMTiles":"WMS forestal externo (alternativa)";
+    const decisions=inventoryRows.length
+      ?inventoryRows.map((r,i)=>{const k=fsFuelFromInventoryProperties(r.properties);return `Entidad ${i+1}: ${k?FS_FUELS[k].n:"sin asignación automática"}`;})
+      :[`Heurística textual WMS: ${sug?FS_FUELS[sug].n:"sin correspondencia"}`];
+    q(".fs-cov").innerHTML=`<div style="font-size:11px;color:#52645a;margin-bottom:4px"><b>Origen efectivo:</b> ${escapeHtml(sourceLabel)} · ${res.length} registro(s) consultado(s)</div>`+
+      `<details><summary style="cursor:pointer"><b>🌲 Cubierta y atributos originales</b></summary><div style="max-height:150px;overflow:auto">${res.map(r=>`<div><b>${escapeHtml(r.title)}</b>${r.html}</div>`).join("")}</div></details>`+
+      `<details><summary style="cursor:pointer"><b>Diagnóstico de clasificación</b></summary><div style="margin-top:3px">${decisions.map(x=>`<div>${escapeHtml(x)}</div>`).join("")}<div style="margin-top:3px">Resultado agregado: <b>${sug?escapeHtml(FS_FUELS[sug].n):"sin asignación automática"}</b></div><div style="color:#65736b;font-size:11px">La sugerencia agrupa cubierta; no determina carga, profundidad, continuidad ni humedad del combustible superficial.</div></div></details>`+
+      (sug&&sug!==cur?`<div style="margin-top:3px">Sugerencia orientativa de combustible: <b>${escapeHtml(FS_FUELS[sug].n)}</b> <button type="button" data-fs-fuel="${sug}" style="border:0;border-radius:6px;padding:3px 8px;background:#1b8a3a;color:#fff;font-weight:700;cursor:pointer">Aplicar</button></div>`:
+       (sug?`<div style="margin-top:3px;color:#1b8a3a">Coincide con el combustible elegido.</div>`:`<div style="margin-top:3px;color:#65736b">Sin sugerencia fiable; elige el combustible manualmente.</div>`));
     // mugitzean zehar: erregai-karga handiagoko aldaketak
     let prev=sug||cur; const picks=[60,120,180,240].map(T=>prof.find(p=>p.t>=T)).filter(Boolean);
     return Promise.all(picks.map(p=>fsCover({lat:p.lat,lng:p.lon}).then(r=>({p,k:fsFuelFromCover(r)})).catch(()=>null))).then(list=>{
