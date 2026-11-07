@@ -6,7 +6,7 @@ on:
       - "wildfire/terrain/**"
       - "wildfire/ingestion/**"
       - "wildfire/tests/**"
-      - "wildfire-intelligence.js"
+      - "wildfire-intelligence.js"\n      - "index.html"
       - ".github/workflows/wildfire-terrain-tests.yml"
   workflow_dispatch:
 
