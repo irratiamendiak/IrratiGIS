@@ -105,7 +105,7 @@
     "retrievedAt": "ISO-8601",
     "validAt": "ISO-8601",
     "license": "string",
-    "quality": "unverified|estimated|validated",
+    "quality": "unverified|estimated|validated|field_verified|authoritative",
     "notes": "string"
   }
 }
