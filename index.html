@@ -3051,10 +3051,38 @@ const FS_FOREST_WMS="https://www.geo.euskadi.eus/WMS_NEKAZARITZA";
 let fsCapP=null;
 function fsFuelFromText(t){
   t=(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
-  const r=[["pinudia",/pinus|pino|pinar|conifer|eukali|eucalip|picea|larix|alerce|abeto/],["hostozabala",/haya|fagus|hayedo|roble|quercus|robledal|frondos|castan|fresno|aliso|abedul|bosque|arbolado/],
-           ["iratzea",/helech|pteridium|iratz/],["garoa",/matorral|brezal|argoma|ulex|erica|landa|zuhaixka|arbust/],["belarra",/pasto|prado|herbaz|pradera|belard|larre|cultivo|agrari/]];
+  // Fallback textual WMS only. Avoid classifying generic "bosque" or eucalyptus as pine.
+  const r=[["pinudia",/pinus|pino|pinar|conifer|picea|larix|alerce|abeto|cryptomeria|pseudotsuga|douglas|chamaecyparis/],
+           ["hostozabala",/haya|fagus|hayedo|roble|quercus|robledal|frondos|castan|fresno|fraxinus|aliso|alnus|abedul|betula|salix|populus|platanus|robinia/],
+           ["iratzea",/helech|pteridium|iratz/],["garoa",/matorral|brezal|argoma|ulex|erica|landa|zuhaixka|arbust/],
+           ["belarra",/pasto|prado|herbaz|pradera|belard|larre|cultivo|agrari/]];
   for(const [k,re] of r) if(re.test(t)) return k;
   return null;
+}
+function fsFuelFromInventoryProperties(p){
+  p=p||{};
+  const norm=v=>String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[_-]+/g," ").replace(/\s+/g," ").trim();
+  const use=norm(p.TIPES_es??p.TIPES??p.tipo??p.TYPE??"");
+  if(/^(herbazal|prado|prado con setos|prado con sebes)$/.test(use)) return "belarra";
+  if(/^matorral$/.test(use)) return "garoa";
+  if(/helechal|helecho/.test(use)) return "iratzea";
+  // Mixed pasture/shrub, generic forest, plantations without species, and
+  // eucalyptus are deliberately unresolved: these fields do not describe
+  // the surface fuel bed or its load/continuity.
+  const species=norm([p.SP1_es,p.SP2_es,p.SP3_es,p.SP1,p.SP2,p.SP3].filter(Boolean).join(" "));
+  if(!species) return null;
+  const conifer=/pinus|picea|larix|alerce|cryptomeria|pseudotsuga|douglas|chamaecyparis|conifer|abeto/.test(species);
+  const broadleaf=/fagus|quercus|castanea|fraxinus|alnus|betula|salix|populus|platanus|robinia|frondosa|frondosas/.test(species);
+  if(conifer===broadleaf) return null;
+  return conifer?"pinudia":"hostozabala";
+}
+function fsFuelFromCover(rows){
+  if(!Array.isArray(rows)||!rows.length) return null;
+  if(rows.some(r=>r.source==="inventory")){
+    const mapped=rows.map(r=>fsFuelFromInventoryProperties(r.properties));
+    return mapped.every(Boolean)&&new Set(mapped).size===1?mapped[0]:null;
+  }
+  return fsFuelFromText(rows.map(r=>r.text||"").join(" "));
 }
 function fsCoverFromInventory(ll){
   // Consulta de solo lectura sobre la misma capa PMTiles que ya muestra el visor.
@@ -3076,6 +3104,8 @@ function fsCoverFromInventory(ll){
       const labels={TIPES_es:"Tipo de vegetación",TIPES:"TIPES",tipo:"Tipo",TYPE:"TYPE",SP1_es:"Especie 1",SP2_es:"Especie 2",SP3_es:"Especie 3"};
       return {
         title:"Inventario Forestal de Gipuzkoa 2024 · PMTiles",
+        source:"inventory",
+        properties:p,
         text:all.map(([k,v])=>(labels[k]||k)+" "+v).join(" "),
         html:all.map(([k,v])=>"<div><b>"+escapeHtml(labels[k]||k)+":</b> "+escapeHtml(v)+"</div>").join("")
       };
@@ -3387,13 +3417,13 @@ async function fsRun(){
   fsCover(fsIgn).then(res=>{
     if(my!==fsBusy||!q(".fs-cov")) return;
     if(!res.length){ q(".fs-cov").innerHTML=`<span style="color:#65736b">Mapa forestal: sin datos en este punto.</span>`; return; }
-    const sug=fsFuelFromText(res.map(r=>r.text).join(" ")), cur=fsCfg.fuel;
+    const sug=fsFuelFromCover(res), cur=fsCfg.fuel;
     q(".fs-cov").innerHTML=`<details><summary style="cursor:pointer"><b>🌲 Cubierta en el punto de inicio</b> (Inventario Forestal 2024 si está activado; en su defecto, WMS externo)</summary><div style="max-height:130px;overflow:auto">${res.map(r=>`<div><b>${escapeHtml(r.title)}</b>${r.html}</div>`).join("")}</div></details>`+
       (sug&&sug!==cur?`<div style="margin-top:3px">Sugerencia orientativa de combustible (no validada por estructura del lecho): <b>${escapeHtml(FS_FUELS[sug].n)}</b> <button type="button" data-fs-fuel="${sug}" style="border:0;border-radius:6px;padding:3px 8px;background:#1b8a3a;color:#fff;font-weight:700;cursor:pointer">Aplicar</button></div>`:
        (sug?`<div style="margin-top:3px;color:#1b8a3a">Coincide con el combustible elegido.</div>`:`<div style="margin-top:3px;color:#65736b">No he podido deducir el combustible del texto; elígelo a mano.</div>`));
     // mugitzean zehar: erregai-karga handiagoko aldaketak
     let prev=sug||cur; const picks=[60,120,180,240].map(T=>prof.find(p=>p.t>=T)).filter(Boolean);
-    return Promise.all(picks.map(p=>fsCover({lat:p.lat,lng:p.lon}).then(r=>({p,k:fsFuelFromText(r.map(x=>x.text).join(" "))})).catch(()=>null))).then(list=>{
+    return Promise.all(picks.map(p=>fsCover({lat:p.lat,lng:p.lon}).then(r=>({p,k:fsFuelFromCover(r)})).catch(()=>null))).then(list=>{
       if(my!==fsBusy||!q(".fs-crit")) return;
       list.filter(Boolean).forEach(({p,k})=>{ if(k&&k!==prev&&(k==="garoa"||k==="pinudia")){
           const c={t:p.t,lat:p.lat,lon:p.lon,why:`combustible de mayor carga/intensidad (${FS_FUELS[k].n}), según el mapa forestal`}; D.crit.push(c);
