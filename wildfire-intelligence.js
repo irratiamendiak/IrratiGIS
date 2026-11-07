@@ -237,7 +237,7 @@
     if (missing.length) {
       setStatus("Ficha creada · datos incompletos", "Pendiente: " + missing.join(", ") + ". No se puede ejecutar una simulación.", "warning");
     } else {
-      setStatus("Ficha creada · lista para completar", "Falta incorporar hora/fuente de observaciones, perímetro validado, DEM y combustible cartografiado. No se ha ejecutado una simulación.", "ready");
+      setStatus("Ficha creada · lista para completar", "Falta incorporar perímetro validado, DEM y combustible cartografiado. No se ha ejecutado una simulación.", "ready");
     }
   }
 
