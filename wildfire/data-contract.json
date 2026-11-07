@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "1.0.0",
+  "coordinateReferenceSystems": {
+    "defaultEuskadi": "EPSG:25830",
+    "webMap": "EPSG:4326",
+    "rasterExchange": "GeoTIFF/COG"
+  },
+  "incident": {
+    "id": "uuid",
+    "name": "string",
+    "status": "planning|active|contained|closed",
+    "startedAt": "ISO-8601",
+    "createdAt": "ISO-8601",
+    "updatedAt": "ISO-8601",
+    "location": {
+      "type": "Point",
+      "coordinates": [
+        "longitude",
+        "latitude"
+      ],
+      "crs": "EPSG:4326"
+    },
+    "source": "string",
+    "notes": "string"
+  },
+  "observation": {
+    "id": "uuid",
+    "incidentId": "uuid",
+    "kind": "ignition|perimeter|spot_fire|fireline|asset|weather|field_report",
+    "observedAt": "ISO-8601",
+    "geometry": "GeoJSON geometry",
+    "source": "string",
+    "quality": "unverified|field_verified|authoritative",
+    "properties": "object"
+  },
+  "weather": {
+    "validAt": "ISO-8601",
+    "source": "string",
+    "windSpeed": {
+      "value": "number",
+      "unit": "m/s"
+    },
+    "windGust": {
+      "value": "number",
+      "unit": "m/s"
+    },
+    "windDirectionFrom": {
+      "value": "number",
+      "unit": "degree"
+    },
+    "temperature": {
+      "value": "number",
+      "unit": "degC"
+    },
+    "relativeHumidity": {
+      "value": "number",
+      "unit": "percent"
+    },
+    "precipitation": {
+      "value": "number",
+      "unit": "mm"
+    },
+    "fuelMoisture": "object"
+  },
+  "terrain": {
+    "dem": "asset reference",
+    "resolutionMeters": "number",
+    "crs": "string",
+    "slope": "raster reference",
+    "aspect": "raster reference"
+  },
+  "fuel": {
+    "dataset": "string",
+    "classificationSystem": "string",
+    "resolutionMeters": "number",
+    "crs": "string",
+    "moisture": "object"
+  },
+  "scenario": {
+    "id": "uuid",
+    "incidentId": "uuid",
+    "name": "string",
+    "createdAt": "ISO-8601",
+    "model": "string",
+    "modelVersion": "string",
+    "parameters": "object",
+    "inputSnapshot": "object",
+    "status": "draft|queued|running|succeeded|failed|rejected",
+    "uncertainty": "object",
+    "outputs": "array"
+  },
+  "modelOutput": {
+    "kind": "perimeter|rate_of_spread|flame_length|fireline_intensity|spotting|exposure|control_opportunity",
+    "format": "GeoJSON|GeoTIFF|COG|JSON",
+    "uri": "string",
+    "validTime": "ISO-8601",
+    "generatedAt": "ISO-8601",
+    "model": "string",
+    "modelVersion": "string",
+    "confidence": "object",
+    "limitations": "array"
+  },
+  "provenance": {
+    "source": "string",
+    "retrievedAt": "ISO-8601",
+    "validAt": "ISO-8601",
+    "license": "string",
+    "quality": "unverified|estimated|validated",
+    "notes": "string"
+  }
+}
