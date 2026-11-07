@@ -65,3 +65,4 @@ La clasificación de vegetación del inventario no contiene por sí sola todas l
 - La interfaz identifica si la información procede del inventario local o del WMS alternativo.
 - Ninguna clase sin correspondencia revisada se convierte silenciosamente en combustible.
 - La salida se mantiene como análisis orientativo, no como predicción operativa ni recomendación táctica.
+- La consulta local distingue `layer-disabled`, `maplibre-unavailable`, `style-not-loaded`, `style-layer-missing`, `query-empty`, `query-error` y `features-found`. Si se usa el WMS de respaldo, el panel informa del motivo por el que la consulta PMTiles no aportó entidades; `query-empty` significa que no hubo entidades renderizadas bajo ese punto, no que el inventario carezca de cobertura en toda la zona.
