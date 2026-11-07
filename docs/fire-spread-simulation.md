@@ -16,6 +16,8 @@ Estado: integración de lectura local en desarrollo. La simulación existente se
 - La consulta es de solo lectura: no cambia la capa, sus atributos ni sus geometrías.
 - Si el inventario local está apagado o no devuelve una entidad, se conserva el WMS forestal anterior como alternativa.
 - La sugerencia de combustible queda expresamente marcada como orientativa y no validada por la estructura del lecho.
+- El panel muestra el origen efectivo de cada consulta (PMTiles local o WMS alternativo), el número de registros recibidos, los atributos originales y la clasificación individual/agregada. En el caso WMS identifica que se aplicó la heurística textual.
+- La etiqueta de origen describe la respuesta que realmente alimentó el panel; no presupone que el PMTiles estuviera disponible ni activo.
 
 ## Correspondencias prudentes añadidas
 
