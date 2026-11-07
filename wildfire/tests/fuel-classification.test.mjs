@@ -14,7 +14,7 @@ function extractFunction(name) {
     const ch = html[i];
     if (quote) {
       if (escaped) escaped = false;
-      else if (ch === "\\\\") escaped = true;
+      else if (ch === "\\") escaped = true;
       else if (ch === quote) quote = null;
       continue;
     }
@@ -70,5 +70,5 @@ test("inventory classification is structurally separate from textual WMS fallbac
   const source = html.slice(html.indexOf("function fsFuelFromText"), html.indexOf("function fsCoverFromInventory"));
   assert.match(source, /function fsFuelFromInventoryProperties/);
   assert.match(source, /source===\"inventory\"/);
-  assert.doesNotMatch(source, /eukali|eucalip|\\|bosque\\|arbolado/);
+  assert.doesNotMatch(source, /eukali|eucalip|bosque|arbolado/);
 });
