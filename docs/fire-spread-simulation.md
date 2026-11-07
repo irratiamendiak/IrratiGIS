@@ -18,6 +18,7 @@ Estado: integración de lectura local en desarrollo. La simulación existente se
 - La sugerencia de combustible queda expresamente marcada como orientativa y no validada por la estructura del lecho.
 - El panel muestra el origen efectivo de cada consulta (PMTiles local o WMS alternativo), el número de registros recibidos, los atributos originales y la clasificación individual/agregada. En el caso WMS identifica que se aplicó la heurística textual.
 - La etiqueta de origen describe la respuesta que realmente alimentó el panel; no presupone que el PMTiles estuviera disponible ni activo.
+- Si la capa está desactivada, el panel ofrece un control para activarla y repetir la simulación; así el usuario puede pasar al inventario PMTiles sin salir de Suteen Bilakaera. La activación hace visible la capa forestal en el mapa.
 
 ## Correspondencias prudentes añadidas
 
