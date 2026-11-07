@@ -32,7 +32,7 @@ const classifier = vm.runInNewContext([
 
 test("inventory use classes map only the explicit herbaceous and shrub classes", () => {
   const map = classifier.fsFuelFromInventoryProperties;
-  assert.equal(map({ TIPES_es: "Herbazal" }), "belarra");
+  assert.equal(map({ TIPES_es: "Herbazal" }), "belarra");\n  assert.equal(map({ TIPES_es: "", TIPES: "Herbazal" }), "belarra");
   assert.equal(map({ TIPES_es: "Prado" }), "belarra");
   assert.equal(map({ TIPES_es: "Matorral" }), "garoa");
   assert.equal(map({ TIPES_es: "Pastizal-matorral" }), null);
@@ -45,7 +45,7 @@ test("known conifer and broadleaf species suggest only their broad cover group",
   assert.equal(map({ SP1_es: "Pinus radiata" }), "pinudia");
   assert.equal(map({ SP1_es: "Pseudotsuga menziesii" }), "pinudia");
   assert.equal(map({ SP1_es: "Fagus sylvatica" }), "hostozabala");
-  assert.equal(map({ SP1_es: "Quercus robur" }), "hostozabala");
+  assert.equal(map({ SP1_es: "Quercus robur" }), "hostozabala");\n  assert.equal(map({ SP1_es: "Pino radiata" }), "pinudia");\n  assert.equal(map({ SP1_es: "Haya" }), "hostozabala");
   assert.equal(map({ SP1_es: "Eucalyptus globulus" }), null);
   assert.equal(map({ SP1_es: "Especie no catalogada" }), null);
 });
