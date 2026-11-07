@@ -3064,7 +3064,8 @@ function fsFuelFromInventoryProperties(p){
   const norm=v=>String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[_-]+/g," ").replace(/\s+/g," ").trim();
   const use=norm(p.TIPES_es??p.TIPES??p.tipo??p.TYPE??"");
   if(/^(herbazal|prado)$/.test(use)||/^prado con (setos|sebes)/.test(use)) return "belarra";
-  if(/^matorral$/.test(use)) return "garoa";\n  if(/pastizal|mixto|mezcla/.test(use)) return null;
+  if(/^matorral$/.test(use)) return "garoa";
+  if(/pastizal|mixto|mezcla/.test(use)) return null;
   if(/helechal|helecho/.test(use)) return "iratzea";
   // Mixed pasture/shrub, generic forest, plantations without species, and
   // eucalyptus are deliberately unresolved: these fields do not describe
