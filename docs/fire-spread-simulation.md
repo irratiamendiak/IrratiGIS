@@ -15,14 +15,14 @@ Estado: integración de lectura local en desarrollo. La simulación existente se
 
 - La consulta es de solo lectura: no cambia la capa, sus atributos ni sus geometrías.
 - Si el inventario local está apagado o no devuelve una entidad, se conserva el WMS forestal anterior como alternativa.
-- La sugerencia textual de combustible queda expresamente marcada como orientativa y no validada por la estructura del lecho.
+- La sugerencia de combustible queda expresamente marcada como orientativa y no validada por la estructura del lecho.
 
 ## Correspondencias prudentes añadidas
 
 La clasificación del inventario se realiza por campos, no concatenando todos los atributos en una cadena:
 
 - `TIPES_es` / `TIPES` identifica el uso: `Herbazal` y `Prado` se sugieren como `belarra`; `Matorral` como `garoa`.
-- `SP1_es`, `SP2_es` y `SP3_es` se usan para distinguir grupos de especies: coníferas identificadas (p. ej. `Pinus`, `Picea`, `Larix`, `Cryptomeria`, `Pseudotsuga`) pueden sugerir `pinudia`; frondosas identificadas (p. ej. `Fagus`, `Quercus`, `Castanea`, `Betula`) pueden sugerir `hostozabala`.
+- `SP1_es`, `SP2_es` y `SP3_es` se usan para distinguir grupos de especies: coníferas identificadas (p. ej. `Pinus`/pino, `Picea`, `Larix`, `Cryptomeria`, `Pseudotsuga`, `Sequoia`) pueden sugerir `pinudia`; frondosas identificadas (p. ej. `Fagus`/haya, `Quercus`/roble, `Castanea`, `Betula`/abedul) pueden sugerir `hostozabala`.
 - Si varias entidades consultadas discrepan, falta especie, el uso es mixto/genérico o no hay una correspondencia inequívoca, no se devuelve sugerencia automática.
 - Eucalyptus queda sin asignación automática: no se fuerza dentro de los parámetros de pinar o de frondosa genérica.
 - El WMS alternativo mantiene una heurística textual separada, más limitada; no se mezcla con la clasificación estructurada del PMTiles.
