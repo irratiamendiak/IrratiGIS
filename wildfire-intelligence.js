@@ -217,8 +217,6 @@
       coordinateReferenceSystem: "EPSG:4326",
       ignition: state.ignition,
       weatherObservation: {
-        observedAt: null,
-        source: null,
         quality: state.root.querySelector("#iwf-source").value,
         observedAt: weatherObservedAt,
         source: weatherSource || null,
