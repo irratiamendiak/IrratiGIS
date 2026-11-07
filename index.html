@@ -3234,6 +3234,8 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-m").onchange=e=>{ fsCfg.moist=Number(e.target.value); rerun(); };
   q(".fs-rate").onchange=e=>{ fsCfg.rate=Number(e.target.value); rerun(); };
   fsPanel.addEventListener("click",e=>{
+    const inv=e.target.closest&&e.target.closest("[data-fs-inventory-enable]");
+    if(inv){ if(!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer); rerun(); return; }
     const f=e.target.closest&&e.target.closest("[data-fs-fuel]"); if(f){ fsCfg.fuel=f.dataset.fsFuel; q(".fs-fuel").value=fsCfg.fuel; rerun(); return; }
     const g=e.target.closest&&e.target.closest("[data-fs-gif]"); if(g){ fsMakeGif(g); return; }
     const bt=e.target.closest&&e.target.closest("[data-fs-bt]"); if(bt) fsBacktest(bt);
@@ -3434,6 +3436,7 @@ async function fsRun(){
     q(".fs-cov").innerHTML=`<div style="font-size:11px;color:#52645a;margin-bottom:4px"><b>Origen efectivo:</b> ${escapeHtml(sourceLabel)} · ${res.length} registro(s) consultado(s)${!inventoryRows.length&&inventoryStatus? " · Inventario 2024: "+escapeHtml(inventoryStatusLabels[inventoryStatus]||inventoryStatus):""}</div>`+
       `<details><summary style="cursor:pointer"><b>🌲 Cubierta y atributos originales</b></summary><div style="max-height:150px;overflow:auto">${res.map(r=>`<div><b>${escapeHtml(r.title)}</b>${r.html}</div>`).join("")}</div></details>`+
       `<details><summary style="cursor:pointer"><b>Diagnóstico de clasificación</b></summary><div style="margin-top:3px">${decisions.map(x=>`<div>${escapeHtml(x)}</div>`).join("")}<div style="margin-top:3px">Resultado agregado: <b>${sug?escapeHtml(FS_FUELS[sug].n):"sin asignación automática"}</b></div><div style="color:#65736b;font-size:11px">La sugerencia agrupa cubierta; no determina carga, profundidad, continuidad ni humedad del combustible superficial.</div></div></details>`+
+      (inventoryStatus==="layer-disabled"?`<div style="margin-top:5px"><button type="button" data-fs-inventory-enable style="border:0;border-radius:6px;padding:4px 9px;background:#246b45;color:#fff;font-weight:700;cursor:pointer">Activar Inventario Forestal 2024 y repetir consulta</button></div>`:"")+
       (sug&&sug!==cur?`<div style="margin-top:3px">Sugerencia orientativa de combustible: <b>${escapeHtml(FS_FUELS[sug].n)}</b> <button type="button" data-fs-fuel="${sug}" style="border:0;border-radius:6px;padding:3px 8px;background:#1b8a3a;color:#fff;font-weight:700;cursor:pointer">Aplicar</button></div>`:
        (sug?`<div style="margin-top:3px;color:#1b8a3a">Coincide con el combustible elegido.</div>`:`<div style="margin-top:3px;color:#65736b">Sin sugerencia fiable; elige el combustible manualmente.</div>`));
     // mugitzean zehar: erregai-karga handiagoko aldaketak
