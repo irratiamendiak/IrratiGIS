@@ -3088,20 +3088,23 @@ function fsFuelFromCover(rows){
 function fsCoverFromInventory(ll){
   // Consulta de solo lectura sobre la misma capa PMTiles que ya muestra el visor.
   // No modifica atributos ni geometrías del Inventario Forestal 2024.
-  if(!map.hasLayer(inventarioForestalLayer)) return null;
+  const result=(status,rows=[])=>({status,rows});
+  if(!map.hasLayer(inventarioForestalLayer)) return result("layer-disabled");
   const gl=inventarioForestalLayer.getMaplibreMap();
-  if(!gl) return [];
+  if(!gl) return result("maplibre-unavailable");
   try{
+    if(!gl.isStyleLoaded()) return result("style-not-loaded");
+    if(!gl.getLayer("forestal-poligonos")) return result("style-layer-missing");
     const point=gl.project([ll.lng,ll.lat]);
     const features=gl.queryRenderedFeatures(point,{layers:["forestal-poligonos"]})||[];
-    return features.slice(0,3).map(feature=>{
+    const rows=features.slice(0,3).map(feature=>{
       const p=feature.properties||{};
       const preferred=["TIPES_es","TIPES","tipo","TYPE","SP1_es","SP2_es","SP3_es"];
-      const rows=preferred.filter(k=>p[k]!==undefined&&p[k]!==null&&String(p[k]).trim()!=="")
+      const values=preferred.filter(k=>p[k]!==undefined&&p[k]!==null&&String(p[k]).trim()!=="")
         .map(k=>[k,String(p[k])]);
       const extras=Object.keys(p).filter(k=>!preferred.includes(k)&&p[k]!==undefined&&p[k]!==null&&String(p[k]).trim()!=="")
         .slice(0,12).map(k=>[k,String(p[k])]);
-      const all=rows.concat(extras);
+      const all=values.concat(extras);
       const labels={TIPES_es:"Tipo de vegetación",TIPES:"TIPES",tipo:"Tipo",TYPE:"TYPE",SP1_es:"Especie 1",SP2_es:"Especie 2",SP3_es:"Especie 3"};
       return {
         title:"Inventario Forestal de Gipuzkoa 2024 · PMTiles",
@@ -3111,29 +3114,18 @@ function fsCoverFromInventory(ll){
         html:all.map(([k,v])=>"<div><b>"+escapeHtml(labels[k]||k)+":</b> "+escapeHtml(v)+"</div>").join("")
       };
     }).filter(x=>x.text);
+    return result(rows.length?"features-found":"query-empty",rows);
   }catch(err){
     console.warn("Consulta del Inventario Forestal 2024:",err);
-    return [];
+    return result("query-error");
   }
 }
 async function fsCover(ll){
   const local=fsCoverFromInventory(ll);
-  if(local&&local.length) return local;
+  if(local.rows.length) return local.rows;
 
   fsCapP=fsCapP||getWmsCapabilities(FS_FOREST_WMS); const info=await fsCapP.catch(e=>{ fsCapP=null; throw e; });
-  const cand=info.layers.filter(l=>/forest|uso|especie|conifer|frondos|cubiert|vegeta|mfe|arbol/i.test(l.name+" "+l.title)).slice(0,3);
-  if(!cand.length) throw new Error("sin capas de usos/especies");
-  const [E,N]=proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[ll.lng,ll.lat]);
-  const fmt=pickInfoFormat(info.infoFormats), v=info.version||"1.3.0", is13=v.startsWith("1.3"), out=[];
-  for(const l of cand){
-    const p=new URLSearchParams({SERVICE:"WMS",VERSION:v,REQUEST:"GetFeatureInfo",LAYERS:l.name,QUERY_LAYERS:l.name,STYLES:"",FORMAT:info.format||"image/png",
-      INFO_FORMAT:fmt,FEATURE_COUNT:"3",WIDTH:"101",HEIGHT:"101",BBOX:[E-50,N-50,E+50,N+50].join(",")});
-    p.set(is13?"CRS":"SRS","EPSG:25830"); p.set(is13?"I":"X","50"); p.set(is13?"J":"Y","50");
-    try{ const r=await fetch(FS_FOREST_WMS+"?"+p.toString()); if(!r.ok) continue;
-      const txt=await r.text(), html=featureInfoToHtml(txt,fmt); if(html) out.push({title:l.title||l.name,source:"wms",html,text:txt.replace(/<[^>]+>/g," ")}); }catch(_){ }
-  }
-  return out;
-}
+
 
 /* --- estrategia --- */
 function fsStrategy(L){
@@ -3421,10 +3413,12 @@ async function fsRun(){
     const sug=fsFuelFromCover(res), cur=fsCfg.fuel;
     const inventoryRows=res.filter(r=>r.source==="inventory");
     const sourceLabel=inventoryRows.length?"Inventario Forestal de Gipuzkoa 2024 · PMTiles":"WMS forestal externo (alternativa)";
+    const inventoryStatus=res.find(r=>r.inventoryStatus)?.inventoryStatus;
+    const inventoryStatusLabels={"layer-disabled":"capa desactivada","maplibre-unavailable":"visor MapLibre aún no disponible","style-not-loaded":"estilo PMTiles aún no cargado","style-layer-missing":"no existe la capa forestal-poligonos en el estilo","query-empty":"consulta espacial sin entidades renderizadas en ese punto","query-error":"error al consultar entidades PMTiles"};
     const decisions=inventoryRows.length
       ?inventoryRows.map((r,i)=>{const k=fsFuelFromInventoryProperties(r.properties);return `Entidad ${i+1}: ${k?FS_FUELS[k].n:"sin asignación automática"}`;})
       :[`Heurística textual WMS: ${sug?FS_FUELS[sug].n:"sin correspondencia"}`];
-    q(".fs-cov").innerHTML=`<div style="font-size:11px;color:#52645a;margin-bottom:4px"><b>Origen efectivo:</b> ${escapeHtml(sourceLabel)} · ${res.length} registro(s) consultado(s)</div>`+
+    q(".fs-cov").innerHTML=`<div style="font-size:11px;color:#52645a;margin-bottom:4px"><b>Origen efectivo:</b> ${escapeHtml(sourceLabel)} · ${res.length} registro(s) consultado(s)${!inventoryRows.length&&inventoryStatus? " · Inventario 2024: "+escapeHtml(inventoryStatusLabels[inventoryStatus]||inventoryStatus):""}</div>`+
       `<details><summary style="cursor:pointer"><b>🌲 Cubierta y atributos originales</b></summary><div style="max-height:150px;overflow:auto">${res.map(r=>`<div><b>${escapeHtml(r.title)}</b>${r.html}</div>`).join("")}</div></details>`+
       `<details><summary style="cursor:pointer"><b>Diagnóstico de clasificación</b></summary><div style="margin-top:3px">${decisions.map(x=>`<div>${escapeHtml(x)}</div>`).join("")}<div style="margin-top:3px">Resultado agregado: <b>${sug?escapeHtml(FS_FUELS[sug].n):"sin asignación automática"}</b></div><div style="color:#65736b;font-size:11px">La sugerencia agrupa cubierta; no determina carga, profundidad, continuidad ni humedad del combustible superficial.</div></div></details>`+
       (sug&&sug!==cur?`<div style="margin-top:3px">Sugerencia orientativa de combustible: <b>${escapeHtml(FS_FUELS[sug].n)}</b> <button type="button" data-fs-fuel="${sug}" style="border:0;border-radius:6px;padding:3px 8px;background:#1b8a3a;color:#fff;font-weight:700;cursor:pointer">Aplicar</button></div>`:
@@ -3769,7 +3763,8 @@ async function fetchParcel(ref){
     const toLL=pl=>{
       const v=pl.trim().split(/\s+/).map(Number), out=[];
       for(let i=0;i+1<v.length;i+=2){ const ll=L.CRS.EPSG3857.unproject(L.point(v[i],v[i+1])); out.push([ll.lat,ll.lng]); }
-      return out;
+      out.forEach(row=>{row.inventoryStatus=local.status;});
+  return out;
     };
     const polys=[];
     [...el.getElementsByTagNameNS("*","Polygon"),...el.getElementsByTagNameNS("*","PolygonPatch")].forEach(pg=>{
