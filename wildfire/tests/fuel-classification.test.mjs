@@ -46,7 +46,9 @@ test("known conifer and broadleaf species suggest only their broad cover group",
   assert.equal(map({ SP1_es: "Pinus radiata" }), "pinudia");
   assert.equal(map({ SP1_es: "Pseudotsuga menziesii" }), "pinudia");
   assert.equal(map({ SP1_es: "Fagus sylvatica" }), "hostozabala");
-  assert.equal(map({ SP1_es: "Quercus robur" }), "hostozabala");\n  assert.equal(map({ SP1_es: "Pino radiata" }), "pinudia");\n  assert.equal(map({ SP1_es: "Haya" }), "hostozabala");
+  assert.equal(map({ SP1_es: "Quercus robur" }), "hostozabala");
+  assert.equal(map({ SP1_es: "Pino radiata" }), "pinudia");
+  assert.equal(map({ SP1_es: "Haya" }), "hostozabala");
   assert.equal(map({ SP1_es: "Eucalyptus globulus" }), null);
   assert.equal(map({ SP1_es: "Especie no catalogada" }), null);
 });
