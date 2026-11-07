@@ -75,3 +75,11 @@ test("inventory classification is structurally separate from textual WMS fallbac
   assert.match(source, /source===\"inventory\"/);
   assert.doesNotMatch(source, /eukali|eucalip|bosque|arbolado/);
 });
+
+test("cover diagnostics identify the effective source and expose classification decisions", () => {
+  const cover = html.slice(html.indexOf("async function fsCover("), html.indexOf("/* --- estrategia --- */"));
+  assert.match(cover, /source:"wms"/);
+  assert.match(html, /Origen efectivo:/);
+  assert.match(html, /Diagnóstico de clasificación/);
+  assert.match(html, /Resultado agregado:/);
+});
