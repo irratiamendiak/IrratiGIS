@@ -84,6 +84,8 @@ test("cover diagnostics identify the effective source and expose classification 
   assert.match(html, /Diagnóstico de clasificación/);
   assert.match(html, /Resultado agregado:/);
   assert.match(html, /row\.inventoryStatus=local\.status/);
+  assert.match(html, /data-fs-inventory-enable/);
+  assert.match(html, /map\.addLayer\(inventarioForestalLayer\)/);
 });
 test("inventory spatial query reports why the local layer did not provide features", () => {
   const run = ({ enabled = true, gl = null } = {}) => {
