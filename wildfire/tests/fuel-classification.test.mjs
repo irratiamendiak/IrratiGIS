@@ -83,3 +83,30 @@ test("cover diagnostics identify the effective source and expose classification 
   assert.match(html, /Diagnóstico de clasificación/);
   assert.match(html, /Resultado agregado:/);
 });
+
+
+test("inventory spatial query reports why the local layer did not provide features", () => {
+  const run = ({ enabled = true, gl = null } = {}) => {
+    const context = {
+      map: { hasLayer: () => enabled },
+      inventarioForestalLayer: { getMaplibreMap: () => gl },
+      escapeHtml: value => String(value)
+    };
+    return vm.runInNewContext(extractFunction("fsCoverFromInventory") + "\nfsCoverFromInventory", context);
+  };
+  assert.equal(run({ enabled: false })({ lat: 43, lng: -2 }).status, "layer-disabled");
+  assert.equal(run()({ lat: 43, lng: -2 }).status, "maplibre-unavailable");
+  const base = {
+    isStyleLoaded: () => true,
+    getLayer: () => ({}),
+    project: () => ({ x: 10, y: 10 }),
+    queryRenderedFeatures: () => []
+  };
+  assert.equal(run({ gl: { ...base, isStyleLoaded: () => false } })({ lat: 43, lng: -2 }).status, "style-not-loaded");
+  assert.equal(run({ gl: { ...base, getLayer: () => null } })({ lat: 43, lng: -2 }).status, "style-layer-missing");
+  assert.equal(run({ gl: base })({ lat: 43, lng: -2 }).status, "query-empty");
+  const found = run({ gl: { ...base, queryRenderedFeatures: () => [{ properties: { TIPES_es: "Herbazal" } }] } })({ lat: 43, lng: -2 });
+  assert.equal(found.status, "features-found");
+  assert.equal(found.rows.length, 1);
+  assert.equal(found.rows[0].source, "inventory");
+});
