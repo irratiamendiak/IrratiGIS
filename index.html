@@ -3062,7 +3062,7 @@ function fsFuelFromText(t){
 function fsFuelFromInventoryProperties(p){
   p=p||{};
   const norm=v=>String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[_-]+/g," ").replace(/\s+/g," ").trim();
-  const use=norm(p.TIPES_es??p.TIPES??p.tipo??p.TYPE??"");
+  const use=norm([p.TIPES_es,p.TIPES,p.tipo,p.TYPE].find(v=>norm(v))||"");
   if(/^(herbazal|prado)$/.test(use)||/^prado con (setos|sebes)/.test(use)) return "belarra";
   if(/^matorral$/.test(use)) return "garoa";
   if(/pastizal|mixto|mezcla/.test(use)) return null;
