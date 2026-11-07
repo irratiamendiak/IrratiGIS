@@ -3125,7 +3125,20 @@ async function fsCover(ll){
   if(local.rows.length) return local.rows;
 
   fsCapP=fsCapP||getWmsCapabilities(FS_FOREST_WMS); const info=await fsCapP.catch(e=>{ fsCapP=null; throw e; });
-
+  const cand=info.layers.filter(l=>/forest|uso|especie|conifer|frondos|cubiert|vegeta|mfe|arbol/i.test(l.name+" "+l.title)).slice(0,3);
+  if(!cand.length) throw new Error("sin capas de usos/especies");
+  const [E,N]=proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[ll.lng,ll.lat]);
+  const fmt=pickInfoFormat(info.infoFormats), v=info.version||"1.3.0", is13=v.startsWith("1.3"), out=[];
+  for(const l of cand){
+    const p=new URLSearchParams({SERVICE:"WMS",VERSION:v,REQUEST:"GetFeatureInfo",LAYERS:l.name,QUERY_LAYERS:l.name,STYLES:"",FORMAT:info.format||"image/png",
+      INFO_FORMAT:fmt,FEATURE_COUNT:"3",WIDTH:"101",HEIGHT:"101",BBOX:[E-50,N-50,E+50,N+50].join(",")});
+    p.set(is13?"CRS":"SRS","EPSG:25830"); p.set(is13?"I":"X","50"); p.set(is13?"J":"Y","50");
+    try{ const r=await fetch(FS_FOREST_WMS+"?"+p.toString()); if(!r.ok) continue;
+      const txt=await r.text(), html=featureInfoToHtml(txt,fmt); if(html) out.push({title:l.title||l.name,source:"wms",html,text:txt.replace(/<[^>]+>/g," ")}); }catch(_){ }
+  }
+  out.forEach(row=>{row.inventoryStatus=local.status;});
+  return out;
+}
 
 /* --- estrategia --- */
 function fsStrategy(L){
