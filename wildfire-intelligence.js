@@ -97,6 +97,7 @@
               <div class="iwf-actions">
                 <button type="button" class="primary" data-action="create">Crear ficha de escenario</button>
                 <button type="button" data-action="export" disabled>Exportar GeoJSON</button>
+                <button type="button" data-action="export-contract" disabled>Exportar escenario JSON</button>
               </div>
               <div id="iwf-status" class="iwf-status iwf-warning" role="status" aria-live="polite">
                 <strong>Prototipo de captura</strong>
@@ -173,11 +174,14 @@
       state.ignitionLayer.clearLayers();
       state.root.querySelector("#iwf-coords").textContent = "Punto de ignición no seleccionado";
       state.root.querySelector('[data-action="export"]').disabled = true;
+      state.root.querySelector('[data-action="export-contract"]').disabled = true;
       setStatus("Ficha limpia", "Selecciona una ignición para comenzar.");
     } else if (action === "create") {
       createIncident();
     } else if (action === "export") {
       exportGeoJSON();
+    } else if (action === "export-contract") {
+      exportContractJSON();
     }
   }
 
@@ -232,6 +236,7 @@
       modelExecution: { executed: false, reason: "No hay motor de propagación conectado." }
     };
     state.root.querySelector('[data-action="export"]').disabled = false;
+    state.root.querySelector('[data-action="export-contract"]').disabled = false;
     if (missing.length) {
       setStatus("Ficha creada · datos incompletos", "Pendiente: " + missing.join(", ") + ". No se puede ejecutar una simulación.", "warning");
     } else {
@@ -284,6 +289,18 @@
       },
       modelExecution: { executed: false, reason: "No hay motor de propagación conectado." }
     };
+  }
+
+  function exportContractJSON() {
+    if (!state.incident) return;
+    const payload = toContractPackage(state.incident);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `irratigis-wildfire-scenario-${state.incident.id}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function exportGeoJSON() {
