@@ -23,7 +23,7 @@ La clasificación del inventario se realiza por campos, no concatenando todos lo
 
 - `TIPES_es` / `TIPES` identifica el uso: `Herbazal` y `Prado` se sugieren como `belarra`; `Matorral` como `garoa`.
 - `SP1_es`, `SP2_es` y `SP3_es` se usan para distinguir grupos de especies: coníferas identificadas (p. ej. `Pinus`/pino, `Picea`, `Larix`, `Cryptomeria`, `Pseudotsuga`, `Sequoia`) pueden sugerir `pinudia`; frondosas identificadas (p. ej. `Fagus`/haya, `Quercus`/roble, `Castanea`, `Betula`/abedul) pueden sugerir `hostozabala`.
-- Si varias entidades consultadas discrepan, falta especie, el uso es mixto/genérico o no hay una correspondencia inequívoca, no se devuelve sugerencia automática.
+- Si varias entidades consultadas discrepan, o el uso forestal depende de especie y ésta falta, o la clase es mixta/genérica, no se devuelve sugerencia automática.
 - Eucalyptus queda sin asignación automática: no se fuerza dentro de los parámetros de pinar o de frondosa genérica.
 - El WMS alternativo mantiene una heurística textual separada, más limitada; no se mezcla con la clasificación estructurada del PMTiles.
 
