@@ -8,6 +8,8 @@ on:
       - .github/workflows/gipuzkoa-mdt-relief-preview.yml
       - wildfire/terrain/**
       - wildfire/ingestion/create_mdt_relief_preview.py
+      - wildfire/ingestion/fetch_arcgis_sheet_index.py
+      - wildfire/ingestion/check_mdt_zip_availability.py
 
 permissions:
   contents: read
@@ -19,16 +21,14 @@ jobs:
     env:
       PYTHONPATH: .
     steps:
-      - name: Checkout processing scripts
+      - name: Checkout workflow-triggering revision
         uses: actions/checkout@v4
-        with:
-          ref: feature/wildfire-intelligence-foundation
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Install geospatial dependencies
-        run: pip install "numpy>=1.26,<3" "rasterio>=1.4,<2" "geopandas>=1.0,<2" "pyogrio>=0.10,<1" "matplotlib>=3.8,<4"
+        run: pip install "numpy>=1.26,<3" "rasterio>=1.4,<2" "geopandas>=1.0,<2" "pyogrio>=0.10,<1" "matplotlib>=3.8,<4" "shapely>=2,<3"
       - name: Test terrain derivative calculations
         run: |
           pip install "pytest>=8,<9"
@@ -49,7 +49,7 @@ jobs:
           python wildfire/ingestion/check_mdt_zip_availability.py \
             --index data/processed/gipuzkoa/mdt_5000_sheet_index.json \
             --output-dir data/processed/gipuzkoa/mdt_zip_check
-      - name: Create real shaded-relief preview from three tiles
+      - name: Create real shaded-relief preview from three adjacent tiles
         run: |
           python wildfire/ingestion/create_mdt_relief_preview.py \
             --availability data/processed/gipuzkoa/mdt_zip_check/mdt_2017_zip_availability.json \
