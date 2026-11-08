@@ -11,7 +11,7 @@ on:
       - wildfire/ingestion/fetch_arcgis_sheet_index.py
       - wildfire/ingestion/check_mdt_zip_availability.py
   push:
-    branches: [main, feature/wildfire-intelligence-foundation]
+    branches: [main, feature/wildfire-intelligence-foundation, fix/mdt-preview-spatial-qa]
     paths:
       - .github/workflows/gipuzkoa-mdt-relief-preview.yml
       - wildfire/terrain/**
