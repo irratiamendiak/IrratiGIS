@@ -1,0 +1,184 @@
+{
+  "catalog_version": "1.0.0",
+  "pilot": {
+    "name": "Gipuzkoa",
+    "admin_boundary_source": "gipuzkoa_b5m_municipal_boundaries",
+    "target_crs": "EPSG:25830",
+    "working_cell_size_m": 10
+  },
+  "generated_at": "2026-10-30",
+  "policy": {
+    "preserve_originals": true,
+    "require_sha256": true,
+    "never_promote_resampled_resolution": true,
+    "require_expert_review_for_fuel_crosswalk": true
+  },
+  "sources": [
+    {
+      "id": "cnig_admin_boundaries_current_2026",
+      "theme": "administrative_boundary",
+      "title": "Límites y Unidades Administrativas Actuales · CNIG",
+      "publisher": "CNIG / Instituto Geográfico Nacional",
+      "landing_page": "https://centrodedescargas.cnig.es/CentroDescargas/detalleArchivo?sec=9000029",
+      "distribution_url": null,
+      "format": "Shapefile (ZIP) or GML; nationwide distribution",
+      "reference_date": "2026-07-28 (Shapefile product; catalogue also lists GML 2026-08-10)",
+      "status": "official_boundary_reference_download_url_to_resolve",
+      "spatial_role": "authoritative cross-check for Gipuzkoa provincial boundary; nationwide package may be large",
+      "known_limitations": [
+        "Catalogue lists a nationwide Shapefile package of 156.96 MB; do not download until the exact distribution link and filtering workflow are confirmed.",
+        "Metadata lists ETRS89 coordinates; inspect the actual file CRS and administrative code fields before filtering.",
+        "Use this source to verify the territorial boundary, not as terrain or vegetation data."
+      ],
+      "attribution": "CNIG / Instituto Geográfico Nacional",
+      "license": "Compatible with CC-BY 4.0 under the product's stated conditions",
+      "checksum_sha256": null
+    },
+    {
+      "id": "gipuzkoa_b5m_municipal_boundaries",
+      "theme": "administrative_boundary",
+      "title": "Límites municipales oficiales de Gipuzkoa",
+      "publisher": "Diputación Foral de Gipuzkoa · B5M",
+      "landing_page": "https://b5m.gipuzkoa.eus/web5000/es/conjuntos-datos/limites-municipales",
+      "distribution_url": "https://b5m.gipuzkoa.eus/datasets/GFA_DSET_MB_SHP.zip",
+      "format": "ESRI Shapefile ZIP",
+      "reference_date": "Updated 2026-10-26",
+      "status": "received_locally_geometry_qa_passed_cnig_crosscheck_pending",
+      "spatial_role": "official municipality boundaries to dissolve into Gipuzkoa pilot boundary",
+      "known_limitations": [
+        "Portal terms say geographic information is informative and users should verify currency and accuracy against the corresponding official administrative sources.",
+        "Inspect CRS, geometry validity, multipart features and enclaves before dissolve.",
+        "Retain municipal features and municipality attributes in addition to the dissolved pilot outline."
+      ],
+      "attribution": "Diputación Foral de Gipuzkoa · https://b5m.gipuzkoa.eus",
+      "license": "CC BY 4.0; attribution required and link to b5m.gipuzkoa.eus",
+      "checksum_sha256": "f69745502d30e63baf2c0a03267e5a1b682314aa00254b703cb8565cb795ee32"
+    },
+    {
+      "id": "euskadi_dem_1m",
+      "theme": "terrain",
+      "title": "Modelo Digital de Elevaciones (1 metro) del País Vasco",
+      "publisher": "Gobierno Vasco / geoEuskadi",
+      "landing_page": "https://www.geo.euskadi.eus/modelo-digital-elevaciones-1-metro-del-pais-vasco/webgeo00-dataset/es/",
+      "distribution_url": null,
+      "format": "GeoTIFF or service tiles; confirm per distribution",
+      "reference_date": "2008-2017 with later change updates described in metadata",
+      "status": "candidate_metadata_review",
+      "spatial_role": "primary terrain candidate",
+      "known_limitations": [
+        "Inspect per-tile lineage and dates; page offers historical and maximum-current distributions.",
+        "Verify vertical datum and tile completeness before processing."
+      ],
+      "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
+      "license": "Reuse permitted with attribution per dataset metadata",
+      "checksum_sha256": null
+    },
+    {
+      "id": "cnig_mdt50cm_lidar3_provisional",
+      "theme": "terrain",
+      "title": "MDT50cm provisional V1 · 3rd PNOA-LiDAR coverage",
+      "publisher": "CNIG / IGN",
+      "landing_page": "https://centrodedescargas.cnig.es/CentroDescargas/novedades?codSerie=MDT01",
+      "distribution_url": null,
+      "format": "MDT GeoTIFF (distribution to resolve by tile)",
+      "reference_date": "Published 2026-05-25; provisional",
+      "status": "candidate_quality_assessment",
+      "spatial_role": "independent terrain comparison candidate",
+      "known_limitations": [
+        "Provisional V1 generated from initial point-cloud classification NPC01.",
+        "Do not assume 0.5 m effective accuracy or completeness from pixel size alone."
+      ],
+      "attribution": "CNIG / IGN",
+      "license": "Confirm on each downloaded product",
+      "checksum_sha256": null
+    },
+    {
+      "id": "euskadi_forest_map_2024_vector",
+      "theme": "vegetation",
+      "title": "Mapa Forestal CAE 2024 · distribución SHP",
+      "publisher": "Gobierno Vasco / geoEuskadi / HAZI",
+      "landing_page": "https://www.euskadi.eus/mapa-forestal-del-pais-vasco/web01-a3estbin/es/",
+      "distribution_url": "https://www.geo.euskadi.eus/cartografia/DatosDescarga/Agricultura/INV_FORESTAL_2024_10000_ETRS89.zip",
+      "format": "ESRI Shapefile ZIP",
+      "reference_date": "2024",
+      "status": "candidate_spatial_baseline",
+      "spatial_role": "vegetation and forest-structure context; not a fire-behaviour fuel model",
+      "known_limitations": [
+        "Minimum homogeneous polygon stated as 0.10 ha.",
+        "Do not translate classes to fuel models without a reviewed crosswalk.",
+        "Confirm field schema and coverage after download."
+      ],
+      "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
+      "license": "Reuse permitted with attribution per official catalogue",
+      "checksum_sha256": null
+    },
+    {
+      "id": "euskadi_forest_map_2025_stats",
+      "theme": "vegetation_statistics",
+      "title": "Mapa Forestal CAE 2025 · tablas estadísticas",
+      "publisher": "Gobierno Vasco / HAZI",
+      "landing_page": "https://www.euskadi.eus/mapa-forestal-cae-2025/web01-a3estbin/es/",
+      "distribution_url": null,
+      "format": "Official statistical tables / report",
+      "reference_date": "2025",
+      "status": "context_only_spatial_distribution_unconfirmed",
+      "spatial_role": "territorial/comarcal statistics and currency check; not a spatial raster/vector layer",
+      "known_limitations": [
+        "The inspected page exposes tables including Gipuzkoa; a downloadable 2025 spatial dataset was not confirmed."
+      ],
+      "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
+      "license": "Confirm for each table/report",
+      "checksum_sha256": null
+    },
+    {
+      "id": "euskadi_mdt_lidar_2017_1m_tiles",
+      "theme": "terrain",
+      "title": "MDT LiDAR 2017 · 1 m · teselas individuales",
+      "publisher": "Gobierno Vasco / geoEuskadi",
+      "landing_page": "https://www.geo.euskadi.eus/modelo-digital-elevaciones-1-metro-del-pais-vasco/webgeo00-dataset/es/",
+      "distribution_url": null,
+      "distribution_index_url": "https://www.geo.euskadi.eus/lidar/DatosDescarga/MDE/MAX_ACTUALIDAD/MDT_LIDAR_2017_ETRS89/MDT/",
+      "format": "ZIP por tesela; directorios de hojas Hxxxx",
+      "reference_date": "Published 2020-04-01; temporal lineage 2008-02-08 to 2017-10-11",
+      "status": "candidate_service_and_metadata_verified_tile_selection_pending",
+      "spatial_role": "primary 1 m terrain candidate for Gipuzkoa after per-tile lineage review",
+      "known_limitations": [
+        "1 m pixel spacing is a grid interval, not a guarantee of 1 m vertical accuracy or uniform effective detail.",
+        "Lineage: based on the 2016 1 m MDT; urban changes updated by stereoscopic editing from 2017 10 cm aerial imagery, non-urban terrain updated with 2017 LiDAR, with improvements in areas poorly defined by 2008/2012 LiDAR.",
+        "Vertical values are orthometric heights referred to EGM08_REDNAP.",
+        "Metadata spatial reference reports ETRS89; the downloadable raster/service is exposed in EPSG:25830. Inspect each downloaded tile's actual CRS.",
+        "Service extent and layer footprint do not identify individual download tiles. Build a tile-to-footprint index before bulk download; do not infer tile selection from sheet-folder names alone.",
+        "Dataset license is Creative Commons Attribution 3.0; attribute Eusko Jaurlaritza / Gobierno Vasco.",
+        "Compare coverage, NoData, seam consistency and source lineage by tile before producing a Gipuzkoa mosaic."
+      ],
+      "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
+      "license": "CC BY 3.0; attribution: Eusko Jaurlaritza / Gobierno Vasco",
+      "checksum_sha256": null,
+      "service_url": "https://www.geo.euskadi.eus/geoeuskadi/rest/services/U11/WCS_KARTOGRAFIA/MapServer",
+      "service_layer_id": 20,
+      "service_layer_name": "MDT_LIDAR_2017_1M",
+      "service_crs": "EPSG:25830",
+      "vertical_datum": "EGM08_REDNAP (orthometric heights)"
+    },
+    {
+      "id": "euskadi_cartographic_sheet_grid_index",
+      "theme": "cartographic_index",
+      "title": "Mallas cartográficas: distribución de hojas y cuadrículas UTM",
+      "publisher": "Gobierno Vasco / geoEuskadi",
+      "landing_page": "https://www.geo.euskadi.eus/geonetwork/srv/spa/metadata.show?uuid=md_IDEEu_M_CARTOGRAFICAS_es",
+      "distribution_url": "https://www.geo.euskadi.net/cartografia/DatosDescarga/Cartografia_Basica/Mallas_Cartograficas/Hojas_Cartografia.zip",
+      "format": "Shapefile ZIP",
+      "reference_date": "Dataset metadata published 2013-02-06; derived from IGN sheet grids",
+      "status": "download_url_resolved_pending_download_and_schema_inspection",
+      "spatial_role": "spatial index to select 1:50,000 map sheets and PNOA grid cells intersecting the Gipuzkoa pilot boundary",
+      "known_limitations": [
+        "The catalogue describes multiple grid types and scales; inspect layer names, scale attributes, CRS and sheet identifiers before selecting a grid.",
+        "This index identifies sheet footprints; it is not terrain data and does not prove raster coverage or quality.",
+        "Metadata lineage says the grids were derived computationally from IGN-provided data."
+      ],
+      "attribution": "Eusko Jaurlaritza / Gobierno Vasco",
+      "license": "Creative Commons Attribution (CC-BY 3.0) per dataset metadata",
+      "checksum_sha256": null
+    }
+  ]
+}

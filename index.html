@@ -3051,12 +3051,79 @@ const FS_FOREST_WMS="https://www.geo.euskadi.eus/WMS_NEKAZARITZA";
 let fsCapP=null;
 function fsFuelFromText(t){
   t=(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
-  const r=[["pinudia",/pinus|pino|pinar|conifer|eukali|eucalip|picea|larix|alerce|abeto/],["hostozabala",/haya|fagus|hayedo|roble|quercus|robledal|frondos|castan|fresno|aliso|abedul|bosque|arbolado/],
-           ["iratzea",/helech|pteridium|iratz/],["garoa",/matorral|brezal|argoma|ulex|erica|landa|zuhaixka|arbust/],["belarra",/pasto|prado|herbaz|pradera|belard|larre|cultivo|agrari/]];
+  // Fallback textual WMS only. Avoid classifying generic "bosque" or eucalyptus as pine.
+  const r=[["pinudia",/pinus|pino|pinar|conifer|picea|larix|alerce|abeto|cryptomeria|pseudotsuga|douglas|chamaecyparis/],
+           ["hostozabala",/haya|fagus|hayedo|roble|quercus|robledal|frondos|castan|fresno|fraxinus|aliso|alnus|abedul|betula|salix|populus|platanus|robinia/],
+           ["iratzea",/helech|pteridium|iratz/],["garoa",/matorral|brezal|argoma|ulex|erica|landa|zuhaixka|arbust/],
+           ["belarra",/pasto|prado|herbaz|pradera|belard|larre|cultivo|agrari/]];
   for(const [k,re] of r) if(re.test(t)) return k;
   return null;
 }
+function fsFuelFromInventoryProperties(p){
+  p=p||{};
+  const norm=v=>String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[_-]+/g," ").replace(/\s+/g," ").trim();
+  const use=norm([p.TIPES_es,p.TIPES,p.tipo,p.TYPE].find(v=>norm(v))||"");
+  if(/^(herbazal|prado)$/.test(use)||/^prado con (setos|sebes)/.test(use)) return "belarra";
+  if(/^matorral$/.test(use)) return "garoa";
+  if(/pastizal|mixto|mezcla/.test(use)) return null;
+  if(/helechal|helecho/.test(use)) return "iratzea";
+  // Mixed pasture/shrub, generic forest, plantations without species, and
+  // eucalyptus are deliberately unresolved: these fields do not describe
+  // the surface fuel bed or its load/continuity.
+  const species=norm([p.SP1_es,p.SP2_es,p.SP3_es,p.SP1,p.SP2,p.SP3].filter(Boolean).join(" "));
+  if(!species) return null;
+  const conifer=/pinus|pino|picea|larix|alerce|cryptomeria|pseudotsuga|douglas|chamaecyparis|conifer|abeto|sequoia|secoya/.test(species);
+  const broadleaf=/fagus|haya|quercus|roble|castanea|castan|fraxinus|fresno|alnus|aliso|betula|abedul|salix|sauce|populus|chopo|platanus|platano|robinia|acacia|frondosa|frondosas/.test(species);
+  if(conifer===broadleaf) return null;
+  return conifer?"pinudia":"hostozabala";
+}
+function fsFuelFromCover(rows){
+  if(!Array.isArray(rows)||!rows.length) return null;
+  if(rows.some(r=>r.source==="inventory")){
+    const mapped=rows.map(r=>fsFuelFromInventoryProperties(r.properties));
+    return mapped.every(Boolean)&&new Set(mapped).size===1?mapped[0]:null;
+  }
+  return fsFuelFromText(rows.map(r=>r.text||"").join(" "));
+}
+function fsCoverFromInventory(ll){
+  // Consulta de solo lectura sobre la misma capa PMTiles que ya muestra el visor.
+  // No modifica atributos ni geometrías del Inventario Forestal 2024.
+  const result=(status,rows=[])=>({status,rows});
+  if(!map.hasLayer(inventarioForestalLayer)) return result("layer-disabled");
+  const gl=inventarioForestalLayer.getMaplibreMap();
+  if(!gl) return result("maplibre-unavailable");
+  try{
+    if(!gl.isStyleLoaded()) return result("style-not-loaded");
+    if(!gl.getLayer("forestal-poligonos")) return result("style-layer-missing");
+    const point=gl.project([ll.lng,ll.lat]);
+    const features=gl.queryRenderedFeatures(point,{layers:["forestal-poligonos"]})||[];
+    const rows=features.slice(0,3).map(feature=>{
+      const p=feature.properties||{};
+      const preferred=["TIPES_es","TIPES","tipo","TYPE","SP1_es","SP2_es","SP3_es"];
+      const values=preferred.filter(k=>p[k]!==undefined&&p[k]!==null&&String(p[k]).trim()!=="")
+        .map(k=>[k,String(p[k])]);
+      const extras=Object.keys(p).filter(k=>!preferred.includes(k)&&p[k]!==undefined&&p[k]!==null&&String(p[k]).trim()!=="")
+        .slice(0,12).map(k=>[k,String(p[k])]);
+      const all=values.concat(extras);
+      const labels={TIPES_es:"Tipo de vegetación",TIPES:"TIPES",tipo:"Tipo",TYPE:"TYPE",SP1_es:"Especie 1",SP2_es:"Especie 2",SP3_es:"Especie 3"};
+      return {
+        title:"Inventario Forestal de Gipuzkoa 2024 · PMTiles",
+        source:"inventory",
+        properties:p,
+        text:all.map(([k,v])=>(labels[k]||k)+" "+v).join(" "),
+        html:all.map(([k,v])=>"<div><b>"+escapeHtml(labels[k]||k)+":</b> "+escapeHtml(v)+"</div>").join("")
+      };
+    }).filter(x=>x.text);
+    return result(rows.length?"features-found":"query-empty",rows);
+  }catch(err){
+    console.warn("Consulta del Inventario Forestal 2024:",err);
+    return result("query-error");
+  }
+}
 async function fsCover(ll){
+  const local=fsCoverFromInventory(ll);
+  if(local.rows.length) return local.rows;
+
   fsCapP=fsCapP||getWmsCapabilities(FS_FOREST_WMS); const info=await fsCapP.catch(e=>{ fsCapP=null; throw e; });
   const cand=info.layers.filter(l=>/forest|uso|especie|conifer|frondos|cubiert|vegeta|mfe|arbol/i.test(l.name+" "+l.title)).slice(0,3);
   if(!cand.length) throw new Error("sin capas de usos/especies");
@@ -3067,8 +3134,9 @@ async function fsCover(ll){
       INFO_FORMAT:fmt,FEATURE_COUNT:"3",WIDTH:"101",HEIGHT:"101",BBOX:[E-50,N-50,E+50,N+50].join(",")});
     p.set(is13?"CRS":"SRS","EPSG:25830"); p.set(is13?"I":"X","50"); p.set(is13?"J":"Y","50");
     try{ const r=await fetch(FS_FOREST_WMS+"?"+p.toString()); if(!r.ok) continue;
-      const txt=await r.text(), html=featureInfoToHtml(txt,fmt); if(html) out.push({title:l.title||l.name,html,text:txt.replace(/<[^>]+>/g," ")}); }catch(_){ }
+      const txt=await r.text(), html=featureInfoToHtml(txt,fmt); if(html) out.push({title:l.title||l.name,source:"wms",html,text:txt.replace(/<[^>]+>/g," ")}); }catch(_){ }
   }
+  out.forEach(row=>{row.inventoryStatus=local.status;});
   return out;
 }
 
@@ -3166,6 +3234,8 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-m").onchange=e=>{ fsCfg.moist=Number(e.target.value); rerun(); };
   q(".fs-rate").onchange=e=>{ fsCfg.rate=Number(e.target.value); rerun(); };
   fsPanel.addEventListener("click",e=>{
+    const inv=e.target.closest&&e.target.closest("[data-fs-inventory-enable]");
+    if(inv){ if(!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer); rerun(); return; }
     const f=e.target.closest&&e.target.closest("[data-fs-fuel]"); if(f){ fsCfg.fuel=f.dataset.fsFuel; q(".fs-fuel").value=fsCfg.fuel; rerun(); return; }
     const g=e.target.closest&&e.target.closest("[data-fs-gif]"); if(g){ fsMakeGif(g); return; }
     const bt=e.target.closest&&e.target.closest("[data-fs-bt]"); if(bt) fsBacktest(bt);
@@ -3355,13 +3425,23 @@ async function fsRun(){
   fsCover(fsIgn).then(res=>{
     if(my!==fsBusy||!q(".fs-cov")) return;
     if(!res.length){ q(".fs-cov").innerHTML=`<span style="color:#65736b">Mapa forestal: sin datos en este punto.</span>`; return; }
-    const sug=fsFuelFromText(res.map(r=>r.text).join(" ")), cur=fsCfg.fuel;
-    q(".fs-cov").innerHTML=`<details><summary style="cursor:pointer"><b>🌲 Cubierta en el punto de inicio</b> (mapa forestal, geoEuskadi)</summary><div style="max-height:130px;overflow:auto">${res.map(r=>`<div><b>${escapeHtml(r.title)}</b>${r.html}</div>`).join("")}</div></details>`+
-      (sug&&sug!==cur?`<div style="margin-top:3px">Sugerencia de combustible: <b>${escapeHtml(FS_FUELS[sug].n)}</b> <button type="button" data-fs-fuel="${sug}" style="border:0;border-radius:6px;padding:3px 8px;background:#1b8a3a;color:#fff;font-weight:700;cursor:pointer">Aplicar</button></div>`:
-       (sug?`<div style="margin-top:3px;color:#1b8a3a">Coincide con el combustible elegido.</div>`:`<div style="margin-top:3px;color:#65736b">No he podido deducir el combustible del texto; elígelo a mano.</div>`));
+    const sug=fsFuelFromCover(res), cur=fsCfg.fuel;
+    const inventoryRows=res.filter(r=>r.source==="inventory");
+    const sourceLabel=inventoryRows.length?"Inventario Forestal de Gipuzkoa 2024 · PMTiles":"WMS forestal externo (alternativa)";
+    const inventoryStatus=res.find(r=>r.inventoryStatus)?.inventoryStatus;
+    const inventoryStatusLabels={"layer-disabled":"capa desactivada","maplibre-unavailable":"visor MapLibre aún no disponible","style-not-loaded":"estilo PMTiles aún no cargado","style-layer-missing":"no existe la capa forestal-poligonos en el estilo","query-empty":"consulta espacial sin entidades renderizadas en ese punto","query-error":"error al consultar entidades PMTiles"};
+    const decisions=inventoryRows.length
+      ?inventoryRows.map((r,i)=>{const k=fsFuelFromInventoryProperties(r.properties);return `Entidad ${i+1}: ${k?FS_FUELS[k].n:"sin asignación automática"}`;})
+      :[`Heurística textual WMS: ${sug?FS_FUELS[sug].n:"sin correspondencia"}`];
+    q(".fs-cov").innerHTML=`<div style="font-size:11px;color:#52645a;margin-bottom:4px"><b>Origen efectivo:</b> ${escapeHtml(sourceLabel)} · ${res.length} registro(s) consultado(s)${!inventoryRows.length&&inventoryStatus? " · Inventario 2024: "+escapeHtml(inventoryStatusLabels[inventoryStatus]||inventoryStatus):""}</div>`+
+      `<details><summary style="cursor:pointer"><b>🌲 Cubierta y atributos originales</b></summary><div style="max-height:150px;overflow:auto">${res.map(r=>`<div><b>${escapeHtml(r.title)}</b>${r.html}</div>`).join("")}</div></details>`+
+      `<details><summary style="cursor:pointer"><b>Diagnóstico de clasificación</b></summary><div style="margin-top:3px">${decisions.map(x=>`<div>${escapeHtml(x)}</div>`).join("")}<div style="margin-top:3px">Resultado agregado: <b>${sug?escapeHtml(FS_FUELS[sug].n):"sin asignación automática"}</b></div><div style="color:#65736b;font-size:11px">La sugerencia agrupa cubierta; no determina carga, profundidad, continuidad ni humedad del combustible superficial.</div></div></details>`+
+      (inventoryStatus==="layer-disabled"?`<div style="margin-top:5px"><button type="button" data-fs-inventory-enable style="border:0;border-radius:6px;padding:4px 9px;background:#246b45;color:#fff;font-weight:700;cursor:pointer">Activar Inventario Forestal 2024 y repetir consulta</button></div>`:"")+
+      (sug&&sug!==cur?`<div style="margin-top:3px">Sugerencia orientativa de combustible: <b>${escapeHtml(FS_FUELS[sug].n)}</b> <button type="button" data-fs-fuel="${sug}" style="border:0;border-radius:6px;padding:3px 8px;background:#1b8a3a;color:#fff;font-weight:700;cursor:pointer">Aplicar</button></div>`:
+       (sug?`<div style="margin-top:3px;color:#1b8a3a">Coincide con el combustible elegido.</div>`:`<div style="margin-top:3px;color:#65736b">Sin sugerencia fiable; elige el combustible manualmente.</div>`));
     // mugitzean zehar: erregai-karga handiagoko aldaketak
     let prev=sug||cur; const picks=[60,120,180,240].map(T=>prof.find(p=>p.t>=T)).filter(Boolean);
-    return Promise.all(picks.map(p=>fsCover({lat:p.lat,lng:p.lon}).then(r=>({p,k:fsFuelFromText(r.map(x=>x.text).join(" "))})).catch(()=>null))).then(list=>{
+    return Promise.all(picks.map(p=>fsCover({lat:p.lat,lng:p.lon}).then(r=>({p,k:fsFuelFromCover(r)})).catch(()=>null))).then(list=>{
       if(my!==fsBusy||!q(".fs-crit")) return;
       list.filter(Boolean).forEach(({p,k})=>{ if(k&&k!==prev&&(k==="garoa"||k==="pinudia")){
           const c={t:p.t,lat:p.lat,lon:p.lon,why:`combustible de mayor carga/intensidad (${FS_FUELS[k].n}), según el mapa forestal`}; D.crit.push(c);
@@ -3699,7 +3779,8 @@ async function fetchParcel(ref){
     const toLL=pl=>{
       const v=pl.trim().split(/\s+/).map(Number), out=[];
       for(let i=0;i+1<v.length;i+=2){ const ll=L.CRS.EPSG3857.unproject(L.point(v[i],v[i+1])); out.push([ll.lat,ll.lng]); }
-      return out;
+      out.forEach(row=>{row.inventoryStatus=local.status;});
+  return out;
     };
     const polys=[];
     [...el.getElementsByTagNameNS("*","Polygon"),...el.getElementsByTagNameNS("*","PolygonPatch")].forEach(pg=>{
