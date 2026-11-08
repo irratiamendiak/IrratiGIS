@@ -68,15 +68,36 @@ def coverage_audit(path: Path, boundary_path: Path | None, boundary_layer: str |
         }
 
 
+def _grid_issue(a, b) -> str | None:
+    """Return a reason when two rasters cannot be compared cell-for-cell."""
+    if a.crs is None or b.crs is None or a.crs != b.crs:
+        return "incompatible_crs"
+    if a.count != 1 or b.count != 1 or a.nodata is None or b.nodata is None:
+        return "unsupported_raster"
+    ta, tb = a.transform, b.transform
+    # This audit currently supports north-up rasters only.
+    if any(abs(v) > 1e-10 for v in (ta.b, ta.d, tb.b, tb.d)):
+        return "rotated_grid"
+    ra = (abs(ta.a), abs(ta.e))
+    rb = (abs(tb.a), abs(tb.e))
+    if any(x <= 0 for x in (*ra, *rb)) or not np.allclose(ra, rb, rtol=0, atol=1e-8):
+        return "resolution_mismatch"
+    # Origins must lie on the same pixel lattice, not merely have equal array shapes.
+    dx = (tb.c - ta.c) / ra[0]
+    dy = (ta.f - tb.f) / ra[1]
+    if not (np.isclose(dx, round(dx), rtol=0, atol=1e-6)
+            and np.isclose(dy, round(dy), rtol=0, atol=1e-6)):
+        return "grid_origin_mismatch"
+    return None
+
+
 def seam_audit(paths: list[Path]) -> list[dict]:
     results=[]
     for left_path, right_path in itertools.combinations(sorted(paths),2):
         with rasterio.open(left_path) as a, rasterio.open(right_path) as b:
-            if a.crs != b.crs:
-                results.append({"tile_a":str(left_path),"tile_b":str(right_path),"status":"incompatible_crs"})
-                continue
-            if a.count != 1 or b.count != 1 or a.nodata is None or b.nodata is None:
-                results.append({"tile_a":str(left_path),"tile_b":str(right_path),"status":"unsupported_raster"})
+            issue = _grid_issue(a, b)
+            if issue:
+                results.append({"tile_a":str(left_path),"tile_b":str(right_path),"status":issue})
                 continue
             left=max(a.bounds.left,b.bounds.left); right=min(a.bounds.right,b.bounds.right)
             bottom=max(a.bounds.bottom,b.bounds.bottom); top=min(a.bounds.top,b.bounds.top)

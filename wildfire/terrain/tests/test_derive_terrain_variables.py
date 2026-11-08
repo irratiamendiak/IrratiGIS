@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 import rasterio
 from rasterio.transform import from_origin
 
@@ -58,3 +59,35 @@ def test_nodata_neighbourhood_is_marked_not_interpolated(tmp_path):
         assert quality[0, 0] == 2
         assert quality[3, 3] == 2
         assert quality[2, 0] == 2
+
+def run_invalid_dem(tmp_path, *, crs='EPSG:25830', transform=None, nodata=-9999):
+    dem = tmp_path / 'invalid_dem.tif'
+    with rasterio.open(
+        dem, 'w', driver='GTiff', width=5, height=5, count=1,
+        dtype='float32', crs=crs,
+        transform=transform or from_origin(500000, 4800000, 1, 1),
+        nodata=nodata,
+    ) as dst:
+        dst.write(np.ones((5, 5), dtype='float32'), 1)
+    old = sys.argv
+    try:
+        sys.argv = ['derive_terrain_variables.py', '--dem', str(dem),
+                    '--output-dir', str(tmp_path / 'invalid_out'), '--block-size', '64']
+        module.main()
+    finally:
+        sys.argv = old
+
+
+def test_geographic_crs_is_rejected(tmp_path):
+    with pytest.raises(SystemExit, match='projected CRS'):
+        run_invalid_dem(tmp_path, crs='EPSG:4326')
+
+
+def test_non_square_pixels_are_rejected(tmp_path):
+    with pytest.raises(SystemExit, match='square'):
+        run_invalid_dem(tmp_path, transform=from_origin(500000, 4800000, 1, 2))
+
+
+def test_missing_nodata_metadata_is_rejected(tmp_path):
+    with pytest.raises(SystemExit, match='declare NoData'):
+        run_invalid_dem(tmp_path, nodata=None)

@@ -9,7 +9,6 @@ import urllib.request
 from pathlib import Path
 
 import geopandas as gpd
-from shapely.geometry import shape
 
 DEFAULT_LAYER_URL = (
     "https://www.geo.euskadi.eus/geoeuskadi/rest/services/"
@@ -96,10 +95,15 @@ def fetch_sheet_index(
     selected["pilot_intersection_area_km2"] = (
         selected.geometry.intersection(pilot).area / 1_000_000
     )
+    # Preserve the official footprint in the JSON hand-off so the preview can
+    # select a spatially connected sample instead of sorting sheet names.
+    selected["geometry_wkt"] = selected.geometry.to_wkt()
     output.parent.mkdir(parents=True, exist_ok=True)
     if output.exists():
         output.unlink()
-    selected.to_file(output, layer="intersecting_sheet_index", driver="GPKG")
+    selected.drop(columns="geometry_wkt").to_file(
+        output, layer="intersecting_sheet_index", driver="GPKG"
+    )
     report = {
         "source_layer_url": layer_url,
         "source_layer_id": 67,
@@ -115,8 +119,9 @@ def fetch_sheet_index(
         "selected_records": selected.drop(columns=selected.geometry.name).to_dict(orient="records"),
         "output": str(output),
         "warning": (
-            "Cartographic 1:5,000 sheet identifiers are not assumed to match MDT ZIP "
-            "names. Verify the relationship and each raster's internal extent before download."
+            "Cartographic sheet footprints are used only to choose a contiguous sample. "
+            "They do not prove the downloaded MDT raster extent; inspect each raster's "
+            "internal extent, CRS, resolution and NoData coverage independently."
         ),
     }
     report_path = output.with_suffix(".json")
