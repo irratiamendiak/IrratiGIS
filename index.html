@@ -3111,14 +3111,29 @@ function fsFuelFromCover(rows){
   }
   return fsFuelFromText(rows.map(r=>r.text||"").join(" "));
 }
-function fsCoverFromInventory(ll){
-  // Consulta de solo lectura sobre la misma capa PMTiles que ya muestra el visor.
-  // No modifica atributos ni geometrías del Inventario Forestal 2024.
+async function fsCoverFromInventory(ll){
+  // Espera a que el mapa de MapLibre termine de cargar el estilo y los tiles PMTiles.
+  // Evita consultar en mitad del primer render del overlay Leaflet/MapLibre.
   const result=(status,rows=[])=>({status,rows});
   if(!map.hasLayer(inventarioForestalLayer)) return result("layer-disabled");
   const gl=inventarioForestalLayer.getMaplibreMap();
   if(!gl) return result("maplibre-unavailable");
   try{
+    if(!gl.isStyleLoaded()){
+      await new Promise(resolve=>{
+        let done=false;
+        const finish=()=>{if(done)return;done=true;resolve();};
+        gl.once("idle",finish);
+        setTimeout(finish,8000);
+      });
+    }else if(!gl.isSourceLoaded("forestal")){
+      await new Promise(resolve=>{
+        let done=false;
+        const finish=()=>{if(done)return;done=true;resolve();};
+        gl.once("idle",finish);
+        setTimeout(finish,8000);
+      });
+    }
     if(!gl.isStyleLoaded()) return result("style-not-loaded");
     if(!gl.getLayer("forestal-poligonos")) return result("style-layer-missing");
     const point=gl.project([ll.lng,ll.lat]);
@@ -3147,7 +3162,7 @@ function fsCoverFromInventory(ll){
   }
 }
 async function fsCover(ll){
-  const local=fsCoverFromInventory(ll);
+  const local=await fsCoverFromInventory(ll);
   if(local.rows.length) return local.rows;
 
   fsCapP=fsCapP||getWmsCapabilities(FS_FOREST_WMS); const info=await fsCapP.catch(e=>{ fsCapP=null; throw e; });
