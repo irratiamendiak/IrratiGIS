@@ -24,6 +24,7 @@ import numpy as np
 import rasterio
 from rasterio.windows import Window
 from pyproj import CRS as PyprojCRS
+from shapely.geometry import box
 
 from wildfire.ingestion.create_mdt_relief_preview import validate_prj
 from wildfire.terrain.audit_dem_coverage_and_seams import coverage_audit
@@ -188,6 +189,8 @@ def build(availability_path: Path, boundary_path: Path, boundary_layer: str,
                 digest, size = download(row["url"], zip_path)
                 asc_path = extract_ascii(zip_path, work, sheet)
                 with rasterio.open(asc_path) as src:
+                    if not boundary.intersects(box(*src.bounds)):
+                        raise ValueError(f"{sheet}: downloaded raster extent does not intersect the official Gipuzkoa boundary")
                     report = paste_tile(src, dst, sheet, block_size)
                 report.update({"archive_bytes": size, "archive_sha256": digest, "url": row["url"]})
                 tile_reports.append(report)
