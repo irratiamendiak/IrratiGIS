@@ -121,11 +121,6 @@ def paste_tile(src, dst, sheet: str, block_size: int) -> dict:
             h, w = min(block_size, src.height-sr), min(block_size, src.width-sc)
             dr, dc = row0 + sr, col0 + sc
             # Clip source windows to the provincial output rectangle.
-            r_start, c_start = max(0, -dr), max(0, -dc)
-            r_end = min(h, dst.height-dr), min(w, dst.width-dc)
-            if r_end <= c_start or r_end <= 0 or r_start >= h or r_start >= h:
-                continue
-            # Recompute a rectangular intersection in source-block coordinates.
             rr0, cc0 = max(0, -dr), max(0, -dc)
             rr1, cc1 = min(h, dst.height-dr), min(w, dst.width-dc)
             if rr1 <= rr0 or cc1 <= cc0:
