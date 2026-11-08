@@ -3119,21 +3119,15 @@ async function fsCoverFromInventory(ll){
   const gl=inventarioForestalLayer.getMaplibreMap();
   if(!gl) return result("maplibre-unavailable");
   try{
-    if(!gl.isStyleLoaded()){
-      await new Promise(resolve=>{
-        let done=false;
-        const finish=()=>{if(done)return;done=true;resolve();};
-        gl.once("idle",finish);
-        setTimeout(finish,8000);
-      });
-    }else if(!gl.isSourceLoaded("forestal")){
-      await new Promise(resolve=>{
-        let done=false;
-        const finish=()=>{if(done)return;done=true;resolve();};
-        gl.once("idle",finish);
-        setTimeout(finish,8000);
-      });
-    }
+    const waitForIdle=()=>new Promise(resolve=>{
+      if(typeof gl.once!=="function"){resolve();return;}
+      let done=false;
+      const finish=()=>{if(done)return;done=true;resolve();};
+      gl.once("idle",finish);
+      setTimeout(finish,8000);
+    });
+    if(!gl.isStyleLoaded()) await waitForIdle();
+    else if(typeof gl.isSourceLoaded==="function"&&!gl.isSourceLoaded("forestal")) await waitForIdle();
     if(!gl.isStyleLoaded()) return result("style-not-loaded");
     if(!gl.getLayer("forestal-poligonos")) return result("style-layer-missing");
     const point=gl.project([ll.lng,ll.lat]);
