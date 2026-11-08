@@ -59,16 +59,34 @@ def select_adjacent_tiles(rows, limit=3, tolerance=1e-6):
 
 
 def validate_prj(prj_bytes: bytes, sheet: str) -> PyprojCRS:
-    """Parse the sidecar as WKT and require the expected projected CRS."""
-    try:
-        source_crs = PyprojCRS.from_wkt(prj_bytes.decode("utf-8-sig"))
-    except Exception as exc:
-        raise ValueError(f"{sheet}: PRJ is not valid WKT") from exc
+    """Validate either WKT or the official legacy key/value PRJ format."""
+    text = prj_bytes.decode("utf-8-sig").strip()
     expected = PyprojCRS.from_epsg(25830)
+    try:
+        source_crs = PyprojCRS.from_wkt(text)
+    except Exception:
+        # The Euskadi MDT ZIPs use a legacy ESRI ASCII key/value sidecar,
+        # not WKT. Parse its fields explicitly; never accept a substring match.
+        fields = {}
+        for line in text.splitlines():
+            parts = line.split(None, 1)
+            if len(parts) == 2:
+                fields[parts[0].strip().casefold()] = (
+                    parts[1].strip().upper().replace("_", "")
+                )
+        required = {
+            "projection": "UTM",
+            "zone": "30",
+            "datum": "AIETRS89",
+            "spheroid": "GRS80",
+            "units": "METERS",
+        }
+        if any(fields.get(key) != value for key, value in required.items()):
+            raise ValueError(f"{sheet}: PRJ is neither valid WKT nor the expected ETRS89 / UTM zone 30 format")
+        return expected
     if not source_crs.equals(expected):
         raise ValueError(f"{sheet}: PRJ CRS is not equivalent to EPSG:25830")
     return source_crs
-
 
 def read_tile(row, workdir):
     req = urllib.request.Request(row["url"], headers={"User-Agent": "IrratiGIS-relief-preview/1.0"})
@@ -86,11 +104,13 @@ def read_tile(row, workdir):
             raise ValueError(f"{row['HOJA']}: expected one ASC and a PRJ")
         prj_name = next((n for n in prj if PurePosixPath(n).stem.lower() == PurePosixPath(asc[0]).stem.lower()), prj[0])
         prj_bytes = z.read(prj_name)
-        validate_prj(prj_bytes, row["HOJA"])
+        source_crs = validate_prj(prj_bytes, row["HOJA"])
         asc_path = workdir / (row["HOJA"] + ".asc")
         asc_path.write_bytes(z.read(asc[0]))
         # GDAL/rasterio discovers the CRS from a same-stem ESRI ASCII Grid sidecar.
-        asc_path.with_suffix(".prj").write_bytes(prj_bytes)
+        asc_path.with_suffix(".prj").write_text(
+            source_crs.to_wkt(version="WKT1_GDAL"), encoding="utf-8"
+        )
     with rasterio.open(asc_path) as src:
         if abs(src.transform.a - 1) > 1e-6 or abs(src.transform.e + 1) > 1e-6:
             raise ValueError(f"{row['HOJA']}: expected 1 m cells")
