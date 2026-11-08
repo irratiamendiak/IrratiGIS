@@ -52,3 +52,32 @@ def test_seam_audit_compares_adjacent_edge_cells(tmp_path):
     assert result["comparable_valid_pairs"]==3
     assert result["different_pairs"]==3
     assert result["max_abs_edge_step_m"]==3
+
+def test_seam_audit_rejects_resolution_mismatch(tmp_path):
+    a=tmp_path/"a.tif"; b=tmp_path/"b.tif"
+    write_dem(a,np.ones((3,3)),x=0)
+    with rasterio.open(b,"w",driver="GTiff",width=3,height=3,count=1,dtype="float32",
+        crs="EPSG:25830",transform=from_origin(3,3,2,2),nodata=-9999) as dst:
+        dst.write(np.ones((3,3),dtype="float32"),1)
+    result=module.seam_audit([a,b])[0]
+    assert result["status"]=="resolution_mismatch"
+
+
+def test_seam_audit_rejects_misaligned_pixel_lattice(tmp_path):
+    a=tmp_path/"a.tif"; b=tmp_path/"b.tif"
+    write_dem(a,np.ones((3,3)),x=0)
+    with rasterio.open(b,"w",driver="GTiff",width=3,height=3,count=1,dtype="float32",
+        crs="EPSG:25830",transform=from_origin(2.5,3,1,1),nodata=-9999) as dst:
+        dst.write(np.ones((3,3),dtype="float32"),1)
+    result=module.seam_audit([a,b])[0]
+    assert result["status"]=="grid_origin_mismatch"
+
+
+def test_seam_audit_rejects_incompatible_crs(tmp_path):
+    a=tmp_path/"a.tif"; b=tmp_path/"b.tif"
+    write_dem(a,np.ones((3,3)),x=0)
+    with rasterio.open(b,"w",driver="GTiff",width=3,height=3,count=1,dtype="float32",
+        crs="EPSG:4326",transform=from_origin(2,3,1,1),nodata=-9999) as dst:
+        dst.write(np.ones((3,3),dtype="float32"),1)
+    result=module.seam_audit([a,b])[0]
+    assert result["status"]=="incompatible_crs"
