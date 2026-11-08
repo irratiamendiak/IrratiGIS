@@ -67,5 +67,21 @@ def test_prj_rejects_a_different_coordinate_reference_system():
 
 
 def test_prj_rejects_malformed_wkt():
-    with pytest.raises(ValueError, match="not valid WKT"):
+    with pytest.raises(ValueError, match="neither valid WKT"):
         module.validate_prj(b"not a coordinate system", "113-6-3")
+
+
+
+def test_prj_accepts_official_legacy_ascii_grid_format():
+    from pyproj import CRS
+
+    prj = b"""Projection    UTM
+Zone          30
+Datum         AI_ETRS89
+Spheroid      GRS80
+Units         METERS
+Zunits        NO
+Parameters
+"""
+    parsed = module.validate_prj(prj, "113-6-3")
+    assert parsed.equals(CRS.from_epsg(25830))
