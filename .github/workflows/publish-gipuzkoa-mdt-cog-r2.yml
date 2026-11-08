@@ -1,0 +1,200 @@
+name: Publish Gipuzkoa MDT COG to Cloudflare R2
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Successful run ID that contains gipuzkoa-mdt-full-coverage"
+        required: true
+        default: "42462122541"
+        type: string
+      public_base_url:
+        description: "Optional public base URL for the bucket (without trailing slash), used only for HTTP Range verification"
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: publish-gipuzkoa-mdt-cog-r2
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: irrati-inventario
+      OBJECT_KEY: terrain/gipuzkoa/mdt-lidar-2017-1m.cog.tif
+      SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+      PUBLIC_BASE_URL: ${{ inputs.public_base_url }}
+    steps:
+      - name: Check out publishing workflow
+        uses: actions/checkout@v4
+
+      - name: Validate R2 credentials are configured
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$AWS_ACCESS_KEY_ID" || { echo "::error::Missing repository secret R2_ACCESS_KEY_ID"; exit 1; }
+          test -n "$AWS_SECRET_ACCESS_KEY" || { echo "::error::Missing repository secret R2_SECRET_ACCESS_KEY"; exit 1; }
+          test -n "$R2_ACCOUNT_ID" || { echo "::error::Missing repository secret R2_ACCOUNT_ID"; exit 1; }
+          [[ "$R2_ACCOUNT_ID" =~ ^[a-f0-9]{32}$ ]] || { echo "::error::R2_ACCOUNT_ID must be a 32-character Cloudflare account ID"; exit 1; }
+
+      - name: Reclaim runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL || true
+          df -h
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install raster and S3 tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "rasterio>=1.4,<2" "awscli>=1.36,<2"
+          aws --version
+          python -c "import rasterio; print('Rasterio', rasterio.__version__, 'GDAL', rasterio.__gdal_version__)"
+
+      - name: Download the provincial MDT artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: gipuzkoa-mdt-full-coverage
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: data/input/gipuzkoa-mdt-full-coverage
+
+      - name: Verify source raster and available disk
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="data/input/gipuzkoa-mdt-full-coverage/gipuzkoa_mdt_lidar_2017_1m.tif"
+          test -s "$SRC"
+          python - "$SRC" <<'PY'
+          import sys, rasterio
+          p=sys.argv[1]
+          with rasterio.open(p) as ds:
+              assert ds.count == 1, f"Expected 1 band, got {ds.count}"
+              assert ds.crs and ds.crs.to_epsg() == 25830, f"Unexpected CRS: {ds.crs}"
+              assert ds.nodata is not None, "No NoData value declared"
+              assert abs(abs(ds.res[0])-1) < 1e-6 and abs(abs(ds.res[1])-1) < 1e-6, f"Expected 1 m cells, got {ds.res}"
+              print({"size_bytes": __import__("os").path.getsize(p), "shape": (ds.height,ds.width), "crs": ds.crs.to_string(), "resolution": ds.res, "nodata": ds.nodata, "overviews_before": ds.overviews(1)})
+          PY
+          AVAIL_KB=$(df -Pk "$GITHUB_WORKSPACE" | awk 'NR==2 {print $4}')
+          echo "Available workspace disk: ${AVAIL_KB} KB"
+          if [ "$AVAIL_KB" -lt 5000000 ]; then
+            echo "::error::Less than 5 GB free after artifact download; refusing COG conversion to avoid exhausting runner disk."
+            exit 1
+          fi
+          df -h
+
+      - name: Convert provincial MDT to Cloud Optimized GeoTIFF
+        run: |
+          python - <<'PY'
+          import os, rasterio
+          from rasterio.shutil import copy
+          src="data/input/gipuzkoa-mdt-full-coverage/gipuzkoa_mdt_lidar_2017_1m.tif"
+          dst="data/output/gipuzkoa_mdt_lidar_2017_1m.cog.tif"
+          os.makedirs(os.path.dirname(dst), exist_ok=True)
+          copy(
+              src, dst, driver="COG",
+              COMPRESS="ZSTD", LEVEL=9, PREDICTOR="FLOATING_POINT",
+              BLOCKSIZE=512, BIGTIFF="IF_SAFER",
+              RESAMPLING="AVERAGE",
+              NUM_THREADS="ALL_CPUS"
+          )
+          with rasterio.open(dst) as ds:
+              assert ds.driver == "GTiff"
+              assert ds.crs and ds.crs.to_epsg() == 25830
+              assert ds.count == 1 and ds.nodata is not None
+              ovs=ds.overviews(1)
+              assert ovs, "COG has no internal overviews"
+              resolutions=[round(ds.res[0]*factor,2) for factor in ovs]
+              print({"output_bytes": os.path.getsize(dst), "shape": (ds.height,ds.width), "resolution": ds.res, "overview_factors": ovs, "overview_resolutions_m": resolutions, "compression": ds.compression.value, "block_shapes": ds.block_shapes})
+              assert any(12 <= value <= 20 for value in resolutions), f"No overview near the viewer's 14 m target: {resolutions}"
+          PY
+          df -h
+
+      - name: Configure Cloudflare R2 S3 endpoint
+        run: echo "AWS_ENDPOINT_URL=https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" >> "$GITHUB_ENV"
+
+      - name: Verify bucket access and refuse overwrites
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws s3api head-bucket --bucket "$R2_BUCKET" --endpoint-url "$AWS_ENDPOINT_URL"
+          if aws s3api head-object --bucket "$R2_BUCKET" --key "$OBJECT_KEY" --endpoint-url "$AWS_ENDPOINT_URL" >/tmp/r2-head.json 2>/tmp/r2-head.err; then
+            echo "::error::The destination object already exists: s3://$R2_BUCKET/$OBJECT_KEY. No overwrite was performed."
+            exit 1
+          else
+            if ! grep -Eqi '404|Not Found|NoSuchKey' /tmp/r2-head.err; then
+              cat /tmp/r2-head.err
+              echo "::error::Could not establish that the destination key is absent; refusing upload."
+              exit 1
+            fi
+          fi
+          echo "Bucket is reachable and destination key is absent."
+
+      - name: Upload COG using multipart-capable S3 transfer
+        run: |
+          set -euo pipefail
+          aws s3 cp data/output/gipuzkoa_mdt_lidar_2017_1m.cog.tif "s3://$R2_BUCKET/$OBJECT_KEY" \
+            --endpoint-url "$AWS_ENDPOINT_URL" \
+            --no-progress \
+            --only-show-errors \
+            --no-guess-mime-type
+          aws s3api head-object --bucket "$R2_BUCKET" --key "$OBJECT_KEY" --endpoint-url "$AWS_ENDPOINT_URL" > /tmp/r2-upload-head.json
+          python - <<'PY'
+          import json
+          x=json.load(open("/tmp/r2-upload-head.json"))
+          print({"uploaded_content_length":x.get("ContentLength"),"content_type":x.get("ContentType"),"etag":x.get("ETag")})
+          assert x.get("ContentLength",0)>0, "Uploaded object has zero bytes"
+          PY
+
+      - name: Verify public HTTP Range access when a base URL is supplied
+        if: ${{ inputs.public_base_url != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${PUBLIC_BASE_URL%/}"
+          URL="$BASE/$OBJECT_KEY"
+          echo "Checking public object URL (URL is not a credential): $URL"
+          curl --fail --silent --show-error --range 0-16383 -D /tmp/range-headers.txt "$URL" -o /tmp/range-body.bin
+          grep -Eqi '^HTTP/[^ ]+ 206' /tmp/range-headers.txt || { cat /tmp/range-headers.txt; echo "::error::Server did not honor HTTP Range with 206 Partial Content"; exit 1; }
+          test "$(wc -c < /tmp/range-body.bin)" -gt 0
+          echo "HTTP Range request returned partial content."
+          cat /tmp/range-headers.txt
+          curl --silent --show-error --request OPTIONS "$URL" \\
+            --header "Origin: https://irratiamendiak.github.io" \\
+            --header "Access-Control-Request-Method: GET" \\
+            --header "Access-Control-Request-Headers: range" \\
+            --dump-header /tmp/cors-headers.txt --output /dev/null
+          grep -Eqi "^access-control-allow-origin: \\*|^access-control-allow-origin: https://irratiamendiak\\.github\\.io" /tmp/cors-headers.txt || { cat /tmp/cors-headers.txt; echo "::error::CORS does not allow the IrratiGIS GitHub Pages origin"; exit 1; }
+          grep -Eqi "^access-control-allow-methods:.*GET" /tmp/cors-headers.txt || { cat /tmp/cors-headers.txt; echo "::error::CORS does not allow GET"; exit 1; }
+          echo "CORS preflight permits the IrratiGIS origin and GET."
+          cat /tmp/cors-headers.txt
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo "## Gipuzkoa MDT COG publication"
+            echo
+            echo "- Bucket: `$R2_BUCKET`"
+            echo "- Object: `$OBJECT_KEY`"
+            echo "- Source run: `$SOURCE_RUN_ID`"
+            if [ -n "$PUBLIC_BASE_URL" ]; then
+              echo "- Public URL: ${PUBLIC_BASE_URL%/}/$OBJECT_KEY"
+            else
+              echo "- Public URL: not checked (no public_base_url input supplied)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
