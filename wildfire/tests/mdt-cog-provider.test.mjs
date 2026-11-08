@@ -34,3 +34,8 @@ test("refuses to open without a configured URL",async()=>{
   const reader=loadProvider([fakeImage(14)]).create({url:""});
   await assert.rejects(reader.open(),/URL del MDT provincial/);
 });
+
+test("rejects a 1 m-only COG instead of loading an enormous browser window",async()=>{
+  const reader=loadProvider([fakeImage(1)]).create({url:"https://example.test/dem.tif",targetResolutionM:14});
+  await assert.rejects(reader.open(),/overview cercano/);
+});
