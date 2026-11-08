@@ -2,6 +2,14 @@ name: Build Gipuzkoa MDT relief preview
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/gipuzkoa-mdt-relief-preview.yml
+      - wildfire/terrain/**
+      - wildfire/ingestion/create_mdt_relief_preview.py
+      - wildfire/ingestion/fetch_arcgis_sheet_index.py
+      - wildfire/ingestion/check_mdt_zip_availability.py
   push:
     branches: [main, feature/wildfire-intelligence-foundation]
     paths:
