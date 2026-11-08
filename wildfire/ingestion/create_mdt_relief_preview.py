@@ -14,7 +14,6 @@ from rasterio.merge import merge
 from rasterio.crs import CRS
 import geopandas as gpd
 from shapely import wkt
-import matplotlib.pyplot as plt
 
 
 def select_adjacent_tiles(rows, limit=3, tolerance=1e-6):
@@ -146,6 +145,7 @@ def main():
         az, alt = np.deg2rad(315), np.deg2rad(45)
         shade = np.clip(np.sin(alt)*np.sin(slope) + np.cos(alt)*np.cos(slope)*np.cos(az-aspect), 0, 1)
         lo, hi = np.percentile(dem[valid], [2, 98])
+        import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(12, 9), dpi=180)
         img = ax.imshow(np.ma.masked_where(~valid, dem), cmap="terrain", vmin=lo, vmax=hi)
         ax.imshow(np.ma.masked_where(~valid, shade), cmap="gray", alpha=0.38, vmin=0, vmax=1)
