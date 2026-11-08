@@ -1,0 +1,99 @@
+name: Derive full Gipuzkoa MDT terrain variables
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Successful full-coverage workflow run ID containing the provincial MDT artifact"
+        required: false
+        default: "42462122541"
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/gipuzkoa-mdt-terrain-derivatives.yml
+      - wildfire/terrain/derive_terrain_variables.py
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: gipuzkoa-mdt-terrain-derivatives
+  cancel-in-progress: false
+
+jobs:
+  derive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      PYTHONPATH: .
+      SOURCE_RUN_ID: ${{ inputs.source_run_id || '42462122541' }}
+    steps:
+      - name: Check out terrain processing code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install raster processing dependencies
+        run: pip install "numpy>=1.26,<3" "rasterio>=1.4,<2"
+
+      - name: Inspect runner disk
+        run: df -h
+
+      - name: Download verified provincial MDT artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: gipuzkoa-mdt-full-coverage
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: data/input/gipuzkoa-mdt-full-coverage
+
+      - name: Verify source GeoTIFF metadata
+        run: |
+          python - <<'PY'
+          import rasterio
+          path = "data/input/gipuzkoa-mdt-full-coverage/gipuzkoa_mdt_lidar_2017_1m.tif"
+          with rasterio.open(path) as src:
+              assert src.count == 1, f"Expected one band, got {src.count}"
+              assert src.crs and src.crs.to_epsg() == 25830, f"Unexpected CRS: {src.crs}"
+              assert src.nodata is not None, "Source DEM has no declared NoData"
+              assert abs(abs(src.transform.a) - 1.0) < 1e-8
+              assert abs(abs(src.transform.e) - 1.0) < 1e-8
+              print({
+                  "width": src.width, "height": src.height,
+                  "crs": src.crs.to_string(), "resolution": src.res,
+                  "nodata": src.nodata, "bounds": tuple(src.bounds),
+              })
+          PY
+
+      - name: Derive slope, aspect, hillshade and quality mask
+        run: |
+          python wildfire/terrain/derive_terrain_variables.py \
+            --dem data/input/gipuzkoa-mdt-full-coverage/gipuzkoa_mdt_lidar_2017_1m.tif \
+            --output-dir data/processed/gipuzkoa/mdt_terrain_derivatives \
+            --block-size 1024 \
+            --azimuth 315 \
+            --altitude 45
+
+      - name: Record final disk usage
+        if: always()
+        run: df -h
+
+      - name: Upload provincial terrain derivatives and report
+        uses: actions/upload-artifact@v4
+        with:
+          name: gipuzkoa-mdt-terrain-derivatives
+          path: |
+            data/processed/gipuzkoa/mdt_terrain_derivatives/slope_degrees.tif
+            data/processed/gipuzkoa/mdt_terrain_derivatives/aspect_degrees.tif
+            data/processed/gipuzkoa/mdt_terrain_derivatives/hillshade.tif
+            data/processed/gipuzkoa/mdt_terrain_derivatives/terrain_quality_mask.tif
+            data/processed/gipuzkoa/mdt_terrain_derivatives/terrain_derivatives_report.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
