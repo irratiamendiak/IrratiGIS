@@ -28,6 +28,9 @@
       image=chosen;
       const res=image.getResolution();
       sourceResolution=Math.max(Math.abs(res[0]),Math.abs(res[1]));
+      if(sourceResolution<targetResolution*0.5||sourceResolution>targetResolution*2){
+        throw new Error("El COG no dispone de un overview cercano a "+targetResolution+" m; créalo antes de conectarlo al visor.");
+      }
       const rawNoData=image.getFileDirectory()?.GDAL_NODATA;
       noData=rawNoData===undefined?null:Number(String(rawNoData).replace(/\0/g,""));
       return {width:image.getWidth(),height:image.getHeight(),resolutionM:sourceResolution,noData};
