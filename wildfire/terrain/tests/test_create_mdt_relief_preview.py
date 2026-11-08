@@ -48,3 +48,24 @@ def test_rejects_disconnected_available_tiles():
     ]
     with pytest.raises(ValueError, match="No connected group"):
         module.select_adjacent_tiles(rows)
+
+
+def test_prj_wkt_is_parsed_and_accepts_equivalent_epsg_25830():
+    from pyproj import CRS
+
+    prj = CRS.from_epsg(25830).to_wkt(version="WKT1_ESRI").encode("utf-8")
+    parsed = module.validate_prj(prj, "113-6-3")
+    assert parsed.equals(CRS.from_epsg(25830))
+
+
+def test_prj_rejects_a_different_coordinate_reference_system():
+    from pyproj import CRS
+
+    prj = CRS.from_epsg(4326).to_wkt().encode("utf-8")
+    with pytest.raises(ValueError, match="not equivalent to EPSG:25830"):
+        module.validate_prj(prj, "113-6-3")
+
+
+def test_prj_rejects_malformed_wkt():
+    with pytest.raises(ValueError, match="not valid WKT"):
+        module.validate_prj(b"not a coordinate system", "113-6-3")
