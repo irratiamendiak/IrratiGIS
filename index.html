@@ -3401,7 +3401,11 @@ async function fsRun(){
     `<b>Hacia dónde</b>: cabeza hacia <b>${fsCard(b0.head)} (${Math.round(b0.head)}°)</b> · flancos ${f1(fsR(b0,90))} m/min · cola ${f1(fsR(b0,180))} m/min<br>`+
     `${startTxt}Viento ${fsCard(w0.dir)} ${Math.round(w0.spd)} km/h · T ${Math.round(w0.T)} °C · HR ${Math.round(w0.RH)} % · comb. fino muerto <b>${m0.toFixed(1)} %</b> · pendiente ${Math.round(ter.tan*100)}%`+tbl+
     histHtml+warn.map(w=>`<div style="color:#8b2f2f;margin-top:4px">⚠️ ${w}</div>`).join("");
+  const terrainSourceLabel=fsMdtStatus.loaded
+    ?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m (Terrarium como respaldo fuera de cobertura)`
+    :(fsMdtStatus.active?`Terrarium · no se pudo abrir el MDT provincial: ${fsMdtStatus.error||"sin datos"}`:"Terrarium · MDT provincial aún sin publicar/configurar");
   const sumMeteo=
+    `<span style="color:#52645a">Terreno: ${escapeHtml(terrainSourceLabel)}</span><br>`+
     `Intensidad ${Math.round(Ih)} kW/m · llama ≈ ${Lh.toFixed(1)} m (flancos ${Lf.toFixed(1)} m · cola ${Lb.toFixed(1)} m) · relación L/A ${b0.LB.toFixed(1)} · cabeza ${(b0.Rh*.06).toFixed(2)} km/h<br>`+
     `Viento ${fsCard(w0.dir)} ${Math.round(w0.dir)}° · ${Math.round(w0.spd)} km/h · T ${Math.round(w0.T)} °C · HR ${Math.round(w0.RH)} % → humedad comb. fino muerto <b>${m0.toFixed(1)} %</b>${fsCfg.moistMode==="man"?" (manual)":""} <span style="color:#65736b">(${escapeHtml(met.src)})</span><br>`+
     (fsCfg.moistMode!=="man"?`<span style="color:#65736b">Humedad base ${mNoSun.toFixed(1)} %${(fsCfg.modeEff||fsCfg.moistMode)==="calc"?(met.rain?" (con la lluvia de los días previos)":" (sin historial de lluvia con meteorología manual: usa el FFMC de la red)"):fsCfg.moistMode==="ffmc"?" (FFMC "+fsCfg.ffmc+", mezclado al 50 % con T y HR)":fsCfg.moistMode==="ffmcnet"&&!fsCfg.modeEff?" (FFMC de la red "+ffn.val.toFixed(1)+", mezclado al 50 % con T y HR)":""}; ajuste por sol y orientación de la ladera (hacia ${fsCard(ter.asp)}): ${m0-mNoSun>=0?"+":""}${(m0-mNoSun).toFixed(1)} puntos.</span><br>`:"")+
