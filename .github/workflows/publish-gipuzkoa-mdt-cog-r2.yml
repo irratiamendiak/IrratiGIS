@@ -109,7 +109,7 @@ jobs:
               src, dst, driver="COG",
               COMPRESS="ZSTD", LEVEL=9, PREDICTOR="FLOATING_POINT",
               BLOCKSIZE=512, BIGTIFF="IF_SAFER",
-              RESAMPLING="AVERAGE", OVERVIEW_RESAMPLING="AVERAGE",
+              RESAMPLING="AVERAGE",
               NUM_THREADS="ALL_CPUS"
           )
           with rasterio.open(dst) as ds:
@@ -173,6 +173,15 @@ jobs:
           test "$(wc -c < /tmp/range-body.bin)" -gt 0
           echo "HTTP Range request returned partial content."
           cat /tmp/range-headers.txt
+          curl --silent --show-error --request OPTIONS "$URL" \\
+            --header "Origin: https://irratiamendiak.github.io" \\
+            --header "Access-Control-Request-Method: GET" \\
+            --header "Access-Control-Request-Headers: range" \\
+            --dump-header /tmp/cors-headers.txt --output /dev/null
+          grep -Eqi "^access-control-allow-origin: \\*|^access-control-allow-origin: https://irratiamendiak\\.github\\.io" /tmp/cors-headers.txt || { cat /tmp/cors-headers.txt; echo "::error::CORS does not allow the IrratiGIS GitHub Pages origin"; exit 1; }
+          grep -Eqi "^access-control-allow-methods:.*GET" /tmp/cors-headers.txt || { cat /tmp/cors-headers.txt; echo "::error::CORS does not allow GET"; exit 1; }
+          echo "CORS preflight permits the IrratiGIS origin and GET."
+          cat /tmp/cors-headers.txt
 
       - name: Publish summary
         if: always()
