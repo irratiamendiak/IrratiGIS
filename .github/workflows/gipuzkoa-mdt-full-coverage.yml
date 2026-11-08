@@ -1,0 +1,104 @@
+name: Build full Gipuzkoa MDT coverage
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/gipuzkoa-mdt-full-coverage.yml
+      - wildfire/ingestion/build_gipuzkoa_mdt_full_coverage.py
+      - wildfire/ingestion/create_mdt_relief_preview.py
+      - wildfire/ingestion/fetch_arcgis_sheet_index.py
+      - wildfire/ingestion/check_mdt_zip_availability.py
+      - wildfire/terrain/audit_dem_coverage_and_seams.py
+      - wildfire/terrain/tests/**
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/gipuzkoa-mdt-full-coverage.yml
+      - wildfire/ingestion/build_gipuzkoa_mdt_full_coverage.py
+      - wildfire/ingestion/create_mdt_relief_preview.py
+      - wildfire/ingestion/fetch_arcgis_sheet_index.py
+      - wildfire/ingestion/check_mdt_zip_availability.py
+      - wildfire/terrain/audit_dem_coverage_and_seams.py
+      - wildfire/terrain/tests/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gipuzkoa-mdt-full-coverage
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: .
+    steps:
+      - name: Checkout workflow-triggering revision
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install geospatial dependencies
+        run: pip install "numpy>=1.26,<3" "rasterio>=1.4,<2" "geopandas>=1.0,<2" "pyogrio>=0.10,<1" "matplotlib>=3.8,<4" "shapely>=2,<3" "pyproj>=3.7,<4" "pytest>=8,<9"
+      - name: Run terrain and ingestion tests
+        run: python -m pytest -q wildfire/terrain/tests
+
+  full-coverage:
+    if: github.event_name == 'workflow_dispatch'
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      PYTHONPATH: .
+    steps:
+      - name: Checkout workflow-triggering revision
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install geospatial dependencies
+        run: pip install "numpy>=1.26,<3" "rasterio>=1.4,<2" "geopandas>=1.0,<2" "pyogrio>=0.10,<1" "matplotlib>=3.8,<4" "shapely>=2,<3" "pyproj>=3.7,<4"
+      - name: Inspect available runner disk
+        run: df -h
+      - name: Prepare official Gipuzkoa boundary
+        run: |
+          python wildfire/ingestion/prepare_gipuzkoa_boundary.py \
+            --catalog wildfire/ingestion/sources.euskadi-gipuzkoa.json \
+            --output data/processed/gipuzkoa
+      - name: Fetch every intersecting official 1:5,000 sheet
+        run: |
+          python wildfire/ingestion/fetch_arcgis_sheet_index.py \
+            --boundary data/processed/gipuzkoa/gipuzkoa_boundary.gpkg \
+            --boundary-layer pilot_boundary \
+            --output data/processed/gipuzkoa/mdt_5000_sheet_index.gpkg
+      - name: Check availability of every intersecting MDT archive
+        run: |
+          python wildfire/ingestion/check_mdt_zip_availability.py \
+            --index data/processed/gipuzkoa/mdt_5000_sheet_index.json \
+            --output-dir data/processed/gipuzkoa/mdt_zip_check
+      - name: Download, validate and assemble all MDT sheets
+        run: |
+          python wildfire/ingestion/build_gipuzkoa_mdt_full_coverage.py \
+            --availability data/processed/gipuzkoa/mdt_zip_check/mdt_2017_zip_availability.json \
+            --boundary data/processed/gipuzkoa/gipuzkoa_boundary.gpkg \
+            --boundary-layer pilot_boundary \
+            --output-dir data/processed/gipuzkoa/mdt_full_coverage
+      - name: Record final disk usage
+        if: always()
+        run: df -h
+      - name: Upload full provincial MDT and coverage audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: gipuzkoa-mdt-full-coverage
+          path: |
+            data/processed/gipuzkoa/mdt_full_coverage/gipuzkoa_mdt_lidar_2017_1m.tif
+            data/processed/gipuzkoa/mdt_full_coverage/gipuzkoa_mdt_full_coverage_report.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
