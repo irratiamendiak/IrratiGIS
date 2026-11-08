@@ -108,13 +108,14 @@ def main() -> int:
                 "HOJA": record["HOJA"],
                 "OBJECTID": record.get("OBJECTID"),
                 "pilot_intersection_area_km2": record.get("pilot_intersection_area_km2"),
+                "geometry_wkt": record.get("geometry_wkt"),
                 "url": url,
                 **result,
             })
 
     rows.sort(key=lambda row: row["HOJA"])
     fields = [
-        "HOJA", "OBJECTID", "pilot_intersection_area_km2", "url",
+        "HOJA", "OBJECTID", "pilot_intersection_area_km2", "geometry_wkt", "url",
         "http_status", "available", "checked_method", "content_length_bytes",
         "content_range", "final_url", "error",
     ]
