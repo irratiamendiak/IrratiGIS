@@ -94,7 +94,7 @@ test("inventory spatial query reports why the local layer did not provide featur
       inventarioForestalLayer: { getMaplibreMap: () => gl },
       escapeHtml: value => String(value)
     };
-    const source = extractFunction("fsCoverFromInventory").replace(/^(?!async\\s)function\\s/, "async function ");
+    const source = extractFunction("fsCoverFromInventory").replace(/^(?!async\s)function\s/, "async function ");
     return vm.runInNewContext(source + "\nfsCoverFromInventory", context);
   };
   assert.equal(run({ enabled: false })({ lat: 43, lng: -2 }).status, "layer-disabled");
