@@ -4,6 +4,12 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
+  push:
+    branches: [feature/wildfire-mdt-provider]
+    paths:
+      - index.html
+      - wildfire/**
+      - .github/workflows/deploy-wildfire-preview.yml
   workflow_dispatch:
 
 permissions:
@@ -15,7 +21,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'feature/wildfire-mdt-provider'
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/feature/wildfire-mdt-provider' || github.event.pull_request.head.ref == 'feature/wildfire-mdt-provider'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR branch
