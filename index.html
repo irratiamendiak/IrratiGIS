@@ -3375,7 +3375,8 @@ async function fsRun(){
   const my=++fsBusy, out=fsPanel.querySelector(".fs-out"), fu=FS_FUELS[fsCfg.fuel];
   fsTerrainSamples={mdt:0,terrarium:0};
   fsGroup.clearLayers();
-  out.innerHTML=`<div style="font-weight:700;color:#52645a">Consultando terreno y calculando propagación…</div>`;
+  L.marker(fsIgn,{icon:fsIcon("🔥",24)}).addTo(fsGroup);
+  out.innerHTML=`<div style="font-weight:700;color:#52645a">Consultando terreno y calculando los tres escenarios…</div>`;
   let met, ffn=null, netNote="";
   try{
     met=await fsMeteo(); await fsLoadDem(fsIgn.lat,fsIgn.lng,6500);
@@ -3388,37 +3389,45 @@ async function fsRun(){
     return;
   }
   if(my!==fsBusy) return;
-  let rays;
-  try{ rays=fsSimulate(fu,met); }
-  catch(err){ if(my===fsBusy) out.innerHTML=`<div style="color:#8b2f2f">⚠️ ${escapeHtml(err.message||String(err))}</div>`; return; }
-  if(my!==fsBusy) return;
-  const far=rays.reduce((a,r)=>r.pts[180][1]>a.pts[180][1]?r:a,rays[0]), farBg=far.bg;
-  const ter=fsTerrain(fsIgn.lat,fsIgn.lng), w00=met.at(0), m00=fsMoistAt(w00,fu,ter,met.sun(0));
-  if(far.pts[180][1]<15){
-    fsLast=null;
-    out.innerHTML=fsDec(`Con estas condiciones el fuego <b>no se propaga</b> en las próximas 6 h. Humedad del combustible fino muerto: ${m00.toFixed(1)} %.`);
+  const scenarios=[
+    {key:"fav",name:"Favorable",desc:"Menor empuje del viento y combustible algo más húmedo",params:{wf:.7,dm:3},color:"#238b45",fill:.10},
+    {key:"prev",name:"Prevista",desc:"Meteorología y humedad estimadas seleccionadas",params:{wf:1,dm:0},color:"#2563eb",fill:.16},
+    {key:"des",name:"Desfavorable",desc:"Mayor empuje del viento y combustible más seco",params:{wf:1.3,dm:-2},color:"#c62828",fill:.10}
+  ];
+  const times=[30,60,90,120], timeColors={30:"#d7191c",60:"#fd8d3c",90:"#c98a00",120:"#b39b00"};
+  const results=[];
+  try{
+    for(const sc of scenarios){
+      const rays=fsSimulate(fu,met,sc.params);
+      if(my!==fsBusy) return;
+      const areas={};
+      for(const t of times){
+        const perimeter=fsPerim(rays,t);
+        areas[t]=fsHa(perimeter);
+        L.polygon(perimeter,{
+          color:sc.color,weight:t===120?3:2,
+          opacity:t===120?1:.78,
+          dashArray:sc.key==="prev"?"":"7 5",
+          fillColor:timeColors[t],fillOpacity:sc.fill
+        }).bindTooltip(`${sc.name} · ${t} min · ${areas[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup);
+      }
+      results.push({scenario:sc,areas,rays});
+    }
+  }catch(err){
+    if(my===fsBusy) out.innerHTML=`<div style="color:#8b2f2f">⚠️ ${escapeHtml(err.message||String(err))}</div>`;
     return;
   }
-  const bInit=fsBehavior(fu,ter.tan,ter.asp,w00.dir,w00.spd,m00);
-  const iRef=far.pts.findIndex(p=>p[1]>=15), tRef=(bInit.Rh>0||iRef<=0)?0:far.pts[iRef][0];
-  const w0=met.at(tRef), m0=fsMoistAt(w0,fu,ter,met.sun(tRef));
-  const b0=fsBehavior(fu,ter.tan,ter.asp,w0.dir,w0.spd,m0);
-  const cols={30:"#d7191c",60:"#fd8d3c",90:"#c98a00",120:"#ffd45a"}, ha={};
-  [30,60,90,120].forEach(t=>{
-    const perimeter=fsPerim(rays,t);
-    ha[t]=fsHa(perimeter);
-    L.polygon(perimeter,{color:cols[t],weight:2,fillColor:cols[t],fillOpacity:.25})
-      .bindTooltip(`${t} min · ${ha[t].toFixed(1)} ha`,{sticky:true})
-      .addTo(fsGroup);
-  });
-  fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0,met,farBg,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
+  if(my!==fsBusy) return;
   const fmt=n=>fsDec(n.toFixed(1));
-  out.innerHTML=`<div class="fs-sum"><b>Propagación estimada</b><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px">
-    <div style="padding:9px;border-radius:8px;background:#fff1f0;border-left:4px solid ${cols[30]}"><b>30 minutos</b><br>${fmt(ha[30])} ha</div>
-    <div style="padding:9px;border-radius:8px;background:#fff4ec;border-left:4px solid ${cols[60]}"><b>60 minutos</b><br>${fmt(ha[60])} ha</div>
-    <div style="padding:9px;border-radius:8px;background:#fff8e8;border-left:4px solid ${cols[90]}"><b>90 minutos</b><br>${fmt(ha[90])} ha</div>
-    <div style="padding:9px;border-radius:8px;background:#fffbea;border-left:4px solid ${cols[120]}"><b>120 minutos</b><br>${fmt(ha[120])} ha</div>
-  </div></div>`;
+  const table=results.map(({scenario,areas})=>`<div style="margin-top:10px;padding:8px;border-left:4px solid ${scenario.color};background:#f7f8f7;border-radius:5px">
+    <b style="color:${scenario.color}">${scenario.name}</b>
+    <div style="font-size:11px;color:#65736b;margin:2px 0 6px">${scenario.desc}</div>
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px">${times.map(t=>`<div style="padding:6px 3px;text-align:center;border-radius:5px;background:#fff;border-top:3px solid ${timeColors[t]}"><b style="font-size:11px">${t} min</b><br><b>${fmt(areas[t])}</b><br><span style="font-size:10px;color:#65736b">ha</span></div>`).join("")}</div>
+  </div>`).join("");
+  out.innerHTML=fsDec(`<div class="fs-sum"><b>Propagación estimada · superficie alcanzada</b>${table}
+    <div style="font-size:10px;color:#65736b;margin-top:8px">Los escenarios favorable y desfavorable son sensibilidades del modelo (viento ×0,7 / ×1,3 y humedad del combustible +3 / −2 puntos); no son predicciones meteorológicas independientes. El escenario previsto utiliza las condiciones seleccionadas. Los perímetros del mapa muestran los tres escenarios y los cuatro horizontes.</div>
+  </div>`);
+  fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays:results[1].rays,b0:null,met,farBg:null,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
   const profileSlot=fsPanel.querySelector(".fs-prof-slot");
   if(profileSlot) profileSlot.innerHTML="";
 }
