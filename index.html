@@ -3285,11 +3285,11 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div style="${row}"><b>Topografía</b> <select class="fs-terrain-source"><option value="mdt"${fsTerrainSource==="mdt"?" selected":""}>MDT LiDAR Gipuzkoa 2017 (16 m)</option><option value="terrarium"${fsTerrainSource==="terrarium"?" selected":""}>Terrarium (alternativa)</option></select></div>`+
    `<div class="fs-terrain-status" style="padding:6px 8px;margin:5px 0 8px;background:#edf4ef;border-left:3px solid #527c63;border-radius:5px;font-size:11px;font-weight:700">Fuente de terreno: ${escapeHtml(fsMdtLabel())}</div>`+
    `<div class="fs-prof-slot" style="display:none;margin:6px 0 8px"><div style="font-weight:700;color:#52645a">📈 Gráfico de evolución, pendiente y Campbell</div><div style="font-size:11px;color:#65736b">Aparecerá después de marcar el punto de inicio y calcular la simulación.</div></div>`+
-   `<div style="${row}"><b>Meteorología</b> <select class="fs-ws"><option value="auto">Automática (Open-Meteo + previsión)</option><option value="man">Manual</option></select></div>`+
+   `<div style="${row}"><b>Propagación</b> <select class="fs-ws"><option value="auto">Prevista (Open-Meteo + previsión)</option><option value="man">Manual</option></select></div>`+
    `<div class="fs-man" style="display:none;${row}">Viento del <input type="number" class="fs-dir" min="0" max="360" step="5" value="${fsCfg.dir}" style="width:50px">° · <input type="number" class="fs-spd" min="0" max="100" value="${fsCfg.spd}" style="width:44px"> km/h · T <input type="number" class="fs-t" min="-10" max="45" value="${fsCfg.temp}" style="width:42px">°C · HR <input type="number" class="fs-rh" min="5" max="100" value="${fsCfg.rh}" style="width:42px">%</div>`+
    `<div style="${row}"><b>Humedad de los combustibles</b></div>`+
    `<div style="${row}">Combustible fino muerto <select class="fs-mm"><option value="calc">calculada: T, HR, lluvia previa y sol</option><option value="inst">solo T y HR (+ sol)</option><option value="ffmcnet">FFMC de la red (50 % con T/HR)</option><option value="ffmc">FFMC a mano (50 % con T/HR)</option><option value="man">manual</option></select> <span class="fs-mff" style="display:none">FFMC <input type="number" class="fs-ffmc" min="30" max="99" step="0.5" value="${fsCfg.ffmc}" style="width:52px"></span> <span class="fs-msl" style="display:none"><input type="range" class="fs-m" min="3" max="25" value="${fsCfg.moist}" style="width:80px;vertical-align:middle"> <b class="fs-mv">${fsCfg.moist}%</b></span></div>`+
-   `<div class="fs-out" style="color:#65736b">Pulsa «Marcar inicio» y haz clic en el mapa.</div>`;
+   `<div class="fs-out" style="color:#65736b">Pulsa «Marcar inicio» y haz clic en el mapa. Después elige propagación prevista o manual.</div>`;
   const q=s=>fsPanel.querySelector(s), rerun=()=>{ if(fsIgn) fsRun(); }, num=(e,lo,hi,d)=>Math.min(hi,Math.max(lo,Number(e.target.value)||d));
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
   fsPanelWindow(fsPanel);
@@ -3376,7 +3376,8 @@ async function fsRun(){
   fsTerrainSamples={mdt:0,terrarium:0};
   fsGroup.clearLayers();
   L.marker(fsIgn,{icon:fsIcon("🔥",24)}).addTo(fsGroup);
-  out.innerHTML=`<div style="font-weight:700;color:#52645a">Consultando terreno y calculando los tres escenarios…</div>`;
+  const manual=fsCfg.wind==="man";
+  out.innerHTML=`<div style="font-weight:700;color:#52645a">Consultando terreno y calculando la propagación ${manual?"manual":"prevista"}…</div>`;
   let met, ffn=null, netNote="";
   try{
     met=await fsMeteo(); await fsLoadDem(fsIgn.lat,fsIgn.lng,6500);
@@ -3389,29 +3390,25 @@ async function fsRun(){
     return;
   }
   if(my!==fsBusy) return;
-  const scenarios=[
-    {key:"fav",name:"Favorable",desc:"Menor empuje del viento y combustible algo más húmedo",params:{wf:.7,dm:3},color:"#238b45",fill:.10},
-    {key:"prev",name:"Prevista",desc:"Meteorología y humedad estimadas seleccionadas",params:{wf:1,dm:0},color:"#2563eb",fill:.16},
-    {key:"des",name:"Desfavorable",desc:"Mayor empuje del viento y combustible más seco",params:{wf:1.3,dm:-2},color:"#c62828",fill:.10}
-  ];
-  const times=[30,60,90,120], timeColors={30:"#d7191c",60:"#fd8d3c",90:"#c98a00",120:"#b39b00"};
-  const results=[];
+  const times=[30,60,90,120];
+  const styles={
+    30:{color:"#d7191c",dash:"2 5",weight:2},
+    60:{color:"#ed8b00",dash:"7 4",weight:2},
+    90:{color:"#2878b5",dash:"12 4 2 4",weight:2.5},
+    120:{color:"#238b45",dash:"",weight:3}
+  };
+  let rays;
+  const areas={};
   try{
-    for(const sc of scenarios){
-      const rays=fsSimulate(fu,met,sc.params);
-      if(my!==fsBusy) return;
-      const areas={};
-      for(const t of times){
-        const perimeter=fsPerim(rays,t);
-        areas[t]=fsHa(perimeter);
-        L.polygon(perimeter,{
-          color:sc.color,weight:t===120?3:2,
-          opacity:t===120?1:.78,
-          dashArray:sc.key==="prev"?"":"7 5",
-          fillColor:timeColors[t],fillOpacity:sc.fill
-        }).bindTooltip(`${sc.name} · ${t} min · ${areas[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup);
-      }
-      results.push({scenario:sc,areas,rays});
+    rays=fsSimulate(fu,met);
+    if(my!==fsBusy) return;
+    for(const t of times){
+      const perimeter=fsPerim(rays,t), st=styles[t];
+      areas[t]=fsHa(perimeter);
+      L.polygon(perimeter,{
+        color:st.color,weight:st.weight,opacity:.95,dashArray:st.dash,
+        fillColor:st.color,fillOpacity:.035
+      }).bindTooltip(`${manual?"Manual":"Prevista"} · ${t} min · ${areas[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup);
     }
   }catch(err){
     if(my===fsBusy) out.innerHTML=`<div style="color:#8b2f2f">⚠️ ${escapeHtml(err.message||String(err))}</div>`;
@@ -3419,18 +3416,17 @@ async function fsRun(){
   }
   if(my!==fsBusy) return;
   const fmt=n=>fsDec(n.toFixed(1));
-  const table=results.map(({scenario,areas})=>`<div style="margin-top:10px;padding:8px;border-left:4px solid ${scenario.color};background:#f7f8f7;border-radius:5px">
-    <b style="color:${scenario.color}">${scenario.name}</b>
-    <div style="font-size:11px;color:#65736b;margin:2px 0 6px">${scenario.desc}</div>
-    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px">${times.map(t=>`<div style="padding:6px 3px;text-align:center;border-radius:5px;background:#fff;border-top:3px solid ${timeColors[t]}"><b style="font-size:11px">${t} min</b><br><b>${fmt(areas[t])}</b><br><span style="font-size:10px;color:#65736b">ha</span></div>`).join("")}</div>
-  </div>`).join("");
-  out.innerHTML=fsDec(`<div class="fs-sum"><b>Propagación estimada · superficie alcanzada</b>${table}
-    <div style="font-size:10px;color:#65736b;margin-top:8px">Los escenarios favorable y desfavorable son sensibilidades del modelo (viento ×0,7 / ×1,3 y humedad del combustible +3 / −2 puntos); no son predicciones meteorológicas independientes. El escenario previsto utiliza las condiciones seleccionadas. Los perímetros del mapa muestran los tres escenarios y los cuatro horizontes.</div>
+  const table=`<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-top:8px">`+
+    times.map(t=>`<div style="padding:7px 3px;text-align:center;border-radius:5px;background:#f7f8f7;border-top:3px ${styles[t].dash?"dashed":"solid"} ${styles[t].color}"><b style="font-size:11px">${t} min</b><br><b>${fmt(areas[t])}</b><br><span style="font-size:10px;color:#65736b">ha</span></div>`).join("")+`</div>`;
+  const source=manual?"Meteorología introducida manualmente":"Meteorología automática y previsión";
+  out.innerHTML=fsDec(`<div class="fs-sum"><b>Propagación ${manual?"manual":"prevista"} · superficie alcanzada</b>${table}
+    <div style="font-size:10px;color:#65736b;margin-top:8px">${source}. Los cuatro perímetros representan 30, 60, 90 y 120 minutos; el color y el tipo de línea identifican cada horizonte. Cambia el selector de meteorología para alternar entre prevista y manual; en modo manual se reutilizan los campos de viento, temperatura y humedad.</div>
   </div>`);
-  fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays:results[1].rays,b0:null,met,farBg:null,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
+  fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0:null,met,farBg:null,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
   const profileSlot=fsPanel.querySelector(".fs-prof-slot");
   if(profileSlot) profileSlot.innerHTML="";
 }
+
 /* --- GIF animatua: lurzorua (itzalduna) + lerroak + ondasunak + puntu kritikoak + perimetroaren bilakaera --- */
 async function fsMakeGif(btn){
   const S=fsLast; if(!S) return;
