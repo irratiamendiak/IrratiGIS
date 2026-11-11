@@ -17,32 +17,48 @@
       if (!root.GeoTIFF || typeof root.GeoTIFF.fromUrl !== "function") throw new Error("No se ha podido cargar el lector GeoTIFF.");
       const tiff = await root.GeoTIFF.fromUrl(url, { forceXHR: true });
       const count = await tiff.getImageCount();
-      let chosen = null, best = Infinity, skippedWithoutTransform = 0;
-      for (let i=0;i<count;i++) {
-        const candidate=await tiff.getImage(i);
-        let res;
-        // Some TIFF directories (masks/auxiliary IFDs) have no affine
-        // georeferencing. They are not usable as raster overviews.
-        try { res=candidate.getResolution(); }
-        catch (_) { skippedWithoutTransform++; continue; }
-        const size=Math.max(Math.abs(res[0]),Math.abs(res[1]));
-        if (!Number.isFinite(size)||size<=0) continue;
-        const score=Math.abs(Math.log(size/targetResolution));
-        if(score<best){best=score;chosen=candidate;}
+      const candidates = [];
+      for (let i=0; i<count; i++) {
+        const base = await tiff.getImage(i);
+        candidates.push(base);
+        // COG overviews are commonly stored as SubIFDs, not as top-level IFDs.
+        // GeoTIFF.js exposes those through getOverviewCount()/getOverview().
+        if (typeof base.getOverviewCount === "function" && typeof base.getOverview === "function") {
+          let overviewCount = 0;
+          try { overviewCount = await base.getOverviewCount(); } catch (_) {}
+          for (let j=0; j<overviewCount; j++) {
+            try { candidates.push(await base.getOverview(j)); } catch (_) {}
+          }
+        }
       }
-      if(!chosen) throw new Error("El COG no contiene ninguna imagen con georreferenciación afín válida.");
-      image=chosen;
-      const res=image.getResolution();
-      sourceResolution=Math.max(Math.abs(res[0]),Math.abs(res[1]));
-      if(sourceResolution<targetResolution*0.5||sourceResolution>targetResolution*2){
-        throw new Error("El COG no dispone de un overview cercano a "+targetResolution+" m; créalo antes de conectarlo al visor.");
+      let chosen = null, best = Infinity;
+      for (const candidate of candidates) {
+        try {
+          const res = candidate.getResolution();
+          const origin = candidate.getOrigin();
+          if (!res || !origin || !res.every(Number.isFinite) || !origin.every(Number.isFinite)) continue;
+          const size = Math.max(Math.abs(res[0]), Math.abs(res[1]));
+          if (!Number.isFinite(size) || size <= 0) continue;
+          const score = Math.abs(Math.log(size/targetResolution));
+          if (score < best) { best = score; chosen = candidate; }
+        } catch (_) {
+          // Ignore masks/auxiliary directories without affine georeferencing.
+        }
       }
-      const rawNoData=image.getFileDirectory()?.GDAL_NODATA;
-      noData=rawNoData===undefined?null:Number(String(rawNoData).replace(/\0/g,""));
+      if (!chosen) throw new Error("El COG no contiene ninguna imagen con georreferenciación afín válida.");
+      image = chosen;
+      const res = image.getResolution();
+      sourceResolution = Math.max(Math.abs(res[0]), Math.abs(res[1]));
+      if (sourceResolution < targetResolution*0.5 || sourceResolution > targetResolution*2) {
+        throw new Error("No se encontró un overview adecuado: resolución más cercana detectada " +
+          sourceResolution.toFixed(2) + " m (objetivo " + targetResolution + " m).");
+      }
+      const rawNoData = image.getFileDirectory()?.GDAL_NODATA;
+      noData = rawNoData === undefined ? null : Number(String(rawNoData).replace(/\\0/g, ""));
       return {width:image.getWidth(),height:image.getHeight(),resolutionM:sourceResolution,noData};
     }
     async function loadBounds(bounds25830) {
-      if(!image) await open();
+      if (!image) await open();
       const xs=[bounds25830[0],bounds25830[2]], ys=[bounds25830[1],bounds25830[3]];
       const corners=[[xs[0],ys[0]],[xs[0],ys[1]],[xs[1],ys[0]],[xs[1],ys[1]]].map(([x,y])=>pixelOf(x,y));
       const pad=3;
