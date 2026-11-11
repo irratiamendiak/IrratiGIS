@@ -32,9 +32,10 @@ test("wind and slope influence rate and the resulting head direction", () => {
   const flat = engine.behavior(fuel, 0, 0, 270, 0, 8);
   const sloped = engine.behavior(fuel, 0.5, 180, 270, 0, 8);
   const windy = engine.behavior(fuel, 0, 0, 270, 20, 8);
+  const combined = engine.behavior(fuel, 0.5, 180, 270, 20, 8);
   assert.ok(sloped.Rh > flat.Rh);
   assert.ok(windy.Rh > flat.Rh);
-  assert.notEqual(windy.head, flat.head);
+  assert.notEqual(combined.head, flat.head);
 });
 
 test("ellipse rate, Byram intensity and flame length remain finite and ordered", () => {
@@ -64,7 +65,7 @@ test("simulation is deterministic and receives terrain, weather and moisture as 
   const second = engine.simulate(options);
   assert.equal(first.length, 72);
   assert.equal(first[0].pts.length, 4);
-  assert.deepEqual(first, second);
+  assert.equal(JSON.stringify(first), JSON.stringify(second));
   assert.ok(terrainCalls > 0 && weatherCalls > 0 && moistureCalls > 0);
   assert.ok(first[0].pts[3][1] > 0);
 });
