@@ -2041,7 +2041,7 @@ const fsMdt=fsMdtUrl&&window.IrratiMdtProvider
   ?window.IrratiMdtProvider.create({url:fsMdtUrl,targetResolutionM:Number(window.IRRATIGIS_MDT_TARGET_RESOLUTION_M)||14})
   :null;
 let fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};
-function fsMdtLabel(){return fsMdtStatus.loaded?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m`:(fsMdtStatus.active?(fsMdtStatus.error?`Terrarium · MDT provincial no disponible: ${fsMdtStatus.error}`:"MDT LiDAR configurado · pendiente de consultar"):"Terrarium · MDT provincial sin configurar");}
+function fsMdtLabel(){if(fsTerrainSource==="terrarium")return "Terrarium · fuente seleccionada";return fsMdtStatus.loaded?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m`:(fsMdtStatus.error?`MDT LiDAR · error: ${fsMdtStatus.error}`:"MDT LiDAR · pendiente de consultar");}
 function fsUpdateTerrainStatus(){const el=fsPanel&&fsPanel.querySelector(".fs-terrain-status");if(el)el.textContent="Fuente de terreno: "+fsMdtLabel();}
 function fsMdtXY(lat,lon){
   if(typeof proj4!=="function") return null;
@@ -2058,7 +2058,8 @@ function fsMdtXY(lat,lon){
 }
 async function fsLoadDem(lat,lng,rad){
   const dLat=rad/111320, dLon=rad/(111320*Math.cos(lat*fsRad)), jobs=[];
-  if(fsMdt){
+  if(fsTerrainSource==="mdt"){
+    if(!fsMdt) throw new Error("El proveedor MDT LiDAR no está configurado.");
     try{
       const corners=[[lat+dLat,lng-dLon],[lat+dLat,lng+dLon],[lat-dLat,lng-dLon],[lat-dLat,lng+dLon]]
         .map(([a,b])=>fsMdtXY(a,b)).filter(Boolean);
@@ -2066,8 +2067,9 @@ async function fsLoadDem(lat,lng,rad){
       const xs=corners.map(p=>p[0]),ys=corners.map(p=>p[1]);
       const info=await fsMdt.loadBounds([Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]);
       fsMdtStatus={active:true,loaded:true,resolutionM:info.resolutionM,error:null}; fsUpdateTerrainStatus();
-    }catch(e){fsMdtStatus={active:true,loaded:false,resolutionM:null,error:e.message||String(e)}; fsUpdateTerrainStatus();}
+    }catch(e){fsMdtStatus={active:true,loaded:false,resolutionM:null,error:e.message||String(e)}; fsUpdateTerrainStatus(); throw e;}
   }
+  if(fsTerrainSource==="mdt") return;
   const [x0,y0]=fsPix(lat+dLat,lng-dLon), [x1,y1]=fsPix(lat-dLat,lng+dLon);
   for(let tx=Math.floor(x0/256);tx<=Math.floor(x1/256);tx++) for(let ty=Math.floor(y0/256);ty<=Math.floor(y1/256);ty++){
     const key=tx+"/"+ty; if(fsDem.has(key)) continue;
@@ -2084,15 +2086,19 @@ async function fsLoadDem(lat,lng,rad){
   await Promise.all(jobs);
 }
 function fsElev(lat,lon){
-  if(fsMdt&&fsMdtStatus.loaded){
-    const xy=fsMdtXY(lat,lon);
-    if(xy){const z=fsMdt.sample(xy[0],xy[1]);if(Number.isFinite(z))return z;}
+  if(fsTerrainSource==="mdt"){
+    if(!fsMdt||!fsMdtStatus.loaded) return NaN;
+    const xy=fsMdtXY(lat,lon); if(!xy) return NaN;
+    const z=fsMdt.sample(xy[0],xy[1]); if(Number.isFinite(z)) fsTerrainSamples.mdt++;
+    return z;
   }
   const [px,py]=fsPix(lat,lon), tx=Math.floor(px/256), ty=Math.floor(py/256), t=fsDem.get(tx+"/"+ty);
   if(!t) return NaN;
   const fx=Math.min(254.999,Math.max(0,px-tx*256-.5)), fy=Math.min(254.999,Math.max(0,py-ty*256-.5));
   const x=Math.floor(fx), y=Math.floor(fy), ax=fx-x, ay=fy-y, g=(i,j)=>t[(y+j)*256+x+i];
-  return g(0,0)*(1-ax)*(1-ay)+g(1,0)*ax*(1-ay)+g(0,1)*(1-ax)*ay+g(1,1)*ax*ay;
+  const z=g(0,0)*(1-ax)*(1-ay)+g(1,0)*ax*(1-ay)+g(0,1)*(1-ax)*ay+g(1,1)*ax*ay;
+  if(Number.isFinite(z)) fsTerrainSamples.terrarium++;
+  return z;
 }
 function fsTerrain(lat,lon){   // malda (tan) eta orientazioa (maldan behera, gradu)
   if(fsFlat) return {tan:0,asp:0};
@@ -3253,6 +3259,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   fsPanel.innerHTML=
    `<div style="display:flex;justify-content:space-between;align-items:center"><strong style="font-size:13px">🔥 Evolución del incendio · simulación</strong><button type="button" class="fs-x" style="border:0;background:none;font-size:16px;cursor:pointer">✕</button></div>`+
    `<div style="color:#8b2f2f;font-size:11px;margin:3px 0 6px"><b>Estimación orientativa</b>, con modelo simplificado: el error puede ser del 50 % o más. Úsala como orden de magnitud. No sustituye al mando ni a las herramientas operativas; no modela focos secundarios ni fuego de copa.</div>`+
+   `<div style="${row}">Fuente de elevación <select class="fs-terrain-source"><option value="mdt"${fsTerrainSource==="mdt"?" selected":""}>MDT LiDAR Gipuzkoa 2017 (16 m)</option><option value="terrarium"${fsTerrainSource==="terrarium"?" selected":""}>Terrarium (alternativa)</option></select></div>`+
    `<div class="fs-terrain-status" style="padding:6px 8px;margin:5px 0 8px;background:#edf4ef;border-left:3px solid #527c63;border-radius:5px;font-size:11px;font-weight:700">Fuente de terreno: ${escapeHtml(fsMdtLabel())}</div>`+
    `<div style="${row}">Combustible <select class="fs-fuel" style="max-width:100%">${Object.keys(FS_FUELS).map(k=>`<option value="${k}"${k===fsCfg.fuel?" selected":""}>${FS_FUELS[k].n}</option>`).join("")}</select></div>`+
    `<div style="${row}">Inicio del fuego <select class="fs-sh"><option value="0">ahora</option><option value="3">en 3 h</option><option value="6">en 6 h</option><option value="9">en 9 h</option><option value="12">en 12 h</option></select> <span style="color:#65736b">(solo con meteorología automática)</span></div>`+
@@ -3268,6 +3275,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   const q=s=>fsPanel.querySelector(s), rerun=()=>{ if(fsIgn) fsRun(); }, num=(e,lo,hi,d)=>Math.min(hi,Math.max(lo,Number(e.target.value)||d));
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
   fsPanelWindow(fsPanel);
+  q(".fs-terrain-source").onchange=e=>{fsTerrainSource=e.target.value==="terrarium"?"terrarium":"mdt";fsTerrainSamples={mdt:0,terrarium:0};fsDem.clear();fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};fsUpdateTerrainStatus();rerun();};
   q(".fs-fuel").onchange=e=>{ fsCfg.fuel=e.target.value; rerun(); };
   q(".fs-ws").onchange=e=>{ fsCfg.wind=e.target.value; q(".fs-man").style.display=fsCfg.wind==="man"?"block":"none"; rerun(); };
   q(".fs-dir").onchange=e=>{ fsCfg.dir=((Number(e.target.value)||0)%360+360)%360; rerun(); };
@@ -3356,7 +3364,9 @@ async function fsRun(){
     if(!Number.isFinite(fsElev(fsIgn.lat,fsIgn.lng))) throw new Error("No se pudo cargar el terreno (modelo digital de elevación).");
   }catch(err){ if(my===fsBusy) out.innerHTML=`<div style="font-weight:700;color:#52645a">Terreno: ${escapeHtml(fsMdtLabel())}</div><div>⚠️ ${escapeHtml(err.message||String(err))}</div>`; return; }
   if(my!==fsBusy) return;
-  const rays=fsSimulate(fu,met), far=rays.reduce((a,r)=>r.pts[180][1]>a.pts[180][1]?r:a,rays[0]), farBg=far.bg;
+  let rays;
+  try{rays=fsSimulate(fu,met);}catch(err){if(my===fsBusy)out.innerHTML=`<div><b>Fuente de terreno:</b> ${escapeHtml(fsMdtLabel())}</div>⚠️ ${escapeHtml(err.message||String(err))}`;return;}
+  const far=rays.reduce((a,r)=>r.pts[180][1]>a.pts[180][1]?r:a,rays[0]), farBg=far.bg;
   const ter=fsTerrain(fsIgn.lat,fsIgn.lng), w00=met.at(0), m00=fsMoistAt(w00,fu,ter,met.sun(0));
   if(far.pts[180][1]<15){
     out.innerHTML=fsDec(`<div><b>Terreno:</b> ${escapeHtml(fsMdtLabel())}</div>Con estas condiciones el fuego <b>no se propaga</b> en las próximas 6 h: la humedad del combustible fino muerto es del ${m00.toFixed(1)} % (T ${Math.round(w00.T)} °C, HR ${Math.round(w00.RH)} %) y supera la de extinción de este combustible (${Math.round(fu.Mx*100)} %). Prueba otra hora de inicio (por la tarde baja la humedad), otro combustible, o pon la humedad a mano.`); return;
