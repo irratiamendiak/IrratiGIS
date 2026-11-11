@@ -60,6 +60,17 @@ jobs:
           echo "WILDFIRE_PREVIEW_URL=$DEPLOY_URL" >> "$GITHUB_ENV"
           echo "Deployment URL reported by Wrangler: $DEPLOY_URL"
 
+      - name: Verify MDT provider assets are wired into the preview
+        run: |
+          set -euo pipefail
+          grep -Fq 'geotiff@2.1.3/dist-browser/geotiff.js' index.html
+          grep -Fq 'wildfire/terrain-config.js' index.html
+          grep -Fq 'wildfire/terrain/mdt-cog-provider.js' index.html
+          grep -Fq 'window.IrratiMdtProvider.create' index.html
+          grep -Fq 'mdt-lidar-2017-1m.cog.tif' wildfire/terrain-config.js
+          node --check wildfire/terrain/mdt-cog-provider.js
+          echo "MDT scripts, configuration and provider syntax are present."
+
       - name: Verify preview HTML is reachable
         run: |
           set -euo pipefail
