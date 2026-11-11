@@ -690,8 +690,8 @@ const fmt=(n,d=2)=>new Intl.NumberFormat("eu-ES",{minimumFractionDigits:d,maximu
 if(typeof L==="undefined"){ $("message").textContent="Ezin izan da Leaflet kargatu. Egiaztatu Internet konexioa."; return; }
 if(typeof turf==="undefined"){ $("message").textContent="Ezin izan da Turf kargatu. Egiaztatu Internet konexioa."; return; }
 if(typeof proj4==="undefined"){ $("message").textContent="Ezin izan da Proj4 kargatu. Koordenatu bihurgailuak Internet konexioa behar du lehen kargan."; return; }
-if(typeof html2canvas==="undefined"){ $("message").textContent="Ezin izan da html2canvas kargatu. PDF esportazioak Internet konexioa behar du."; return; }
-if(!window.jspdf||!window.jspdf.jsPDF){ $("message").textContent="Ezin izan da jsPDF kargatu. PDF esportazioak Internet konexioa behar du."; return; }
+// PDF liburutegiak aukerakoak dira: haien hutsegiteak ez du mapa/visor-a blokeatu behar.
+const pdfLibrariesAvailable=typeof html2canvas!=="undefined"&&!!(window.jspdf&&window.jspdf.jsPDF);
 const shpWriteAvailable=(typeof shpwrite!=="undefined");
 
 
@@ -5571,6 +5571,10 @@ async function waitForMapTiles(timeout=5000){
 }
 
 async function generateMapPdf(){
+  if(!pdfLibrariesAvailable){
+    $("message").textContent="PDF ezin da sortu: falta da html2canvas edo jsPDF. Mapa eta gainerako tresnak erabilgarri daude.";
+    return;
+  }
   const geom=getActiveGeometryForPdf();
   if(!geom){
     $("message").textContent="PDF sortzeko, lehenengo GPX/KML bat kargatu edo track bat marraztu.";
