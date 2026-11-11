@@ -1,0 +1,48 @@
+name: Wildfire simulator core tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "wildfire/simulator/**"
+      - "wildfire/terrain-config.js"
+      - "wildfire/terrain/**"
+      - "wildfire/tests/**"
+      - "index.html"
+      - ".github/workflows/wildfire-simulator-tests.yml"
+  pull_request:
+    paths:
+      - "wildfire/simulator/**"
+      - "wildfire/terrain-config.js"
+      - "wildfire/terrain/**"
+      - "wildfire/tests/**"
+      - "index.html"
+      - ".github/workflows/wildfire-simulator-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  simulator-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test wildfire simulator and terrain readers
+        run: node --test wildfire/tests/*.test.mjs
+      - name: Verify public 16 m MDT COG supports byte ranges and production CORS
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://pub-997427d08539450780c6722ce7d23750.r2.dev/terrain/gipuzkoa/mdt-lidar-2017-16m-deflate.cog.tif"
+          curl --fail --silent --show-error --range 0-16383 -D /tmp/mdt-headers "$URL" -o /tmp/mdt-range.bin
+          grep -Eqi '^HTTP/[^ ]+ 206' /tmp/mdt-headers
+          test -s /tmp/mdt-range.bin
+          curl --silent --show-error --request OPTIONS "$URL" \
+            --header "Origin: https://irratiamendiak.github.io" \
+            --header "Access-Control-Request-Method: GET" \
+            --header "Access-Control-Request-Headers: range" \
+            --dump-header /tmp/mdt-cors-headers --output /dev/null
+          grep -Eqi '^access-control-allow-origin: \*|^access-control-allow-origin: https://irratiamendiak\.github\.io' /tmp/mdt-cors-headers
+          grep -Eqi '^access-control-allow-methods:.*GET' /tmp/mdt-cors-headers
+          echo "Production MDT COG supports HTTP Range and CORS."
