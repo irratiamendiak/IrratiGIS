@@ -2187,7 +2187,7 @@ function fsChart(p,marks){
      `<text x="${ml}" y="${sy-3}" fill="#555">Pendiente (%)</text>`;
   const step=D>4000?1000:(D>1800?500:(D>700?200:100));
   for(let d=0;d<=D;d+=step) s+=`<line x1="${X(d).toFixed(1)}" x2="${X(d).toFixed(1)}" y1="${sy+sh}" y2="${sy+sh+3}" stroke="#555"/><text x="${X(d).toFixed(1)}" y="${sy+sh+12}" text-anchor="middle" fill="#555">${d>=1000?(d/1000)+" km":d+" m"}</text>`;
-  [30,60,120,240,360].forEach(T=>{ const i=p.findIndex(q=>q.t>=T); if(i<0) return; const x=X(p[i].d).toFixed(1);
+  [30,60,90,120].forEach(T=>{ const i=p.findIndex(q=>q.t>=T); if(i<0) return; const x=X(p[i].d).toFixed(1);
     s+=`<line x1="${x}" x2="${x}" y1="${mt}" y2="${sy+sh}" stroke="#7a0000" stroke-width=".8" stroke-dasharray="4 3"/><text x="${x}" y="${mt-3}" text-anchor="middle" fill="#7a0000" font-weight="700">${T<60?T+"'":(T/60)+" h"}</text>`; });
   (marks||[]).forEach(mk=>{ const i=p.findIndex(q=>q.t>=mk.t); if(i<0) return; const x=X(p[i].d).toFixed(1);
     s+=`<polygon points="${x},${mt+hz+2} ${(+x-4).toFixed(1)},${mt+hz+10} ${(+x+4).toFixed(1)},${mt+hz+10}" fill="#d6006f"/>`; });
@@ -3364,8 +3364,8 @@ async function fsRun(){
   }
   const bInit=fsBehavior(fu,ter.tan,ter.asp,w00.dir,w00.spd,m00), iRef=far.pts.findIndex(p=>p[1]>=15), tRef=(bInit.Rh>0||iRef<=0)?0:far.pts[iRef][0], w0=met.at(tRef), m0=fsMoistAt(w0,fu,ter,met.sun(tRef)), mNoSun=fsMoistAt(w0,fu,{tan:0,asp:0},null), b0=fsBehavior(fu,ter.tan,ter.asp,w0.dir,w0.spd,m0);
   fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0,met,farBg,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
-  const D=fsLast.draw, cols={30:"#d7191c",60:"#fd8d3c",120:"#ffd45a"}, ha={};
-  [120,60,30].forEach(t=>{ const p=fsPerim(rays,t); ha[t]=fsHa(p);
+  const D=fsLast.draw, cols={30:"#d7191c",60:"#fd8d3c",90:"#c98a00",120:"#ffd45a"}, ha={};
+  [30,60,90,120].forEach(t=>{ const p=fsPerim(rays,t); ha[t]=fsHa(p);
     L.polygon(p,{color:cols[t],weight:2,fillColor:cols[t],fillOpacity:.25}).bindTooltip(`${t} min · ${ha[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup); });
 
   /* Burua(ren) ibilbidea: profila + Campbell mailak */
@@ -3434,9 +3434,9 @@ async function fsRun(){
     (ffn?`<span style="color:#65736b">FFMC de la red de estaciones: <b>${ffn.val.toFixed(1)}</b> (${ffn.near.map(x=>escapeHtml(x.n)+" "+Math.round(x.w*100)+"%").join(", ")}; datos del ${ffn.date.slice(8,10)}/${ffn.date.slice(5,7)}).</span><br>`:"")+
     (netNote?`<span style="color:#8b2f2f">${escapeHtml(netNote)}</span><br>`:"")+
     (met.rain?`Lluvia previa (${escapeHtml(met.rain.src)}): últimas 24 h <b>${met.rain.h24.toFixed(1)} mm</b> · 3 días ${met.rain.d3.toFixed(1)} mm · 7 días ${met.rain.d7.toFixed(1)} mm · 14 días ${met.rain.d14.toFixed(1)} mm<br>`:"")+
-    `Superficie: <span style="color:#d7191c">30 min ${ha[30].toFixed(1)} ha</span> · <span style="color:#e8590c">60 min ${ha[60].toFixed(1)} ha</span> · <span style="color:#c98a00">120 min ${ha[120].toFixed(1)} ha</span>`;
+    `Propagación prevista: <span style="color:#d7191c">30 min ${ha[30].toFixed(1)} ha</span> · <span style="color:#e8590c">60 min ${ha[60].toFixed(1)} ha</span> · <span style="color:#c98a00">90 min ${ha[90].toFixed(1)} ha</span> · <span style="color:#b08a00">120 min ${ha[120].toFixed(1)} ha</span>`;
   const sw=(c,t,b)=>`<span style="display:inline-block;width:12px;height:${b?4:10}px;background:${c};margin:0 3px 0 8px;vertical-align:middle"></span>${t}`;
-  const legend=`<div style="font-size:11px;line-height:1.7">${sw("#d7191c","perímetro 30'")}${sw("#fd8d3c","60'")}${sw("#ffd45a","120'")}<br>`+
+  const legend=`<div style="font-size:11px;line-height:1.7">${sw("#d7191c","perímetro 30'")}${sw("#fd8d3c","60'")}${sw("#c98a00","90'")}${sw("#ffd45a","120'")}<br>`+
     `${sw("#8d3b00","defensa sugerida (a construir)")}${sw("#1565c0","control existente")}${sw("#7b2cbf","ataque paralelo")}<br>`+
     `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#d6006f;margin:0 3px 0 8px;vertical-align:middle"></span>punto crítico · 🏠 bienes${sw("#34c759","zona segura")}${sw("#00bcd4","escape")}</div>`;
   const chart=fsChart(prof,crit), sw2=(c,t)=>`<span style="display:inline-block;width:10px;height:10px;background:${c};margin:0 3px 0 6px;vertical-align:middle"></span>${t}`;
