@@ -6,6 +6,7 @@ on:
       - ".github/workflows/check-public-terrain-assets.yml"
       - "wildfire/terrain-config.js"
       - "index.html"
+      - "docs/WILDFIRE-PREVIEW.md"
   workflow_dispatch:
 
 permissions:
