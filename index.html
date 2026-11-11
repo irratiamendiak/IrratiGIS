@@ -2045,7 +2045,16 @@ function fsMdtLabel(){return fsMdtStatus.loaded?`MDT LiDAR Gipuzkoa 2017 · vist
 function fsUpdateTerrainStatus(){const el=fsPanel&&fsPanel.querySelector(".fs-terrain-status");if(el)el.textContent="Fuente de terreno: "+fsMdtLabel();}
 function fsMdtXY(lat,lon){
   if(typeof proj4!=="function") return null;
-  try{return proj4("EPSG:4326","EPSG:25830",[lon,lat]);}catch(_){return null;}
+  try{
+    // Definición explícita ETRS89 / UTM 30N (EPSG:25830).
+    // Evita depender de que Proj4 tenga registrado el alias "EPSG:25830".
+    const xy=proj4(
+      "+proj=longlat +datum=WGS84 +no_defs",
+      "+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",
+      [lon,lat]
+    );
+    return Array.isArray(xy)&&xy.length===2&&xy.every(Number.isFinite)?xy:null;
+  }catch(_){return null;}
 }
 async function fsLoadDem(lat,lng,rad){
   const dLat=rad/111320, dLon=rad/(111320*Math.cos(lat*fsRad)), jobs=[];
