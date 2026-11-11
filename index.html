@@ -3476,7 +3476,7 @@ async function fsRun(){
   const critHtml=()=>`<div>Cambios de viento, de pendiente y de combustible:<ol class="fs-critl" style="margin:2px 0 4px 18px;padding:0">${
     D.crit.length?D.crit.map(c=>`<li>~${c.t} min · ${escapeHtml(c.why)}</li>`).join(""):"<li>— ninguno detectado en el recorrido</li>"}</ol></div>`;
   const det=(title,html,open)=>`<details style="margin-top:6px"${open?" open":""}><summary style="cursor:pointer;font-weight:700">${title}</summary><div style="margin-top:3px">${html}</div></details>`;
-  out.innerHTML=fsDec(`<div class="fs-sum">${sumMain}</div>`+det("🌡️ Meteorología",`<div>${sumMeteo}</div>`)+
+  out.innerHTML=fsDec(`<div class="fs-sum">${sumMain}</div>`+
     `<div style="display:none"><div class="fs-def"></div><div class="fs-osm"></div><div class="fs-osm-ld"></div><div class="fs-crit"></div><div class="fs-cov"></div><div class="fs-oacel"></div><div class="fs-gif"><button type="button" data-fs-gif>Crear GIF</button><div class="fs-gifout"></div></div></div>`);
   fsPanel.querySelector('.fs-prof-slot').innerHTML=det('📈 Gráfico de evolución, pendiente y Campbell',`<div class="fs-prof">${profHtml}</div>`,true);
   const q=s=>out.querySelector(s);
