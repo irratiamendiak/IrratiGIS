@@ -2032,6 +2032,7 @@ const FS_FUELS={
 const fsCfg={fuel:"garoa",moistMode:"calc",startH:0,ffmc:85,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
 let fsIgn=null, fsBusy=0, fsLast=null, fsFlat=false;
 let fsTerrainSource="mdt", fsTerrainSamples={mdt:0,terrarium:0};
+let fsFuelSource="inventory";
 const fsGroup=L.layerGroup(), fsDem=new Map();
 const fsCard=d=>["N","NE","E","SE","S","SO","O","NO"][Math.round((((d%360)+360)%360)/45)%8];
 const fsRad=Math.PI/180;
@@ -3158,10 +3159,12 @@ async function fsCoverFromInventory(ll){
     return result("query-error");
   }
 }
-async function fsCover(ll){
-  const local=await fsCoverFromInventory(ll);
-  if(local.rows.length) return local.rows;
-
+async function fsCover(ll,source=fsFuelSource){
+  if(source==="rothermel") return [];
+  if(source==="inventory"){
+    const local=await fsCoverFromInventory(ll);
+    return local.rows;
+  }
   fsCapP=fsCapP||getWmsCapabilities(FS_FOREST_WMS); const info=await fsCapP.catch(e=>{ fsCapP=null; throw e; });
   const cand=info.layers.filter(l=>/forest|uso|especie|conifer|frondos|cubiert|vegeta|mfe|arbol/i.test(l.name+" "+l.title)).slice(0,3);
   if(!cand.length) throw new Error("sin capas de usos/especies");
@@ -3174,7 +3177,6 @@ async function fsCover(ll){
     try{ const r=await fetch(FS_FOREST_WMS+"?"+p.toString()); if(!r.ok) continue;
       const txt=await r.text(), html=featureInfoToHtml(txt,fmt); if(html) out.push({title:l.title||l.name,source:"wms",html,text:txt.replace(/<[^>]+>/g," ")}); }catch(_){ }
   }
-  out.forEach(row=>{row.inventoryStatus=local.status;});
   return out;
 }
 
@@ -3247,7 +3249,9 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div style="color:#8b2f2f;font-size:11px;margin:3px 0 6px"><b>Estimación orientativa</b>, con modelo simplificado: el error puede ser del 50 % o más. Úsala como orden de magnitud. No sustituye al mando ni a las herramientas operativas; no modela focos secundarios ni fuego de copa.</div>`+
    `<div style="font-weight:800;margin:8px 0 5px;padding-bottom:4px;border-bottom:1px solid #dce5df">1. Configuración del incendio</div>`+
    `<div style="${row}"><b>Hora de inicio</b> <select class="fs-sh">${Array.from({length:13},(_,h)=>`<option value="${h}"${h===fsCfg.startH?" selected":""}>${h===0?"Ahora":`Dentro de ${h} h`}</option>`).join("")}</select></div>`+
-   `<div style="${row}"><b>Tipo de combustible</b> <select class="fs-fuel" style="max-width:100%">${Object.keys(FS_FUELS).map(k=>`<option value="${k}"${k===fsCfg.fuel?" selected":""}>${FS_FUELS[k].n}</option>`).join("")}</select></div>`+
+   `<div style="${row}"><b>Tipo de combustible</b> <select class="fs-fuel-source" style="max-width:100%"><option value="inventory"${fsFuelSource==="inventory"?" selected":""}>Activar inventario forestal (Gipuzkoa 2024)</option><option value="wms"${fsFuelSource==="wms"?" selected":""}>WMS forestal externo</option><option value="rothermel"${fsFuelSource==="rothermel"?" selected":""}>Modelo de Rothermel (combustible manual)</option></select></div>`+
+   `<div class="fs-fuel-help" style="font-size:10px;color:#65736b;margin:-2px 0 5px">${fsFuelSource==="inventory"?"El inventario forestal será la fuente seleccionada; la capa del mapa se puede activar o desactivar por separado.":fsFuelSource==="wms"?"Se consultará el WMS forestal externo como fuente de cubierta.":"Selecciona un combustible del catálogo simplificado de Rothermel."}</div>`+
+   `<div class="fs-fuel-manual" style="${fsFuelSource==="rothermel"?"":"display:none;"}${row}"><b>Combustible del modelo</b> <select class="fs-fuel" style="max-width:100%">${Object.keys(FS_FUELS).map(k=>`<option value="${k}"${k===fsCfg.fuel?" selected":""}>${FS_FUELS[k].n}</option>`).join("")}</select></div>`+
    `<div style="${row}"><b>Topografía</b> <select class="fs-terrain-source"><option value="mdt"${fsTerrainSource==="mdt"?" selected":""}>MDT LiDAR Gipuzkoa 2017 (16 m)</option><option value="terrarium"${fsTerrainSource==="terrarium"?" selected":""}>Terrarium (alternativa)</option></select></div>`+
    `<div class="fs-terrain-status" style="padding:6px 8px;margin:5px 0 8px;background:#edf4ef;border-left:3px solid #527c63;border-radius:5px;font-size:11px;font-weight:700">Fuente de terreno: ${escapeHtml(fsMdtLabel())}</div>`+
    `<div style="${row}"><b>Meteorología</b> <select class="fs-ws"><option value="auto">Automática (Open-Meteo + previsión)</option><option value="man">Manual</option></select></div>`+
@@ -3260,6 +3264,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
   fsPanelWindow(fsPanel);
   q(".fs-terrain-source").onchange=e=>{fsTerrainSource=e.target.value==="terrarium"?"terrarium":"mdt";fsTerrainSamples={mdt:0,terrarium:0};fsDem.clear();fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};fsUpdateTerrainStatus();rerun();};
+  q(".fs-fuel-source").onchange=e=>{ fsFuelSource=e.target.value; q(".fs-fuel-manual").style.display=fsFuelSource==="rothermel"?"block":"none"; q(".fs-fuel-help").textContent=fsFuelSource==="inventory"?"El inventario forestal será la fuente seleccionada; la capa del mapa se puede activar o desactivar por separado.":fsFuelSource==="wms"?"Se consultará el WMS forestal externo como fuente de cubierta.":"Selecciona un combustible del catálogo simplificado de Rothermel."; if(fsFuelSource==="inventory"&&!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer); rerun(); };
   q(".fs-fuel").onchange=e=>{ fsCfg.fuel=e.target.value; rerun(); };
   q(".fs-ws").onchange=e=>{ fsCfg.wind=e.target.value; q(".fs-man").style.display=fsCfg.wind==="man"?"block":"none"; rerun(); };
   q(".fs-dir").onchange=e=>{ fsCfg.dir=((Number(e.target.value)||0)%360+360)%360; rerun(); };
@@ -3467,7 +3472,7 @@ async function fsRun(){
   q(".fs-def").innerHTML=fsDec(defCard(null));
 
   /* Erregai-dentsitatea: baso-mapa ibilbidean zehar (saiakera) */
-  fsCover(fsIgn).then(res=>{
+  fsCover(fsIgn,fsFuelSource).then(res=>{
     if(my!==fsBusy||!q(".fs-cov")) return;
     if(!res.length){ q(".fs-cov").innerHTML=`<span style="color:#65736b">Mapa forestal: sin datos en este punto.</span>`; return; }
     const sug=fsFuelFromCover(res), cur=fsCfg.fuel;
