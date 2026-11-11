@@ -2030,6 +2030,7 @@ const FS_FUELS={
 };
 const fsCfg={fuel:"garoa",moistMode:"calc",startH:0,ffmc:85,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
 let fsIgn=null, fsBusy=0, fsLast=null, fsFlat=false;
+let fsTerrainSource="mdt", fsTerrainSamples={mdt:0,terrarium:0};
 const fsGroup=L.layerGroup(), fsDem=new Map();
 const fsCard=d=>["N","NE","E","SE","S","SO","O","NO"][Math.round((((d%360)+360)%360)/45)%8];
 const fsRad=Math.PI/180;
@@ -2104,7 +2105,10 @@ function fsTerrain(lat,lon){   // malda (tan) eta orientazioa (maldan behera, gr
   if(fsFlat) return {tan:0,asp:0};
   const d=40, dl=d/111320, dn=d/(111320*Math.cos(lat*fsRad));
   const E=fsElev(lat,lon+dn), W=fsElev(lat,lon-dn), N=fsElev(lat+dl,lon), S=fsElev(lat-dl,lon);
-  if(![E,W,N,S].every(Number.isFinite)) return {tan:0,asp:0};
+  if(![E,W,N,S].every(Number.isFinite)){
+    if(fsTerrainSource==="mdt") throw new Error("El MDT LiDAR no cubre alguna muestra necesaria para calcular la pendiente; no se ha sustituido por Terrarium.");
+    return {tan:0,asp:0};
+  }
   const gx=(E-W)/(2*d), gy=(N-S)/(2*d);
   return {tan:Math.hypot(gx,gy), asp:(Math.atan2(-gx,-gy)/fsRad+360)%360};
 }
@@ -3352,6 +3356,7 @@ const fsDec=s=>s.replace(/(\d)\.(\d)(?![^<]*>)/g,"$1,$2");   // komaz erakutsi d
 async function fsRun(){
   if(!fsIgn) return;
   const my=++fsBusy, out=fsPanel.querySelector(".fs-out"), fu=FS_FUELS[fsCfg.fuel];
+  fsTerrainSamples={mdt:0,terrarium:0};
   fsGroup.clearLayers();
   L.marker(fsIgn,{icon:fsIcon("🔥",24)}).addTo(fsGroup);
   out.innerHTML=`<div style="font-weight:700;color:#52645a">Terreno: consultando fuente…</div><div>⏳ Calculando…</div>`;
@@ -3432,9 +3437,9 @@ async function fsRun(){
     `<b>Hacia dónde</b>: cabeza hacia <b>${fsCard(b0.head)} (${Math.round(b0.head)}°)</b> · flancos ${f1(fsR(b0,90))} m/min · cola ${f1(fsR(b0,180))} m/min<br>`+
     `${startTxt}Viento ${fsCard(w0.dir)} ${Math.round(w0.spd)} km/h · T ${Math.round(w0.T)} °C · HR ${Math.round(w0.RH)} % · comb. fino muerto <b>${m0.toFixed(1)} %</b> · pendiente ${Math.round(ter.tan*100)}%`+tbl+
     histHtml+warn.map(w=>`<div style="color:#8b2f2f;margin-top:4px">⚠️ ${w}</div>`).join("");
-  const terrainSourceLabel=fsMdtStatus.loaded
-    ?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m (Terrarium como respaldo fuera de cobertura)`
-    :(fsMdtStatus.active?`Terrarium · no se pudo abrir el MDT provincial: ${fsMdtStatus.error||"sin datos"}`:"Terrarium · MDT provincial aún sin publicar/configurar");
+  const terrainSourceLabel=fsTerrainSource==="mdt"
+    ?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m · ${fsTerrainSamples.mdt.toLocaleString("es-ES")} muestras LiDAR`
+    :`Terrarium · ${fsTerrainSamples.terrarium.toLocaleString("es-ES")} muestras Terrarium`;
   const sumMeteo=
     `<span style="color:#52645a">Terreno: ${escapeHtml(terrainSourceLabel)}</span><br>`+
     `Intensidad ${Math.round(Ih)} kW/m · llama ≈ ${Lh.toFixed(1)} m (flancos ${Lf.toFixed(1)} m · cola ${Lb.toFixed(1)} m) · relación L/A ${b0.LB.toFixed(1)} · cabeza ${(b0.Rh*.06).toFixed(2)} km/h<br>`+
