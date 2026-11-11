@@ -3301,7 +3301,8 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-spd").onchange=e=>{ fsCfg.spd=num(e,0,100,0); rerun(); };
   q(".fs-t").onchange=e=>{ fsCfg.temp=num(e,-10,45,20); rerun(); };
   q(".fs-rh").onchange=e=>{ fsCfg.rh=num(e,5,100,50); rerun(); };
-  q(".fs-start-at").min=q(".fs-start-at").value;\n  q(".fs-start-at").onchange=e=>{ const t=new Date(e.target.value).getTime(), delta=(t-Date.now())/3600000; if(!Number.isFinite(t)||delta<0||delta>72){ e.target.value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16); fsCfg.startH=0; alert("Elige una hora entre ahora y las próximas 72 horas."); } else fsCfg.startH=delta; rerun(); };\n  q(".fs-now").onclick=()=>{ q(".fs-start-at").value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16); fsCfg.startH=0; rerun(); };
+  q(".fs-start-at").min=q(".fs-start-at").value;
+  q(".fs-start-at").onchange=e=>{ const t=new Date(e.target.value).getTime(), delta=(t-Date.now())/3600000; if(!Number.isFinite(t)||delta<0||delta>72){ e.target.value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16); fsCfg.startH=0; alert("Elige una hora entre ahora y las próximas 72 horas."); } else fsCfg.startH=delta; rerun(); };\n  q(".fs-now").onclick=()=>{ q(".fs-start-at").value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16); fsCfg.startH=0; rerun(); };
   q(".fs-mm").onchange=e=>{ fsCfg.moistMode=e.target.value; q(".fs-msl").style.display=fsCfg.moistMode==="man"?"inline":"none"; q(".fs-mff").style.display=fsCfg.moistMode==="ffmc"?"inline":"none"; rerun(); };
   q(".fs-ffmc").onchange=e=>{ fsCfg.ffmc=num(e,30,99,85); rerun(); };
   q(".fs-m").oninput=e=>{ q(".fs-mv").textContent=e.target.value+"%"; };
