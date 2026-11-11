@@ -28,7 +28,7 @@ jobs:
       AWS_DEFAULT_REGION: auto
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
       R2_BUCKET: irrati-inventario
-      OBJECT_KEY: terrain/gipuzkoa/mdt-lidar-2017-16m.cog.tif
+      OBJECT_KEY: terrain/gipuzkoa/mdt-lidar-2017-16m-deflate.cog.tif
       SOURCE_RUN_ID: "42462122541"
       PUBLIC_BASE_URL: https://pub-997427d08539450780c6722ce7d23750.r2.dev
     steps:
@@ -72,7 +72,7 @@ jobs:
                   dst.write(data.astype("float32", copy=False), 1)
               print({"source_resolution": src.res, "output_resolution": (transform.a, abs(transform.e)),
                      "output_shape": (height, width), "crs": src.crs.to_string(), "nodata": src.nodata})
-          copy(tmp, cog, driver="COG", COMPRESS="ZSTD", LEVEL=9, PREDICTOR="FLOATING_POINT",
+          copy(tmp, cog, driver="COG", COMPRESS="DEFLATE", LEVEL=9, PREDICTOR="FLOATING_POINT",
                BLOCKSIZE=512, BIGTIFF="IF_SAFER", RESAMPLING="AVERAGE", NUM_THREADS="ALL_CPUS")
           with rasterio.open(cog) as ds:
               assert ds.crs and ds.crs.to_epsg() == 25830
