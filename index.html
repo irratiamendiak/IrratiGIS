@@ -674,6 +674,9 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <script>window.forestalPmtilesProtocol=new pmtiles.Protocol();maplibregl.addProtocol("pmtiles",window.forestalPmtilesProtocol.tile);</script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/proj4@2.12.1/dist/proj4.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+<script src="wildfire/terrain-config.js?v=2"></script>
+<script src="wildfire/terrain/mdt-cog-provider.js?v=1"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <script src="https://unpkg.com/@mapbox/shp-write@0.4.3/shpwrite.js"></script>
@@ -2033,9 +2036,39 @@ const fsRad=Math.PI/180;
 
 /* --- terreno (Terrarium z13, ~14 m/px) --- */
 function fsPix(lat,lon){ const n=256*Math.pow(2,FS_Z), s=Math.sin(lat*fsRad); return [(lon+180)/360*n,(0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n]; }
+const fsMdtUrl=String(window.IRRATIGIS_MDT_COG_URL||"").trim();
+const fsMdt=fsMdtUrl&&window.IrratiMdtProvider
+  ?window.IrratiMdtProvider.create({url:fsMdtUrl,targetResolutionM:Number(window.IRRATIGIS_MDT_TARGET_RESOLUTION_M)||14})
+  :null;
+let fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};
+function fsMdtLabel(){return fsMdtStatus.loaded?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m`:(fsMdtStatus.active?(fsMdtStatus.error?`Terrarium · MDT provincial no disponible: ${fsMdtStatus.error}`:"MDT LiDAR configurado · pendiente de consultar"):"Terrarium · MDT provincial sin configurar");}
+function fsUpdateTerrainStatus(){const el=fsPanel&&fsPanel.querySelector(".fs-terrain-status");if(el)el.textContent="Fuente de terreno: "+fsMdtLabel();}
+function fsMdtXY(lat,lon){
+  if(typeof proj4!=="function") return null;
+  try{
+    // Definición explícita ETRS89 / UTM 30N (EPSG:25830).
+    // Evita depender de que Proj4 tenga registrado el alias "EPSG:25830".
+    const xy=proj4(
+      "+proj=longlat +datum=WGS84 +no_defs",
+      "+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",
+      [lon,lat]
+    );
+    return Array.isArray(xy)&&xy.length===2&&xy.every(Number.isFinite)?xy:null;
+  }catch(_){return null;}
+}
 async function fsLoadDem(lat,lng,rad){
-  const dLat=rad/111320, dLon=rad/(111320*Math.cos(lat*fsRad));
-  const [x0,y0]=fsPix(lat+dLat,lng-dLon), [x1,y1]=fsPix(lat-dLat,lng+dLon), jobs=[];
+  const dLat=rad/111320, dLon=rad/(111320*Math.cos(lat*fsRad)), jobs=[];
+  if(fsMdt){
+    try{
+      const corners=[[lat+dLat,lng-dLon],[lat+dLat,lng+dLon],[lat-dLat,lng-dLon],[lat-dLat,lng+dLon]]
+        .map(([a,b])=>fsMdtXY(a,b)).filter(Boolean);
+      if(corners.length!==4) throw new Error("No se pudo transformar el área a EPSG:25830.");
+      const xs=corners.map(p=>p[0]),ys=corners.map(p=>p[1]);
+      const info=await fsMdt.loadBounds([Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]);
+      fsMdtStatus={active:true,loaded:true,resolutionM:info.resolutionM,error:null}; fsUpdateTerrainStatus();
+    }catch(e){fsMdtStatus={active:true,loaded:false,resolutionM:null,error:e.message||String(e)}; fsUpdateTerrainStatus();}
+  }
+  const [x0,y0]=fsPix(lat+dLat,lng-dLon), [x1,y1]=fsPix(lat-dLat,lng+dLon);
   for(let tx=Math.floor(x0/256);tx<=Math.floor(x1/256);tx++) for(let ty=Math.floor(y0/256);ty<=Math.floor(y1/256);ty++){
     const key=tx+"/"+ty; if(fsDem.has(key)) continue;
     jobs.push(new Promise(res=>{
@@ -2051,6 +2084,10 @@ async function fsLoadDem(lat,lng,rad){
   await Promise.all(jobs);
 }
 function fsElev(lat,lon){
+  if(fsMdt&&fsMdtStatus.loaded){
+    const xy=fsMdtXY(lat,lon);
+    if(xy){const z=fsMdt.sample(xy[0],xy[1]);if(Number.isFinite(z))return z;}
+  }
   const [px,py]=fsPix(lat,lon), tx=Math.floor(px/256), ty=Math.floor(py/256), t=fsDem.get(tx+"/"+ty);
   if(!t) return NaN;
   const fx=Math.min(254.999,Math.max(0,px-tx*256-.5)), fy=Math.min(254.999,Math.max(0,py-ty*256-.5));
@@ -3085,14 +3122,23 @@ function fsFuelFromCover(rows){
   }
   return fsFuelFromText(rows.map(r=>r.text||"").join(" "));
 }
-function fsCoverFromInventory(ll){
-  // Consulta de solo lectura sobre la misma capa PMTiles que ya muestra el visor.
-  // No modifica atributos ni geometrías del Inventario Forestal 2024.
+async function fsCoverFromInventory(ll){
+  // Espera a que el mapa de MapLibre termine de cargar el estilo y los tiles PMTiles.
+  // Evita consultar en mitad del primer render del overlay Leaflet/MapLibre.
   const result=(status,rows=[])=>({status,rows});
   if(!map.hasLayer(inventarioForestalLayer)) return result("layer-disabled");
   const gl=inventarioForestalLayer.getMaplibreMap();
   if(!gl) return result("maplibre-unavailable");
   try{
+    const waitForIdle=()=>new Promise(resolve=>{
+      if(typeof gl.once!=="function"){resolve();return;}
+      let done=false;
+      const finish=()=>{if(done)return;done=true;resolve();};
+      gl.once("idle",finish);
+      setTimeout(finish,8000);
+    });
+    if(!gl.isStyleLoaded()) await waitForIdle();
+    else if(typeof gl.isSourceLoaded==="function"&&!gl.isSourceLoaded("forestal")) await waitForIdle();
     if(!gl.isStyleLoaded()) return result("style-not-loaded");
     if(!gl.getLayer("forestal-poligonos")) return result("style-layer-missing");
     const point=gl.project([ll.lng,ll.lat]);
@@ -3121,7 +3167,7 @@ function fsCoverFromInventory(ll){
   }
 }
 async function fsCover(ll){
-  const local=fsCoverFromInventory(ll);
+  const local=await fsCoverFromInventory(ll);
   if(local.rows.length) return local.rows;
 
   fsCapP=fsCapP||getWmsCapabilities(FS_FOREST_WMS); const info=await fsCapP.catch(e=>{ fsCapP=null; throw e; });
@@ -3207,6 +3253,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   fsPanel.innerHTML=
    `<div style="display:flex;justify-content:space-between;align-items:center"><strong style="font-size:13px">🔥 Evolución del incendio · simulación</strong><button type="button" class="fs-x" style="border:0;background:none;font-size:16px;cursor:pointer">✕</button></div>`+
    `<div style="color:#8b2f2f;font-size:11px;margin:3px 0 6px"><b>Estimación orientativa</b>, con modelo simplificado: el error puede ser del 50 % o más. Úsala como orden de magnitud. No sustituye al mando ni a las herramientas operativas; no modela focos secundarios ni fuego de copa.</div>`+
+   `<div class="fs-terrain-status" style="padding:6px 8px;margin:5px 0 8px;background:#edf4ef;border-left:3px solid #527c63;border-radius:5px;font-size:11px;font-weight:700">Fuente de terreno: ${escapeHtml(fsMdtLabel())}</div>`+
    `<div style="${row}">Combustible <select class="fs-fuel" style="max-width:100%">${Object.keys(FS_FUELS).map(k=>`<option value="${k}"${k===fsCfg.fuel?" selected":""}>${FS_FUELS[k].n}</option>`).join("")}</select></div>`+
    `<div style="${row}">Inicio del fuego <select class="fs-sh"><option value="0">ahora</option><option value="3">en 3 h</option><option value="6">en 6 h</option><option value="9">en 9 h</option><option value="12">en 12 h</option></select> <span style="color:#65736b">(solo con meteorología automática)</span></div>`+
    `<details class="fs-adv" style="margin:4px 0"><summary style="cursor:pointer;font-weight:700">⚙️ Ajustes avanzados (meteorología, humedad, medios)</summary><div style="margin-top:4px">`+
@@ -3299,7 +3346,7 @@ async function fsRun(){
   const my=++fsBusy, out=fsPanel.querySelector(".fs-out"), fu=FS_FUELS[fsCfg.fuel];
   fsGroup.clearLayers();
   L.marker(fsIgn,{icon:fsIcon("🔥",24)}).addTo(fsGroup);
-  out.textContent="⏳ Calculando…";
+  out.innerHTML=`<div style="font-weight:700;color:#52645a">Terreno: consultando fuente…</div><div>⏳ Calculando…</div>`;
   let met, ffn=null, netNote="";
   try{
     met=await fsMeteo(); await fsLoadDem(fsIgn.lat,fsIgn.lng,6500);
@@ -3307,12 +3354,12 @@ async function fsRun(){
     try{ const net=await fsNet(); ffn=fsFfmcNet(net,fsIgn); if(fsCfg.moistMode==="ffmcnet") fsCfg.ffmcEff=ffn.val; }
     catch(e){ if(fsCfg.moistMode==="ffmcnet"){ fsCfg.modeEff=met.hours.length?"calc":"inst"; netNote=`No se pudo leer el FFMC de la red de estaciones (${e.message||e}); se usa la humedad calculada.`; } }
     if(!Number.isFinite(fsElev(fsIgn.lat,fsIgn.lng))) throw new Error("No se pudo cargar el terreno (modelo digital de elevación).");
-  }catch(err){ if(my===fsBusy) out.innerHTML="⚠️ "+escapeHtml(err.message||String(err)); return; }
+  }catch(err){ if(my===fsBusy) out.innerHTML=`<div style="font-weight:700;color:#52645a">Terreno: ${escapeHtml(fsMdtLabel())}</div><div>⚠️ ${escapeHtml(err.message||String(err))}</div>`; return; }
   if(my!==fsBusy) return;
   const rays=fsSimulate(fu,met), far=rays.reduce((a,r)=>r.pts[180][1]>a.pts[180][1]?r:a,rays[0]), farBg=far.bg;
   const ter=fsTerrain(fsIgn.lat,fsIgn.lng), w00=met.at(0), m00=fsMoistAt(w00,fu,ter,met.sun(0));
   if(far.pts[180][1]<15){
-    out.innerHTML=fsDec(`Con estas condiciones el fuego <b>no se propaga</b> en las próximas 6 h: la humedad del combustible fino muerto es del ${m00.toFixed(1)} % (T ${Math.round(w00.T)} °C, HR ${Math.round(w00.RH)} %) y supera la de extinción de este combustible (${Math.round(fu.Mx*100)} %). Prueba otra hora de inicio (por la tarde baja la humedad), otro combustible, o pon la humedad a mano.`); return;
+    out.innerHTML=fsDec(`<div><b>Terreno:</b> ${escapeHtml(fsMdtLabel())}</div>Con estas condiciones el fuego <b>no se propaga</b> en las próximas 6 h: la humedad del combustible fino muerto es del ${m00.toFixed(1)} % (T ${Math.round(w00.T)} °C, HR ${Math.round(w00.RH)} %) y supera la de extinción de este combustible (${Math.round(fu.Mx*100)} %). Prueba otra hora de inicio (por la tarde baja la humedad), otro combustible, o pon la humedad a mano.`); return;
   }
   const bInit=fsBehavior(fu,ter.tan,ter.asp,w00.dir,w00.spd,m00), iRef=far.pts.findIndex(p=>p[1]>=15), tRef=(bInit.Rh>0||iRef<=0)?0:far.pts[iRef][0], w0=met.at(tRef), m0=fsMoistAt(w0,fu,ter,met.sun(tRef)), mNoSun=fsMoistAt(w0,fu,{tan:0,asp:0},null), b0=fsBehavior(fu,ter.tan,ter.asp,w0.dir,w0.spd,m0);
   fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0,met,farBg,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
@@ -3375,7 +3422,11 @@ async function fsRun(){
     `<b>Hacia dónde</b>: cabeza hacia <b>${fsCard(b0.head)} (${Math.round(b0.head)}°)</b> · flancos ${f1(fsR(b0,90))} m/min · cola ${f1(fsR(b0,180))} m/min<br>`+
     `${startTxt}Viento ${fsCard(w0.dir)} ${Math.round(w0.spd)} km/h · T ${Math.round(w0.T)} °C · HR ${Math.round(w0.RH)} % · comb. fino muerto <b>${m0.toFixed(1)} %</b> · pendiente ${Math.round(ter.tan*100)}%`+tbl+
     histHtml+warn.map(w=>`<div style="color:#8b2f2f;margin-top:4px">⚠️ ${w}</div>`).join("");
+  const terrainSourceLabel=fsMdtStatus.loaded
+    ?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m (Terrarium como respaldo fuera de cobertura)`
+    :(fsMdtStatus.active?`Terrarium · no se pudo abrir el MDT provincial: ${fsMdtStatus.error||"sin datos"}`:"Terrarium · MDT provincial aún sin publicar/configurar");
   const sumMeteo=
+    `<span style="color:#52645a">Terreno: ${escapeHtml(terrainSourceLabel)}</span><br>`+
     `Intensidad ${Math.round(Ih)} kW/m · llama ≈ ${Lh.toFixed(1)} m (flancos ${Lf.toFixed(1)} m · cola ${Lb.toFixed(1)} m) · relación L/A ${b0.LB.toFixed(1)} · cabeza ${(b0.Rh*.06).toFixed(2)} km/h<br>`+
     `Viento ${fsCard(w0.dir)} ${Math.round(w0.dir)}° · ${Math.round(w0.spd)} km/h · T ${Math.round(w0.T)} °C · HR ${Math.round(w0.RH)} % → humedad comb. fino muerto <b>${m0.toFixed(1)} %</b>${fsCfg.moistMode==="man"?" (manual)":""} <span style="color:#65736b">(${escapeHtml(met.src)})</span><br>`+
     (fsCfg.moistMode!=="man"?`<span style="color:#65736b">Humedad base ${mNoSun.toFixed(1)} %${(fsCfg.modeEff||fsCfg.moistMode)==="calc"?(met.rain?" (con la lluvia de los días previos)":" (sin historial de lluvia con meteorología manual: usa el FFMC de la red)"):fsCfg.moistMode==="ffmc"?" (FFMC "+fsCfg.ffmc+", mezclado al 50 % con T y HR)":fsCfg.moistMode==="ffmcnet"&&!fsCfg.modeEff?" (FFMC de la red "+ffn.val.toFixed(1)+", mezclado al 50 % con T y HR)":""}; ajuste por sol y orientación de la ladera (hacia ${fsCard(ter.asp)}): ${m0-mNoSun>=0?"+":""}${(m0-mNoSun).toFixed(1)} puntos.</span><br>`:"")+
@@ -3395,7 +3446,7 @@ async function fsRun(){
   const critHtml=()=>`<div>Cambios de viento, de pendiente y de combustible:<ol class="fs-critl" style="margin:2px 0 4px 18px;padding:0">${
     D.crit.length?D.crit.map(c=>`<li>~${c.t} min · ${escapeHtml(c.why)}</li>`).join(""):"<li>— ninguno detectado en el recorrido</li>"}</ol></div>`;
   const det=(title,html,open)=>`<details style="margin-top:6px"${open?" open":""}><summary style="cursor:pointer;font-weight:700">${title}</summary><div style="margin-top:3px">${html}</div></details>`;
-  out.innerHTML=fsDec(`<div class="fs-sum">${sumMain}</div>`+
+  out.innerHTML=fsDec(`<div style="font-size:11px;color:#52645a;margin:3px 0"><b>Fuente de terreno:</b> ${escapeHtml(fsMdtLabel())}</div><div class="fs-sum">${sumMain}</div>`+
     det('🔧 Defensa sugerida y ataque paralelo','<div class="fs-def"></div>')+
     det('🏠 Bienes a proteger, líneas de control, zonas seguras y escape <span class="fs-osm-ld">⏳</span>','<div class="fs-osm" style="color:#65736b">⏳ Consultando OpenStreetMap…</div>')+
     det('⚠️ Puntos críticos',`<div class="fs-crit">${critHtml()}</div>`)+
