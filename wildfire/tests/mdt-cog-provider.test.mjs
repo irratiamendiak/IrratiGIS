@@ -39,3 +39,18 @@ test("rejects a 1 m-only COG instead of loading an enormous browser window",asyn
   const reader=loadProvider([fakeImage(1)]).create({url:"https://example.test/dem.tif",targetResolutionM:14});
   await assert.rejects(reader.open(),/overview adecuado/);
 });
+
+test("uses the fetch-based GeoTIFF source instead of forced XHR",async()=>{
+  let receivedOptions="not-called";
+  const sandbox={window:{GeoTIFF:{fromUrl:async(_url,options)=>{receivedOptions=options;return {getImageCount:async()=>1,getImage:async()=>fakeImage(14)};}}}};
+  vm.runInNewContext(fs.readFileSync("wildfire/terrain/mdt-cog-provider.js","utf8"),sandbox);
+  const reader=sandbox.window.IrratiMdtProvider.create({url:"https://example.test/dem.tif"});
+  await reader.open();
+  assert.equal(receivedOptions,undefined);
+});
+test("explains network/Range failures when opening the COG",async()=>{
+  const sandbox={window:{GeoTIFF:{fromUrl:async()=>{throw new Error("Failed to fetch");}}}};
+  vm.runInNewContext(fs.readFileSync("wildfire/terrain/mdt-cog-provider.js","utf8"),sandbox);
+  const reader=sandbox.window.IrratiMdtProvider.create({url:"https://example.test/dem.tif"});
+  await assert.rejects(reader.open(),/HTTP Range.*Failed to fetch.*CORS/);
+});
