@@ -1,0 +1,5 @@
+const ORIGIN="https://feature-wildfire-propagation.irratigis-wildfire-preview.pages.dev";
+const SERVICE="IRRATIGIS_BACKEND";
+function cors(origin=""){return {"Access-Control-Allow-Origin":origin===ORIGIN?origin:ORIGIN,"Access-Control-Allow-Methods":"GET, POST, OPTIONS","Access-Control-Allow-Headers":"Content-Type, Authorization, security-token, security-user-id","Vary":"Origin"}}
+function out(body,status,origin,extra={}){const h=new Headers(cors(origin));Object.entries(extra).forEach(([k,v])=>h.set(k,v));return new Response(body,{status,headers:h})}
+export default {async fetch(request,env){const origin=request.headers.get("Origin")||"";if(request.method==="OPTIONS")return new Response(null,{status:204,headers:cors(origin)});const u=new URL(request.url);if(!u.pathname.startsWith("/api/"))return out("Not found",404,origin);const upstream=await env[SERVICE].fetch(new Request(request));const headers=new Headers(upstream.headers);headers.set("Cache-Control","no-store");for(const [k,v] of Object.entries(cors(origin)))headers.set(k,v);return new Response(upstream.body,{status:upstream.status,statusText:upstream.statusText,headers})}};
