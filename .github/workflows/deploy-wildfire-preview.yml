@@ -58,7 +58,7 @@ jobs:
             --project-name irratigis-wildfire-preview \
             --branch feature-wildfire-mdt-provider \
             --commit-message "PR #10 wildfire terrain preview" | tee /tmp/pages-deploy.log
-          DEPLOY_URL=$(grep -Eo 'https://[A-Za-z0-9.-]+\\.pages\\.dev' /tmp/pages-deploy.log | tail -n 1)
+          DEPLOY_URL=$(grep -Eo 'https://[A-Za-z0-9.-]+\.pages\.dev' /tmp/pages-deploy.log | tail -n 1)
           if [ -z "$DEPLOY_URL" ]; then
             echo "::error::Wrangler did not report a Pages deployment URL."
             exit 1
@@ -72,7 +72,9 @@ jobs:
           grep -Fq 'geotiff@2.1.3/dist-browser/geotiff.js' index.html
           grep -Fq 'wildfire/terrain-config.js' index.html
           grep -Fq 'wildfire/terrain/mdt-cog-provider.js' index.html
+          grep -Fq 'wildfire/simulator/engine.js' index.html
           grep -Fq 'window.IrratiMdtProvider.create' index.html
+          node --check wildfire/simulator/engine.js
           grep -Fq 'mdt-lidar-2017-16m-deflate.cog.tif' wildfire/terrain-config.js
           node --check wildfire/terrain/mdt-cog-provider.js
           echo "MDT scripts, 16 m COG configuration and provider syntax are present."
