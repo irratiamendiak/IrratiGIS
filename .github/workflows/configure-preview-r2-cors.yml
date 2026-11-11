@@ -1,0 +1,89 @@
+name: Configure read-only R2 CORS for wildfire preview
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cors:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'feature/wildfire-mdt-provider'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: irrati-inventario
+      PREVIEW_ORIGIN: https://feature-wildfire-mdt-provide.irratigis-wildfire-preview.pages.dev
+    steps:
+      - name: Read existing CORS policy and append exact preview origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CF_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN"; exit 1; }
+          test -n "$R2_ACCOUNT_ID" || { echo "::error::Missing R2_ACCOUNT_ID"; exit 1; }
+          [[ "$R2_ACCOUNT_ID" =~ ^[a-f0-9]{32}$ ]] || { echo "::error::Invalid R2_ACCOUNT_ID"; exit 1; }
+          API="https://api.cloudflare.com/client/v4/accounts/$R2_ACCOUNT_ID/r2/buckets/$R2_BUCKET/cors"
+          CODE=$(curl --silent --show-error --max-time 30 -o /tmp/cors-response.json -w '%{http_code}' \
+            -H "Authorization: Bearer $CF_API_TOKEN" "$API")
+          if [[ "$CODE" != "200" ]]; then
+            cat /tmp/cors-response.json
+            echo "::error::Cloudflare API could not read the R2 CORS policy (HTTP $CODE). No bucket settings were changed."
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          data=json.load(open("/tmp/cors-response.json"))
+          if not data.get("success"):
+              raise SystemExit("Cloudflare API returned success=false; refusing to change CORS.")
+          rules=data.get("result",{}).get("rules",[])
+          origin="https://feature-wildfire-mdt-provide.irratigis-wildfire-preview.pages.dev"
+          found=next((r for r in rules if origin in r.get("allowed",{}).get("origins",[])),None)
+          if found:
+              allowed=found.get("allowed",{})
+              if not {"GET","HEAD"}.issubset(set(allowed.get("methods",[]))):
+                  raise SystemExit("Existing rule for preview origin lacks GET/HEAD; refusing to modify it.")
+              print("Exact preview origin already has GET/HEAD access; preserving policy.")
+          else:
+              rules.append({
+                  "allowed":{
+                      "origins":[origin],
+                      "methods":["GET","HEAD"],
+                      "headers":["range","if-range"]
+                  },
+                  "exposeHeaders":["Accept-Ranges","Content-Range","Content-Length","ETag"],
+                  "maxAgeSeconds":3600
+              })
+              print("Appending exact preview origin with GET/HEAD only.")
+          json.dump({"rules":rules},open("/tmp/cors-update.json","w"))
+          PY
+          CODE=$(curl --silent --show-error --max-time 30 -o /tmp/cors-put.json -w '%{http_code}' \
+            -X PUT "$API" -H "Authorization: Bearer $CF_API_TOKEN" \
+            -H "Content-Type: application/json" --data-binary @/tmp/cors-update.json)
+          if [[ "$CODE" != "200" ]]; then
+            cat /tmp/cors-put.json
+            echo "::error::Cloudflare API refused the CORS update (HTTP $CODE)."
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          d=json.load(open("/tmp/cors-put.json"))
+          if not d.get("success"):
+              raise SystemExit("Cloudflare API returned success=false after CORS update.")
+          print("Cloudflare accepted the bucket CORS update.")
+          PY
+          curl --fail --silent --show-error --max-time 30 \
+            -H "Authorization: Bearer $CF_API_TOKEN" "$API" -o /tmp/cors-verified.json
+          python - <<'PY'
+          import json
+          rules=json.load(open("/tmp/cors-verified.json"))["result"]["rules"]
+          origin="https://feature-wildfire-mdt-provide.irratigis-wildfire-preview.pages.dev"
+          matches=[r for r in rules if origin in r.get("allowed",{}).get("origins",[])]
+          assert matches, "Preview origin missing after update"
+          assert set(matches[0]["allowed"]["methods"]) >= {"GET","HEAD"}
+          print("Verified: preview origin is read-only (GET/HEAD).")
+          PY
