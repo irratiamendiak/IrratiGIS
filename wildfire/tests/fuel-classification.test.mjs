@@ -87,7 +87,7 @@ test("cover diagnostics identify the effective source and expose classification 
   assert.match(html, /data-fs-inventory-enable/);
   assert.match(html, /map\.addLayer\(inventarioForestalLayer\)/);
 });
-test("inventory spatial query reports why the local layer did not provide features", () => {
+test("inventory spatial query reports why the local layer did not provide features", async () => {
   const run = ({ enabled = true, gl = null } = {}) => {
     const context = {
       map: { hasLayer: () => enabled },
@@ -97,18 +97,18 @@ test("inventory spatial query reports why the local layer did not provide featur
     const source = extractFunction("fsCoverFromInventory").replace(/^(?!async\s)function\s/, "async function ");
     return vm.runInNewContext(source + "\nfsCoverFromInventory", context);
   };
-  assert.equal(run({ enabled: false })({ lat: 43, lng: -2 }).status, "layer-disabled");
-  assert.equal(run()({ lat: 43, lng: -2 }).status, "maplibre-unavailable");
+  assert.equal((await run({ enabled: false })({ lat: 43, lng: -2 })).status, "layer-disabled");
+  assert.equal((await run()({ lat: 43, lng: -2 })).status, "maplibre-unavailable");
   const base = {
     isStyleLoaded: () => true,
     getLayer: () => ({}),
     project: () => ({ x: 10, y: 10 }),
     queryRenderedFeatures: () => []
   };
-  assert.equal(run({ gl: { ...base, isStyleLoaded: () => false } })({ lat: 43, lng: -2 }).status, "style-not-loaded");
-  assert.equal(run({ gl: { ...base, getLayer: () => null } })({ lat: 43, lng: -2 }).status, "style-layer-missing");
-  assert.equal(run({ gl: base })({ lat: 43, lng: -2 }).status, "query-empty");
-  const found = run({ gl: { ...base, queryRenderedFeatures: () => [{ properties: { TIPES_es: "Herbazal" } }] } })({ lat: 43, lng: -2 });
+  assert.equal((await run({ gl: { ...base, isStyleLoaded: () => false } })({ lat: 43, lng: -2 })).status, "style-not-loaded");
+  assert.equal((await run({ gl: { ...base, getLayer: () => null } })({ lat: 43, lng: -2 })).status, "style-layer-missing");
+  assert.equal((await run({ gl: base })({ lat: 43, lng: -2 })).status, "query-empty");
+  const found = await run({ gl: { ...base, queryRenderedFeatures: () => [{ properties: { TIPES_es: "Herbazal" } }] } })({ lat: 43, lng: -2 });
   assert.equal(found.status, "features-found");
   assert.equal(found.rows.length, 1);
   assert.equal(found.rows[0].source, "inventory");
