@@ -21,32 +21,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          origin="https://irratiamendiak.github.io"
-          check_asset() {
-            local name="$1"
-            local url="$2"
-            local origin="$3"
-            local headers status allow_origin
-            headers="$(mktemp)"
-            status="$(curl --silent --show-error --location --max-time 90 \
-              --dump-header "$headers" --output /dev/null \
-              --header "Origin: $origin" \
-              --header "Range: bytes=0-16383" \
-              --write-out '%{http_code}' "$url")"
-            echo "$name: HTTP $status"
-            tr -d '\r' < "$headers" | grep -iE '^(HTTP/|content-range:|accept-ranges:|access-control-allow-origin:)' || true
-            allow_origin="$(tr -d '\r' < "$headers" | awk 'BEGIN{IGNORECASE=1} /^access-control-allow-origin:/{sub(/^[^:]*:[[:space:]]*/,""); value=$0} END{print value}')"
-            rm -f "$headers"
-            if [[ "$status" != "206" ]]; then
-              echo "::error::$name did not return HTTP 206 for a byte-range request."
-              return 1
-            fi
-            if [[ "$allow_origin" != "$origin" && "$allow_origin" != "*" ]]; then
-              echo "::error::$name did not allow CORS origin $origin (got: ${allow_origin:-missing})."
-              return 1
-            fi
-          }
-          check_asset "Gipuzkoa MDT COG" \
-            "https://pub-997427d08539450780c6722ce7d23750.r2.dev/terrain/gipuzkoa/mdt-lidar-2017-1m.cog.tif"
-          check_asset "Gipuzkoa forest inventory PMTiles" \
-            "https://pub-997427d08539450780c6722ce7d23750.r2.dev/neatogeo_forestal_gipuzkoa%281%29.pmtiles"
+          check_asset "Gipuzkoa MDT COG (production)" \
+            "https://pub-997427d08539450780c6722ce7d23750.r2.dev/terrain/gipuzkoa/mdt-lidar-2017-1m.cog.tif" \
+            "https://irratiamendiak.github.io"
+          check_asset "Gipuzkoa MDT COG (preview)" \
+            "https://pub-997427d08539450780c6722ce7d23750.r2.dev/terrain/gipuzkoa/mdt-lidar-2017-1m.cog.tif" \
+            "https://feature-wildfire-mdt-provide.irratigis-wildfire-preview.pages.dev"
+          check_asset "Gipuzkoa forest PMTiles (production)" \
+            "https://pub-997427d08539450780c6722ce7d23750.r2.dev/neatogeo_forestal_gipuzkoa%281%29.pmtiles" \
+            "https://irratiamendiak.github.io"
+          check_asset "Gipuzkoa forest PMTiles (preview)" \
+            "https://pub-997427d08539450780c6722ce7d23750.r2.dev/neatogeo_forestal_gipuzkoa%281%29.pmtiles" \
+            "https://feature-wildfire-mdt-provide.irratigis-wildfire-preview.pages.dev"
