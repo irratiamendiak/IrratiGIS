@@ -29,7 +29,7 @@ jobs:
         with:
           node-version: "22"
       - name: Test wildfire simulator and terrain readers
-        run: node --test wildfire/tests/*.test.mjs
+        run: node --test wildfire/tests/simulator-engine.test.mjs wildfire/tests/mdt-cog-provider.test.mjs
       - name: Verify public 16 m MDT COG supports byte ranges and production CORS
         shell: bash
         run: |
