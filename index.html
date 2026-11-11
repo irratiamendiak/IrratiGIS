@@ -677,6 +677,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
 <script src="wildfire/terrain-config.js?v=2"></script>
 <script src="wildfire/terrain/mdt-cog-provider.js?v=1"></script>
+<script src="wildfire/simulator/engine.js?v=1"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <script src="https://unpkg.com/@mapbox/shp-write@0.4.3/shpwrite.js"></script>
@@ -2114,41 +2115,22 @@ function fsTerrain(lat,lon){   // malda (tan) eta orientazioa (maldan behera, gr
 }
 
 /* --- portaera: Rothermel sinplifikatua --- */
-function fsMoist(fu,pct){
-  const M=pct/100, r=M/fu.Mx; if(r>=1) return 0;
-  const eta=x=>1-2.59*x+5.11*x*x-3.52*x*x*x, q=m=>250+1116*m;
-  return Math.max(0,eta(r)/eta(.06/fu.Mx))*q(.06)/q(M);
-}
-function fsBehavior(fu,tan,asp,windFrom,u10,mpct){
-  const R0=fu.R0*fsMoist(fu,mpct), down=(windFrom+180)%360;
-  if(R0<=0) return {Rh:0,head:down,e:0,LB:1,phiE:0};
-  const C=7.47*Math.exp(-.133*Math.pow(fu.sig,.55)), B=.02526*Math.pow(fu.sig,.54);
-  const phiW=u10>.5?C*Math.pow(u10*54.68*fu.waf,B):0;               // haizea erdi-garretan (ft/min)
-  const t=Math.min(tan,1.73), phiS=5.275*Math.pow(fu.beta,-.3)*t*t;   // malda ≤ 60°
-  const up=(asp+180)%360, dd=(down-up)*fsRad;
-  const X=phiS+phiW*Math.cos(dd), Y=phiW*Math.sin(dd), phiE=Math.hypot(X,Y);
-  const head=phiE<1e-6?down:(up+Math.atan2(Y,X)/fsRad+360)%360;
-  const Rh=Math.min(fu.Rmax,R0*(1+phiE));
-  const Ue=Math.min(60,Math.pow(phiE/C,1/B)/88);                       // mph
-  const LB=Math.min(8,.936*Math.exp(.2566*Ue)+.461*Math.exp(-.1548*Ue)-.397);
-  return {Rh,head,e:Math.sqrt(Math.max(0,LB*LB-1))/LB,LB,phiE};
-}
-const fsR=(b,th)=>b.Rh*(1-b.e)/(1-b.e*Math.cos(th*fsRad));          // elipsea: R (m/min) buruarekiko th graduan
-const fsInt=(fu,r)=>FS_H*fu.w*r/60;                                  // Byram, kW/m
-const fsFlame=I=>.0775*Math.pow(I,.46);                              // m
-
+const fsEngine=window.IrratiWildfireEngine;
+if(!fsEngine) throw new Error("No se pudo cargar el motor de simulación de incendios.");
+const fsMoist=(fu,pct)=>fsEngine.fuelMoisture(fu,pct);
+const fsBehavior=(fu,tan,asp,windFrom,u10,mpct)=>fsEngine.behavior(fu,tan,asp,windFrom,u10,mpct);
+const fsR=(b,th)=>fsEngine.ellipseRate(b,th);
+const fsInt=(fu,r)=>fsEngine.intensity(fu,r,FS_H);
+const fsFlame=I=>fsEngine.flameLength(I);
 function fsSimulate(fu,met,sc){
-  sc=sc||{wf:1,dm:0}; const rays=[];
-  for(let bg=0;bg<360;bg+=5){
-    let lat=fsIgn.lat, lon=fsIgn.lng, dist=0; const br=bg*fsRad, mLon=111320*Math.cos(fsIgn.lat*fsRad), pts=[[0,0,lat,lon]];
-    for(let t=FS_DT;t<=FS_T;t+=FS_DT){
-      const w=met.at(t), ter=fsTerrain(lat,lon), b=fsBehavior(fu,ter.tan,ter.asp,w.dir,w.spd*sc.wf,Math.max(2,fsMoistAt(w,fu,ter,met.sun(t))+sc.dm));
-      const d=b.Rh>0?fsR(b,angDiff(bg,b.head))*FS_DT:0;
-      lat+=d*Math.cos(br)/111320; lon+=d*Math.sin(br)/mLon; dist+=d; pts.push([t,dist,lat,lon]);
-    }
-    rays.push({bg,pts});
-  }
-  return rays;
+  sc=sc||{wf:1,dm:0};
+  return fsEngine.simulate({
+    fuel:fu, ignition:fsIgn, durationMinutes:FS_T, stepMinutes:FS_DT,
+    heatContent:FS_H, windFactor:sc.wf, moistureDelta:sc.dm,
+    weatherAt:t=>met.at(t),
+    terrainAt:(lat,lon)=>fsTerrain(lat,lon),
+    moistureAt:(w,f,ter,t)=>fsMoistAt(w,f,ter,met.sun(t))
+  });
 }
 const fsPerim=(rays,t)=>rays.map(r=>{ const p=r.pts[t/FS_DT]; return [p[2],p[3]]; });
 function fsHa(pts){
