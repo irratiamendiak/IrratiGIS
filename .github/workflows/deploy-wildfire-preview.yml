@@ -59,7 +59,7 @@ jobs:
       - name: Verify preview API CORS and health
         run: |
           set -euo pipefail
-          API_URL="https://preview.irratigis-api-preview.pages.dev"
+          API_URL="https://irratigis-api-preview.pages.dev"
           ORIGIN="https://feature-wildfire-propagation.irratigis-wildfire-preview.pages.dev"
           curl -fsS -D /tmp/api.headers -o /tmp/api-health.json -H "Origin: $ORIGIN" "$API_URL/api/health"
           grep -Fqi "access-control-allow-origin: $ORIGIN" /tmp/api.headers
