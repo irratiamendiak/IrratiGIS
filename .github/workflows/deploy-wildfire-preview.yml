@@ -67,7 +67,7 @@ jobs:
           grep -Fq 'wildfire/terrain-config.js' index.html
           grep -Fq 'wildfire/terrain/mdt-cog-provider.js' index.html
           grep -Fq 'window.IrratiMdtProvider.create' index.html
-          grep -Fq 'mdt-lidar-2017-16m.cog.tif' wildfire/terrain-config.js
+          grep -Fq 'mdt-lidar-2017-16m-deflate.cog.tif' wildfire/terrain-config.js
           node --check wildfire/terrain/mdt-cog-provider.js
           echo "MDT scripts, 16 m COG configuration and provider syntax are present."
 
