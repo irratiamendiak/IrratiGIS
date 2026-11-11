@@ -4,8 +4,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
-    paths:
-      - ".github/workflows/allow-wildfire-preview-cog-cors.yml"
   workflow_dispatch:
 
 permissions:
