@@ -37,5 +37,5 @@ test("refuses to open without a configured URL",async()=>{
 
 test("rejects a 1 m-only COG instead of loading an enormous browser window",async()=>{
   const reader=loadProvider([fakeImage(1)]).create({url:"https://example.test/dem.tif",targetResolutionM:14});
-  await assert.rejects(reader.open(),/overview cercano/);
+  await assert.rejects(reader.open(),/overview adecuado/);
 });
