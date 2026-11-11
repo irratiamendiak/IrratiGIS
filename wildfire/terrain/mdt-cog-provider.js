@@ -17,14 +17,20 @@
       if (!root.GeoTIFF || typeof root.GeoTIFF.fromUrl !== "function") throw new Error("No se ha podido cargar el lector GeoTIFF.");
       const tiff = await root.GeoTIFF.fromUrl(url, { forceXHR: true });
       const count = await tiff.getImageCount();
-      let chosen = await tiff.getImage(0), best = Infinity;
+      let chosen = null, best = Infinity, skippedWithoutTransform = 0;
       for (let i=0;i<count;i++) {
-        const candidate=await tiff.getImage(i), res=candidate.getResolution();
+        const candidate=await tiff.getImage(i);
+        let res;
+        // Some TIFF directories (masks/auxiliary IFDs) have no affine
+        // georeferencing. They are not usable as raster overviews.
+        try { res=candidate.getResolution(); }
+        catch (_) { skippedWithoutTransform++; continue; }
         const size=Math.max(Math.abs(res[0]),Math.abs(res[1]));
         if (!Number.isFinite(size)||size<=0) continue;
         const score=Math.abs(Math.log(size/targetResolution));
         if(score<best){best=score;chosen=candidate;}
       }
+      if(!chosen) throw new Error("El COG no contiene ninguna imagen con georreferenciación afín válida.");
       image=chosen;
       const res=image.getResolution();
       sourceResolution=Math.max(Math.abs(res[0]),Math.abs(res[1]));
