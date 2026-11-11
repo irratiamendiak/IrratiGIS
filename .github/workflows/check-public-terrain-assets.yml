@@ -4,9 +4,9 @@ on:
   pull_request:
     paths:
       - ".github/workflows/check-public-terrain-assets.yml"
+      - ".github/workflows/wildfire-simulator-tests.yml"
       - "wildfire/terrain-config.js"
       - "index.html"
-      - "docs/WILDFIRE-PREVIEW.md"
   workflow_dispatch:
 
 permissions:
@@ -17,19 +17,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check COG and forest PMTiles byte-range access
+      - name: Check production MDT COG and forest PMTiles byte-range access
         shell: bash
         run: |
           set -euo pipefail
-          check_asset "Gipuzkoa MDT COG (production)" \
-            "https://pub-997427d08539450780c6722ce7d23750.r2.dev/terrain/gipuzkoa/mdt-lidar-2017-1m.cog.tif" \
-            "https://irratiamendiak.github.io"
-          check_asset "Gipuzkoa MDT COG (preview)" \
-            "https://pub-997427d08539450780c6722ce7d23750.r2.dev/terrain/gipuzkoa/mdt-lidar-2017-1m.cog.tif" \
-            "https://feature-wildfire-mdt-provide.irratigis-wildfire-preview.pages.dev"
-          check_asset "Gipuzkoa forest PMTiles (production)" \
-            "https://pub-997427d08539450780c6722ce7d23750.r2.dev/neatogeo_forestal_gipuzkoa%281%29.pmtiles" \
-            "https://irratiamendiak.github.io"
-          check_asset "Gipuzkoa forest PMTiles (preview)" \
-            "https://pub-997427d08539450780c6722ce7d23750.r2.dev/neatogeo_forestal_gipuzkoa%281%29.pmtiles" \
-            "https://feature-wildfire-mdt-provide.irratigis-wildfire-preview.pages.dev"
+          check_asset() {
+            local label="$1"
+            local url="$2"
+            local origin="$3"
+            echo "Checking $label"
+            curl --fail --silent --show-error --range 0-16383 -D /tmp/asset-headers "$url" -o /tmp/asset-range.bin
+            grep -Eqi '^HTTP/[^ ]+ 206' /tmp/asset-headers
+            test -s /tmp/asset-range.bin
+            curl --silent --show-error --request OPTIONS "$url" \
+              --header "Origin: $origin" \
+              --header "Access-Control-Request-Method: GET" \
+              --header "Access-Control-Request-Headers: range" \
+              --dump-header /tmp/cors-headers --output /dev/null
+            grep -Eqi '^access-control-allow-origin: \\*|^access-control-allow-origin: https://irratiamendiak\\.github\\.io' /tmp/cors-headers
+            grep -Eqi '^access-control-allow-methods:.*GET' /tmp/cors-headers
+            echo "OK: $label supports HTTP Range and CORS for $origin"
+          }
+          ORIGIN="https://irratiamendiak.github.io"
+          BASE="https://pub-997427d08539450780c6722ce7d23750.r2.dev"
+          check_asset "Gipuzkoa MDT COG 16 m" "$BASE/terrain/gipuzkoa/mdt-lidar-2017-16m-deflate.cog.tif" "$ORIGIN"
+          check_asset "Gipuzkoa forest PMTiles" "$BASE/neatogeo_forestal_gipuzkoa%281%29.pmtiles" "$ORIGIN"
