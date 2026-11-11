@@ -3419,7 +3419,16 @@ async function fsRun(){
   const table=`<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-top:8px">`+
     times.map(t=>`<div style="padding:7px 3px;text-align:center;border-radius:5px;background:#f7f8f7;border-top:3px ${styles[t].dash?"dashed":"solid"} ${styles[t].color}"><b style="font-size:11px">${t} min</b><br><b>${fmt(areas[t])}</b><br><span style="font-size:10px;color:#65736b">ha</span></div>`).join("")+`</div>`;
   const source=manual?"Meteorología introducida manualmente":"Meteorología automática y previsión";
-  out.innerHTML=fsDec(`<div class="fs-sum"><b>Propagación ${manual?"manual":"prevista"} · superficie alcanzada</b>${table}
+  const wxTable=manual?"":`<div style="margin-top:10px;overflow-x:auto"><b style="font-size:12px">Meteorología prevista por horizonte</b><table style="width:100%;min-width:430px;border-collapse:collapse;font-size:11px;margin-top:5px"><thead><tr><th style="text-align:left;padding:4px;border-bottom:1px solid #d8dfda">Variable</th>${times.map(t=>`<th style="padding:4px;border-bottom:1px solid #d8dfda">${t} min</th>`).join("")}</tr></thead><tbody>${[
+    ["Viento",w=>`${Math.round(w.spd)} km/h ${fsCard(w.dir)}`],
+    ["Racha",w=>Number.isFinite(w.gust)?`${Math.round(w.gust)} km/h`:"—"],
+    ["Temperatura",w=>`${w.T.toFixed(1)} °C`],
+    ["Humedad relativa",w=>`${Math.round(w.RH)} %`],
+    ["Precipitación",w=>Number.isFinite(w.P)?`${w.P.toFixed(1)} mm/h`:"—"],
+    ["Radiación solar",w=>Number.isFinite(w.R)?`${Math.round(w.R)} W/m²`:"—"],
+    ["Humedad combustible fino",w=>Number.isFinite(w.m)?`${w.m.toFixed(1)} %`:"—"]
+  ].map(([name,fmt])=>`<tr><td style="padding:4px;border-bottom:1px solid #edf0ed">${name}</td>${times.map(t=>{const w=met.at(t);return `<td style="text-align:center;padding:4px;border-bottom:1px solid #edf0ed">${fmt(w)}</td>`;}).join("")}</tr>`).join("")}</tbody></table><div style="font-size:10px;color:#65736b;margin-top:4px">Valores horarios de Open-Meteo correspondientes a cada horizonte (la precipitación es la prevista para esa hora).</div></div>`;
+  out.innerHTML=fsDec(`<div class="fs-sum"><b>Propagación ${manual?"manual":"prevista"} · superficie alcanzada</b>${table}${wxTable}
     <div style="font-size:10px;color:#65736b;margin-top:8px">${source}. Los cuatro perímetros representan 30, 60, 90 y 120 minutos; el color y el tipo de línea identifican cada horizonte. Cambia el selector de meteorología para alternar entre prevista y manual; en modo manual se reutilizan los campos de viento, temperatura y humedad.</div>
   </div>`);
   fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0:null,met,farBg:null,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
