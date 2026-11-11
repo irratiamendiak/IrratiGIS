@@ -1,7 +1,7 @@
 (()=>{
   "use strict";
   // Zerbitzaria: Deno Deploy (lehen Cloudflare Worker: irratigis-erreketak.kulixka-mendiak.workers.dev)
-  const API="https://irratigis-api.irratiamendiak.deno.net";
+  const API="https://preview.irratigis-api-preview.pages.dev";
   const TOKEN_KEY="irratigis_session_token";
   const SESSION_TOKEN_KEY="irratigis_session_token_temp";
   const METEOSAT_EUROPE_BOUNDS=[[34,-25],[72,45]];
