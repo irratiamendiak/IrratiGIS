@@ -65,6 +65,31 @@ jobs:
           grep -Fqi "access-control-allow-origin: $ORIGIN" /tmp/api.headers
           grep -Fq '"ok":true' /tmp/api-health.json
           echo "Preview API health and CORS verified."
+      
+      - name: Verify MDT and forest inventory byte-range proxy
+        run: |
+          set -euo pipefail
+          API_URL="https://irratigis-api-preview.pages.dev"
+          ORIGIN="https://feature-wildfire-propagation.irratigis-wildfire-preview.pages.dev"
+          for PATHNAME in "/terrain/mdt-lidar-2017-16m-deflate.cog.tif" "/data/forestal.pmtiles"; do
+            echo "Checking byte-range proxy: $PATHNAME"
+            curl --fail --silent --show-error --range 0-16383 \
+              -H "Origin: $ORIGIN" -D /tmp/range.headers \
+              "$API_URL$PATHNAME" -o /tmp/range.bin
+            grep -Eqi '^HTTP/[^ ]+ 206' /tmp/range.headers
+            grep -Eqi '^content-range: bytes 0-' /tmp/range.headers
+            grep -Fqi "access-control-allow-origin: $ORIGIN" /tmp/range.headers
+            test -s /tmp/range.bin
+            curl --silent --show-error --request OPTIONS "$API_URL$PATHNAME" \
+              -H "Origin: $ORIGIN" \
+              -H "Access-Control-Request-Method: GET" \
+              -H "Access-Control-Request-Headers: range" \
+              -D /tmp/preflight.headers -o /dev/null
+            grep -Fqi "access-control-allow-origin: $ORIGIN" /tmp/preflight.headers
+            grep -Eqi '^access-control-allow-methods:.*GET' /tmp/preflight.headers
+            grep -Eqi '^access-control-allow-headers:.*range' /tmp/preflight.headers
+          done
+          echo "MDT COG and forest PMTiles both return HTTP 206 with preview CORS."
 
       - name: Deploy PR frontend to isolated Pages project
         env:
