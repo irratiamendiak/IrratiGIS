@@ -1,0 +1,102 @@
+name: Publish Gipuzkoa 16 m MDT COG for browser reader
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-gipuzkoa-mdt-16m-cog-r2.yml
+  push:
+    branches: [main, feature/wildfire-mdt-provider]
+    paths:
+      - .github/workflows/publish-gipuzkoa-mdt-16m-cog-r2.yml
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: publish-gipuzkoa-mdt-16m-cog-r2
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: irrati-inventario
+      OBJECT_KEY: terrain/gipuzkoa/mdt-lidar-2017-16m.cog.tif
+      SOURCE_RUN_ID: "42462122541"
+      PUBLIC_BASE_URL: https://pub-997427d08539450780c6722ce7d23750.r2.dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install raster tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "rasterio>=1.4,<2" "awscli>=1.36,<2"
+      - name: Download full-resolution provincial MDT
+        uses: actions/download-artifact@v4
+        with:
+          name: gipuzkoa-mdt-full-coverage
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: data/input
+      - name: Create a standalone 16 m raster and COG
+        run: |
+          python - <<'PY'
+          import os, math, rasterio
+          from affine import Affine
+          from rasterio.enums import Resampling
+          from rasterio.shutil import copy
+          src_path = "data/input/gipuzkoa_mdt_lidar_2017_1m.tif"
+          os.makedirs("data/output", exist_ok=True)
+          tmp = "data/output/gipuzkoa_mdt_lidar_2017_16m.tif"
+          cog = "data/output/gipuzkoa_mdt_lidar_2017_16m.cog.tif"
+          with rasterio.open(src_path) as src:
+              factor = 16
+              width, height = math.ceil(src.width/factor), math.ceil(src.height/factor)
+              transform = src.transform * Affine.scale(src.width/width, src.height/height)
+              data = src.read(1, out_shape=(height, width), resampling=Resampling.average, masked=False)
+              profile = src.profile.copy()
+              profile.update(driver="GTiff", width=width, height=height, transform=transform,
+                             dtype="float32", count=1, compress="DEFLATE", tiled=True,
+                             blockxsize=512, blockysize=512, BIGTIFF="IF_SAFER", nodata=src.nodata)
+              with rasterio.open(tmp, "w", **profile) as dst:
+                  dst.write(data.astype("float32", copy=False), 1)
+              print({"source_resolution": src.res, "output_resolution": (transform.a, abs(transform.e)),
+                     "output_shape": (height, width), "crs": src.crs.to_string(), "nodata": src.nodata})
+          copy(tmp, cog, driver="COG", COMPRESS="ZSTD", LEVEL=9, PREDICTOR="FLOATING_POINT",
+               BLOCKSIZE=512, BIGTIFF="IF_SAFER", RESAMPLING="AVERAGE", NUM_THREADS="ALL_CPUS")
+          with rasterio.open(cog) as ds:
+              assert ds.crs and ds.crs.to_epsg() == 25830
+              assert 14 <= abs(ds.res[0]) <= 18 and 14 <= abs(ds.res[1]) <= 18
+              print({"cog_bytes": os.path.getsize(cog), "resolution": ds.res,
+                     "shape": (ds.height, ds.width), "overviews": ds.overviews(1)})
+          PY
+      - name: Configure R2 endpoint and verify destination is unused
+        run: |
+          set -euo pipefail
+          test -n "$AWS_ACCESS_KEY_ID"
+          test -n "$AWS_SECRET_ACCESS_KEY"
+          test -n "$R2_ACCOUNT_ID"
+          echo "AWS_ENDPOINT_URL=https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" >> "$GITHUB_ENV"
+          aws s3api head-bucket --bucket "$R2_BUCKET" --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          if aws s3api head-object --bucket "$R2_BUCKET" --key "$OBJECT_KEY" --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" >/dev/null 2>&1; then
+            echo "::error::Destination already exists; refusing overwrite."
+            exit 1
+          fi
+      - name: Upload standalone 16 m COG
+        run: |
+          set -euo pipefail
+          aws s3 cp data/output/gipuzkoa_mdt_lidar_2017_16m.cog.tif "s3://$R2_BUCKET/$OBJECT_KEY" --endpoint-url "$AWS_ENDPOINT_URL" --only-show-errors
+          curl --fail --silent --show-error --range 0-16383 -D /tmp/headers "$PUBLIC_BASE_URL/$OBJECT_KEY" -o /tmp/range.bin
+          grep -Eqi '^HTTP/[^ ]+ 206' /tmp/headers
+          test -s /tmp/range.bin
+          echo "Published and verified HTTP Range access to the standalone 16 m COG."
