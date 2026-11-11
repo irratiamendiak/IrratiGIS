@@ -105,10 +105,10 @@ test("inventory spatial query reports why the local layer did not provide featur
     project: () => ({ x: 10, y: 10 }),
     queryRenderedFeatures: () => []
   };
-  assert.equal(run({ gl: { ...base, isStyleLoaded: () => false } })({ lat: 43, lng: -2 }).status, "style-not-loaded");
-  assert.equal(run({ gl: { ...base, getLayer: () => null } })({ lat: 43, lng: -2 }).status, "style-layer-missing");
-  assert.equal(run({ gl: base })({ lat: 43, lng: -2 }).status, "query-empty");
-  const found = run({ gl: { ...base, queryRenderedFeatures: () => [{ properties: { TIPES_es: "Herbazal" } }] } })({ lat: 43, lng: -2 });
+  assert.equal((await run({ gl: { ...base, isStyleLoaded: () => false } })({ lat: 43, lng: -2 })).status, "style-not-loaded");
+  assert.equal((await run({ gl: { ...base, getLayer: () => null } })({ lat: 43, lng: -2 })).status, "style-layer-missing");
+  assert.equal((await run({ gl: base })({ lat: 43, lng: -2 })).status, "query-empty");
+  const found = await run({ gl: { ...base, queryRenderedFeatures: () => [{ properties: { TIPES_es: "Herbazal" } }] } })({ lat: 43, lng: -2 });
   assert.equal(found.status, "features-found");
   assert.equal(found.rows.length, 1);
   assert.equal(found.rows[0].source, "inventory");
