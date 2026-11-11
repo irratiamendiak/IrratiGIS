@@ -24,6 +24,7 @@ jobs:
           check_asset() {
             local name="$1"
             local url="$2"
+            local origin="$3"
             local headers status allow_origin
             headers="$(mktemp)"
             status="$(curl --silent --show-error --location --max-time 90 \
