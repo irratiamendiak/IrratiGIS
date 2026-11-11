@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
 <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
-<script src="auth.js?v=20261011-deno" defer></script>
+<script src="auth.js?v=20261111-production" defer></script>
 <script src="gis-tools.js?v=25" defer></script>
 <style>
 :root{--bg:#f4f7f5;--panel:#fff;--ink:#16231c;--muted:#65736b;--green:#176b43;--line:#dce5df;--blue:#175f8f}
@@ -560,7 +560,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
         <div><span class="badge">GeoGipuzkoa</span> <span class="badge">PNOA</span> <span class="badge blue">Katastro WMS</span></div>
       </div>
     </div>
-    <div id="map"></div><div id="runtimeStatus" role="status" style="margin-top:8px;padding:9px 11px;border-radius:8px;background:#fff4db;color:#704d00;font-size:13px">Comprobando la carga del visor…</div></div>
+    <div id="map"></div><div id="runtimeStatus" role="status" aria-live="polite" style="display:none;margin-top:8px;padding:9px 11px;border-radius:8px;background:#fff4db;color:#704d00;font-size:13px"></div></div>
        <div class="tracktools icon-tools">
       <button id="openFileBtn" type="button" title="GPX / KML kargatu">📂</button>
       <button id="drawTrack" title="Track-a marraztu">✏️</button>
@@ -3284,12 +3284,12 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div class="fs-fuel-manual" style="${fsFuelSource==="rothermel"?"":"display:none;"}${row}"><b>Combustible del modelo</b> <select class="fs-fuel" style="max-width:100%">${Object.keys(FS_FUELS).map(k=>`<option value="${k}"${k===fsCfg.fuel?" selected":""}>${FS_FUELS[k].n}</option>`).join("")}</select></div>`+
    `<div style="${row}"><b>Topografía</b> <select class="fs-terrain-source"><option value="mdt"${fsTerrainSource==="mdt"?" selected":""}>MDT LiDAR Gipuzkoa 2017 (16 m)</option><option value="terrarium"${fsTerrainSource==="terrarium"?" selected":""}>Terrarium (alternativa)</option></select></div>`+
    `<div class="fs-terrain-status" style="padding:6px 8px;margin:5px 0 8px;background:#edf4ef;border-left:3px solid #527c63;border-radius:5px;font-size:11px;font-weight:700">Fuente de terreno: ${escapeHtml(fsMdtLabel())}</div>`+
-   `<div class="fs-prof-slot" style="margin:6px 0 8px"><div style="font-weight:700;color:#52645a">📈 Gráfico de evolución, pendiente y Campbell</div><div style="font-size:11px;color:#65736b">Aparecerá después de marcar el punto de inicio y calcular la simulación.</div></div>`+
-   `<div style="${row}"><b>Meteorología</b> <select class="fs-ws"><option value="auto">Automática (Open-Meteo + previsión)</option><option value="man">Manual</option></select></div>`+
+   `<div class="fs-prof-slot" style="display:none;margin:6px 0 8px"><div style="font-weight:700;color:#52645a">📈 Gráfico de evolución, pendiente y Campbell</div><div style="font-size:11px;color:#65736b">Aparecerá después de marcar el punto de inicio y calcular la simulación.</div></div>`+
+   `<div style="${row}"><b>Propagación</b> <select class="fs-ws"><option value="auto">Prevista (Open-Meteo + previsión)</option><option value="man">Manual</option></select></div>`+
    `<div class="fs-man" style="display:none;${row}">Viento del <input type="number" class="fs-dir" min="0" max="360" step="5" value="${fsCfg.dir}" style="width:50px">° · <input type="number" class="fs-spd" min="0" max="100" value="${fsCfg.spd}" style="width:44px"> km/h · T <input type="number" class="fs-t" min="-10" max="45" value="${fsCfg.temp}" style="width:42px">°C · HR <input type="number" class="fs-rh" min="5" max="100" value="${fsCfg.rh}" style="width:42px">%</div>`+
    `<div style="${row}"><b>Humedad de los combustibles</b></div>`+
-   `<div style="${row}">Combustible fino muerto <select class="fs-mm"><option value="calc">calculada: T, HR, lluvia previa y sol</option><option value="inst">solo T y HR (+ sol)</option><option value="ffmcnet">FFMC de la red (50 % con T/HR)</option><option value="ffmc">FFMC a mano (50 % con T/HR)</option><option value="man">manual</option></select> <span class="fs-mff" style="display:none">FFMC <input type="number" class="fs-ffmc" min="30" max="99" step="0.5" value="${fsCfg.ffmc}" style="width:52px"></span> <span class="fs-msl" style="display:none"><input type="range" class="fs-m" min="3" max="25" value="${fsCfg.moist}" style="width:80px;vertical-align:middle"> <b class="fs-mv">${fsCfg.moist}%</b></span></div>`+
-   `<div class="fs-out" style="color:#65736b">Pulsa «Marcar inicio» y haz clic en el mapa.</div>`;
+   `<div style="${row}">Combustible fino muerto <select class="fs-mm"><option value="calc">Previsión (Open-Meteo: T, HR, lluvia y sol)</option><option value="inst">solo T y HR (+ sol)</option><option value="ffmcnet">FFMC de la red (50 % con T/HR)</option><option value="ffmc">FFMC a mano (50 % con T/HR)</option><option value="man">manual</option></select> <span class="fs-mff" style="display:none">FFMC <input type="number" class="fs-ffmc" min="30" max="99" step="0.5" value="${fsCfg.ffmc}" style="width:52px"></span> <span class="fs-msl" style="display:none"><input type="range" class="fs-m" min="3" max="25" value="${fsCfg.moist}" style="width:80px;vertical-align:middle"> <b class="fs-mv">${fsCfg.moist}%</b></span></div>`+
+   `<div class="fs-out" style="color:#65736b">Pulsa «Marcar inicio» y haz clic en el mapa. Después elige propagación prevista o manual.</div>`;
   const q=s=>fsPanel.querySelector(s), rerun=()=>{ if(fsIgn) fsRun(); }, num=(e,lo,hi,d)=>Math.min(hi,Math.max(lo,Number(e.target.value)||d));
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
   fsPanelWindow(fsPanel);
@@ -3376,7 +3376,8 @@ async function fsRun(){
   fsTerrainSamples={mdt:0,terrarium:0};
   fsGroup.clearLayers();
   L.marker(fsIgn,{icon:fsIcon("🔥",24)}).addTo(fsGroup);
-  out.innerHTML=`<div style="font-weight:700;color:#52645a">Terreno: consultando fuente…</div><div>⏳ Calculando…</div>`;
+  const manual=fsCfg.wind==="man";
+  out.innerHTML=`<div style="font-weight:700;color:#52645a">Consultando terreno y calculando la propagación ${manual?"manual":"prevista"}…</div>`;
   let met, ffn=null, netNote="";
   try{
     met=await fsMeteo(); await fsLoadDem(fsIgn.lat,fsIgn.lng,6500);
@@ -3384,176 +3385,55 @@ async function fsRun(){
     try{ const net=await fsNet(); ffn=fsFfmcNet(net,fsIgn); if(fsCfg.moistMode==="ffmcnet") fsCfg.ffmcEff=ffn.val; }
     catch(e){ if(fsCfg.moistMode==="ffmcnet"){ fsCfg.modeEff=met.hours.length?"calc":"inst"; netNote=`No se pudo leer el FFMC de la red de estaciones (${e.message||e}); se usa la humedad calculada.`; } }
     if(!Number.isFinite(fsElev(fsIgn.lat,fsIgn.lng))) throw new Error("No se pudo cargar el terreno (modelo digital de elevación).");
-  }catch(err){ if(my===fsBusy) out.innerHTML=`<div style="font-weight:700;color:#52645a">Terreno: ${escapeHtml(fsMdtLabel())}</div><div>⚠️ ${escapeHtml(err.message||String(err))}</div>`; return; }
+  }catch(err){
+    if(my===fsBusy) out.innerHTML=`<div style="color:#8b2f2f">⚠️ ${escapeHtml(err.message||String(err))}</div>`;
+    return;
+  }
   if(my!==fsBusy) return;
-  let rays;
-  try{rays=fsSimulate(fu,met);}catch(err){if(my===fsBusy)out.innerHTML=`<div><b>Fuente de terreno:</b> ${escapeHtml(fsMdtLabel())}</div>⚠️ ${escapeHtml(err.message||String(err))}`;return;}
-  const far=rays.reduce((a,r)=>r.pts[180][1]>a.pts[180][1]?r:a,rays[0]), farBg=far.bg;
-  const ter=fsTerrain(fsIgn.lat,fsIgn.lng), w00=met.at(0), m00=fsMoistAt(w00,fu,ter,met.sun(0));
-  if(far.pts[180][1]<15){
-    out.innerHTML=fsDec(`<div><b>Terreno:</b> ${escapeHtml(fsMdtLabel())}</div>Con estas condiciones el fuego <b>no se propaga</b> en las próximas 6 h: la humedad del combustible fino muerto es del ${m00.toFixed(1)} % (T ${Math.round(w00.T)} °C, HR ${Math.round(w00.RH)} %) y supera la de extinción de este combustible (${Math.round(fu.Mx*100)} %). Prueba otra hora de inicio (por la tarde baja la humedad), otro combustible, o pon la humedad a mano.`); return;
-  }
-  const bInit=fsBehavior(fu,ter.tan,ter.asp,w00.dir,w00.spd,m00), iRef=far.pts.findIndex(p=>p[1]>=15), tRef=(bInit.Rh>0||iRef<=0)?0:far.pts[iRef][0], w0=met.at(tRef), m0=fsMoistAt(w0,fu,ter,met.sun(tRef)), mNoSun=fsMoistAt(w0,fu,{tan:0,asp:0},null), b0=fsBehavior(fu,ter.tan,ter.asp,w0.dir,w0.spd,m0);
-  fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0,met,farBg,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
-  const D=fsLast.draw, cols={30:"#d7191c",60:"#fd8d3c",90:"#c98a00",120:"#ffd45a"}, ha={};
-  [30,60,90,120].forEach(t=>{ const p=fsPerim(rays,t); ha[t]=fsHa(p);
-    L.polygon(p,{color:cols[t],weight:2,fillColor:cols[t],fillOpacity:.25}).bindTooltip(`${t} min · ${ha[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup); });
-
-  /* Burua(ren) ibilbidea: profila + Campbell mailak */
-  const prof=fsProfile(far,met);
-  let seg=[], segLv=null;
-  const flush=()=>{ if(seg.length>1) L.polyline(seg,{color:segLv?FS_LC[segLv]:"#555",weight:segLv?7:3,opacity:segLv?.85:.6}).addTo(fsGroup); };
-  prof.forEach((q,i)=>{ if(i===0){ seg=[[q.lat,q.lon]]; return; } if(i===1) segLv=q.lvl;
-    if(q.lvl!==segLv){ seg.push([q.lat,q.lon]); flush(); seg=[[q.lat,q.lon]]; segLv=q.lvl; } else seg.push([q.lat,q.lon]); });
-  flush();
-  const hp=far.pts[30];
-  L.polyline([[fsIgn.lat,fsIgn.lng],[hp[2],hp[3]]],{color:"#7a0000",weight:2}).bindTooltip(`Cabeza → ${fsCard(b0.head)} · ${b0.Rh.toFixed(1)} m/min`,{permanent:true,direction:"top"}).addTo(fsGroup);
-  const within=prof.filter(q=>q.t<=120), tot=Math.max(1,within.length-1), pc=l=>Math.round(100*within.slice(1).filter(q=>q.lvl===l).length/tot);
-  const maxSl=Math.round(100*Math.max(0,...within.map(q=>q.tan)));
-
-  const Ih=fsInt(fu,b0.Rh), Lh=fsFlame(Ih), Lf=fsFlame(fsInt(fu,fsR(b0,90))), Lb=fsFlame(fsInt(fu,fsR(b0,180)));
-  const st=fsStrategy(Lh), per60=fsPerim(rays,60);
-
-  /* DEFENTSA-LERRO IRADOKIA (eraikitzeko) eta ATAKE PARALELOA */
-  const def=fsDefLine(rays,farBg,fsCfg.rate), par=fsParallel(rays,farBg,Lf), rec=par[0].slope<=par[1].slope?0:1;
-  D.def=def.pts; D.par=par.map(p=>p.pts);
-  if(def.pts.length>1){
-    L.polyline(def.pts,{color:"#fff",weight:10,opacity:.9}).addTo(fsGroup);
-    L.polyline(def.pts,{color:"#8d3b00",weight:6}).bindTooltip(`Línea de defensa sugerida (a construir) · ${Math.round(def.len)} m · el fuego llegaría en ~${def.tc} min`,{sticky:true}).addTo(fsGroup);
-  }
-  par.forEach((p,i)=>{ if(p.pts.length>1) L.polyline(p.pts,{color:"#7b2cbf",weight:i===rec?6:3,dashArray:"2 7",lineCap:"round"})
-    .bindTooltip(`Ataque paralelo · flanco ${p.name}${i===rec?" (recomendado)":""} · a ${Math.round(p.off)} m del borde`,{sticky:true}).addTo(fsGroup); });
-
-  /* PUNTU KRITIKOAK */
-  const crit=fsCritical(prof);
-  fsWindChanges(met).forEach(ch=>{ const k=Math.min(180,Math.floor(ch.t/FS_DT)), p=rays.reduce((a,r)=>r.pts[k][1]>a.pts[k][1]?r:a,rays[0]).pts[k];
-    crit.push({t:ch.t,lat:p[2],lon:p[3],why:`cambio de viento previsto (${fsCard(ch.from.dir)} ${Math.round(ch.from.spd)} → ${fsCard(ch.to.dir)} ${Math.round(ch.to.spd)} km/h): la cabeza puede cambiar de dirección y un flanco convertirse en frente`}); });
-  crit.sort((a,b)=>a.t-b.t);
-  const critIcon=n=>L.divIcon({className:"",html:`<div style="background:#d6006f;color:#fff;border:2px solid #fff;border-radius:50%;width:22px;height:22px;line-height:18px;text-align:center;font:700 12px system-ui;box-shadow:0 1px 3px rgba(0,0,0,.6)">${n}</div>`,iconSize:[22,22],iconAnchor:[11,11]});
-  crit.forEach((c,i)=>{ D.crit.push(c); L.marker([c.lat,c.lon],{icon:critIcon(i+1),zIndexOffset:900}).bindTooltip(`Punto crítico ${i+1} · ~${c.t} min`).addTo(fsGroup); });
-
-  const warn=[]; if(tRef>0) warn.push(`Al inicio el combustible fino está demasiado húmedo (${m00.toFixed(1)} %): el fuego no empieza a avanzar hasta ~${tRef} min, cuando baja la humedad. Los valores de propagación, intensidad y estrategia se refieren a ese momento.`);
-  if(w0.spd>=40||Ih>3460) warn.push("Viento/intensidad altos: puede haber focos secundarios y fuego de copa (no modelados); la propagación real puede ser mayor.");
-  if(w0.gust>w0.spd*1.4) warn.push(`Rachas de ${Math.round(w0.gust)} km/h: la velocidad puntual puede superar la estimada.`);
-  /* Eszenatokiak: faborablea / aurreikusia / desfavorablea (haizea ±, hezetasuna ±) */
-  const SC=[{n:"Favorable",wf:.7,dm:3,c:"#1b8a3a"},{n:"Previsto",wf:1,dm:0,c:"#d9480f"},{n:"Desfavorable",wf:1.4,dm:-3,c:"#b00020"}];
-  const scr=SC.map(sc=>{ const r=(sc.wf===1&&sc.dm===0)?rays:fsSimulate(fu,met,sc), bS=fsBehavior(fu,ter.tan,ter.asp,w0.dir,w0.spd*sc.wf,Math.max(2,m0+sc.dm)), I=fsInt(fu,bS.Rh);
-    return {sc,r,Rh:bS.Rh,L:fsFlame(I),a60:fsHa(fsPerim(r,60)),a120:fsHa(fsPerim(r,120))}; });
-  [0,2].forEach(i=>L.polygon(fsPerim(scr[i].r,120),{color:SC[i].c,weight:2,fill:false,dashArray:"6 5"}).bindTooltip(`120 min · ${SC[i].n.toLowerCase()} · ${scr[i].a120.toFixed(1)} ha`,{sticky:true}).addTo(fsGroup));
-  const stD=fsStrategy(scr[2].L), f1=x=>x.toFixed(1);
-  const rowT=(k,v)=>`<tr><td style="padding:2px 4px 2px 0">${k}</td>${v.map((x,i)=>`<td style="text-align:right;padding:2px 0 2px 8px;${i===1?"font-weight:700":""}">${x}</td>`).join("")}</tr>`;
-  const tbl=`<table style="width:100%;border-collapse:collapse;margin:6px 0 2px"><tr><th></th>${SC.map(x=>`<th style="color:${x.c};text-align:right;padding-left:8px">${x.n}</th>`).join("")}</tr>`+
-    rowT("Avance de la cabeza (m/min)",scr.map(x=>f1(x.Rh)))+rowT("Longitud de llama (m)",scr.map(x=>f1(x.L)))+rowT("Superficie a 1 h (ha)",scr.map(x=>f1(x.a60)))+rowT("Superficie a 2 h (ha)",scr.map(x=>f1(x.a120)))+`</table>`+
-    `<div style="color:#65736b;font-size:11px">Favorable: viento −30 % y combustible 3 puntos más húmedo. Desfavorable: viento +40 % (rachas) y 3 puntos más seco. En el mapa, a trazos: perímetro a 2 h de cada extremo.</div>`;
-  const hx=fsHistCtx({spd:w0.spd,gust:w0.gust,RH:w0.RH},new Date(Date.now()+(fsCfg.startH*60+tRef)*60000).getMonth());
-  const histHtml=`<div style="margin-top:6px;padding:4px 8px;background:#f1f6f3;border-radius:6px"><b>📚 Experiencia en Gipuzkoa (EGIF 2010–2025)</b>: en ${hx.n} incendios en situaciones parecidas (${hx.used}), la mediana fue ${hx.med.toFixed(1)} ha; 1 de cada 10 superó ${hx.p90.toFixed(0)} ha; el ${hx.p10.toFixed(0)} % llegó a 10 ha o más; el mayor, ${hx.max.toFixed(0)} ha (${hx.maxDate}). Se controlaron en una mediana de ${hx.hcMed==null?"—":hx.hcMed.toFixed(1)} h, con extinción.</div>`;
-  const startTxt=fsCfg.startH>0.01?"Inicio "+new Date(Date.now()+fsCfg.startH*3600000).toLocaleString("es-ES",{dateStyle:"short",timeStyle:"short"})+" · ":"";
-  const sumMain=
-    `<div style="border-left:4px solid ${st[0]};padding:2px 8px;margin:4px 0"><b style="color:${st[0]}">${st[1]}</b><br>${st[2]}<br><b>Ataque paralelo</b>: ${fsParAdvice(Lh,Lf)}`+
-      (stD[1]!==st[1]?`<br><span style="color:${stD[0]}">En el escenario desfavorable pasaría a: <b>${stD[1]}</b>.</span>`:"")+`</div>`+
-    `<b>Hacia dónde</b>: cabeza hacia <b>${fsCard(b0.head)} (${Math.round(b0.head)}°)</b> · flancos ${f1(fsR(b0,90))} m/min · cola ${f1(fsR(b0,180))} m/min<br>`+
-    `${startTxt}Viento ${fsCard(w0.dir)} ${Math.round(w0.spd)} km/h · T ${Math.round(w0.T)} °C · HR ${Math.round(w0.RH)} % · comb. fino muerto <b>${m0.toFixed(1)} %</b> · pendiente ${Math.round(ter.tan*100)}%`+tbl+
-    histHtml+warn.map(w=>`<div style="color:#8b2f2f;margin-top:4px">⚠️ ${w}</div>`).join("");
-  const terrainSourceLabel=fsTerrainSource==="mdt"
-    ?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m · ${fsTerrainSamples.mdt.toLocaleString("es-ES")} muestras LiDAR`
-    :`Terrarium · ${fsTerrainSamples.terrarium.toLocaleString("es-ES")} muestras Terrarium`;
-  const sumMeteo=
-    `<span style="color:#52645a">Terreno: ${escapeHtml(terrainSourceLabel)}</span><br>`+
-    `Intensidad ${Math.round(Ih)} kW/m · llama ≈ ${Lh.toFixed(1)} m (flancos ${Lf.toFixed(1)} m · cola ${Lb.toFixed(1)} m) · relación L/A ${b0.LB.toFixed(1)} · cabeza ${(b0.Rh*.06).toFixed(2)} km/h<br>`+
-    `Viento ${fsCard(w0.dir)} ${Math.round(w0.dir)}° · ${Math.round(w0.spd)} km/h · T ${Math.round(w0.T)} °C · HR ${Math.round(w0.RH)} % → humedad comb. fino muerto <b>${m0.toFixed(1)} %</b>${fsCfg.moistMode==="man"?" (manual)":""} <span style="color:#65736b">(${escapeHtml(met.src)})</span><br>`+
-    (fsCfg.moistMode!=="man"?`<span style="color:#65736b">Humedad base ${mNoSun.toFixed(1)} %${(fsCfg.modeEff||fsCfg.moistMode)==="calc"?(met.rain?" (con la lluvia de los días previos)":" (sin historial de lluvia con meteorología manual: usa el FFMC de la red)"):fsCfg.moistMode==="ffmc"?" (FFMC "+fsCfg.ffmc+", mezclado al 50 % con T y HR)":fsCfg.moistMode==="ffmcnet"&&!fsCfg.modeEff?" (FFMC de la red "+ffn.val.toFixed(1)+", mezclado al 50 % con T y HR)":""}; ajuste por sol y orientación de la ladera (hacia ${fsCard(ter.asp)}): ${m0-mNoSun>=0?"+":""}${(m0-mNoSun).toFixed(1)} puntos.</span><br>`:"")+
-    (ffn?`<span style="color:#65736b">FFMC de la red de estaciones: <b>${ffn.val.toFixed(1)}</b> (${ffn.near.map(x=>escapeHtml(x.n)+" "+Math.round(x.w*100)+"%").join(", ")}; datos del ${ffn.date.slice(8,10)}/${ffn.date.slice(5,7)}).</span><br>`:"")+
-    (netNote?`<span style="color:#8b2f2f">${escapeHtml(netNote)}</span><br>`:"")+
-    (met.rain?`Lluvia previa (${escapeHtml(met.rain.src)}): últimas 24 h <b>${met.rain.h24.toFixed(1)} mm</b> · 3 días ${met.rain.d3.toFixed(1)} mm · 7 días ${met.rain.d7.toFixed(1)} mm · 14 días ${met.rain.d14.toFixed(1)} mm<br>`:"")+
-    `Propagación prevista: <span style="color:#d7191c">30 min ${ha[30].toFixed(1)} ha</span> · <span style="color:#e8590c">60 min ${ha[60].toFixed(1)} ha</span> · <span style="color:#c98a00">90 min ${ha[90].toFixed(1)} ha</span> · <span style="color:#b08a00">120 min ${ha[120].toFixed(1)} ha</span>`;
-  const sw=(c,t,b)=>`<span style="display:inline-block;width:12px;height:${b?4:10}px;background:${c};margin:0 3px 0 8px;vertical-align:middle"></span>${t}`;
-  const legend=`<div style="font-size:11px;line-height:1.7">${sw("#d7191c","perímetro 30'")}${sw("#fd8d3c","60'")}${sw("#c98a00","90'")}${sw("#ffd45a","120'")}<br>`+
-    `${sw("#8d3b00","defensa sugerida (a construir)")}${sw("#1565c0","control existente")}${sw("#7b2cbf","ataque paralelo")}<br>`+
-    `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#d6006f;margin:0 3px 0 8px;vertical-align:middle"></span>punto crítico · 🏠 bienes${sw("#34c759","zona segura")}${sw("#00bcd4","escape")}</div>`;
-  const chart=fsChart(prof,crit), sw2=(c,t)=>`<span style="display:inline-block;width:10px;height:10px;background:${c};margin:0 3px 0 6px;vertical-align:middle"></span>${t}`;
-  const profHtml=chart?`<div>Terreno, pendiente y alineaciones de Campbell a lo largo del avance de la cabeza (${fsCard(farBg)}), con el viento previsto en cada momento. Líneas rojas = tiempo; triángulos magenta = puntos críticos.`+
-    `<div style="margin:3px 0">${chart}</div>`+
-    `<div style="font-size:11px">${sw2(FS_LC[3],"Campbell 3/3")}${sw2(FS_LC[2],"2/3")}${sw2(FS_LC[1],"1/3")}${sw2("#6c8ebf","pend. ≥ 20%")}${sw2("#c9d1cd","< 20%")}</div>`+
-    `<div style="font-size:11px;margin-top:2px">Primeros 120 min: alineación Campbell 3/3 el ${pc(3)}% del recorrido · 2/3 ${pc(2)}% · 1/3 ${pc(1)}% · pendiente máx. ${maxSl}%. En el mapa, la ruta de la cabeza se colorea igual.</div></div>`:"<div>Sin datos suficientes.</div>";
-  const critHtml=()=>`<div>Cambios de viento, de pendiente y de combustible:<ol class="fs-critl" style="margin:2px 0 4px 18px;padding:0">${
-    D.crit.length?D.crit.map(c=>`<li>~${c.t} min · ${escapeHtml(c.why)}</li>`).join(""):"<li>— ninguno detectado en el recorrido</li>"}</ol></div>`;
-  const det=(title,html,open)=>`<details style="margin-top:6px"${open?" open":""}><summary style="cursor:pointer;font-weight:700">${title}</summary><div style="margin-top:3px">${html}</div></details>`;
-  out.innerHTML=fsDec(`<div style="font-size:11px;color:#52645a;margin:3px 0"><b>Fuente de terreno:</b> ${escapeHtml(fsMdtLabel())}</div><div class="fs-sum">${sumMain}</div>`+
-    det('🔧 Defensa sugerida y ataque paralelo','<div class="fs-def"></div>')+
-    det('🏠 Bienes a proteger, líneas de control, zonas seguras y escape <span class="fs-osm-ld">⏳</span>','<div class="fs-osm" style="color:#65736b">⏳ Consultando OpenStreetMap…</div>')+
-    det('⚠️ Puntos críticos',`<div class="fs-crit">${critHtml()}</div>`)+
-    det('🌡️ Meteorología, humedad y lluvia (detalle)',`<div>${sumMeteo}</div>`)+
-    det('🌲 Cubierta forestal','<div class="fs-cov" style="color:#65736b">⏳ Consultando el mapa forestal (geoEuskadi)…</div>')+
-    `<div class="fs-oacel">${fsOacel(b0,w0,Lh,null)}</div>`+
-    det('🎞️ GIF de la evolución','<div class="fs-gif"><button type="button" data-fs-gif style="border:0;border-radius:8px;padding:7px 12px;font:700 12px system-ui;cursor:pointer;color:#fff;background:#1565c0">Crear GIF</button><div class="fs-gifout" style="margin-top:6px"></div></div>')+
-    det('🎨 Leyenda del mapa',legend));
-  fsPanel.querySelector('.fs-prof-slot').innerHTML=det('📈 Gráfico de evolución, pendiente y Campbell',`<div class="fs-prof">${profHtml}</div>`,true);
-  const q=s=>out.querySelector(s);
-  const defCard=osm=>{
-    if(def.pts.length<2) return "";
-    const a=(e,lado)=>e?(e.d<=500?`${lado}: «${escapeHtml(e.name)}» (${escapeHtml(e.type)}) a ${Math.round(e.d)} m`:`${lado}: sin línea de control a menos de 500 m`):"";
-    let h=`<div style="margin-top:6px"><b style="color:#8d3b00">Línea de defensa sugerida (a construir)</b>: línea marrón en el sector de la cabeza, donde llegaría el fuego a los ~${def.tc} min (${Math.round(def.len)} m de trazado). Con ~${fsCfg.rate} m/h hacen falta ~${Math.round(def.need)} min (20 de movilización y 30 de margen incluidos): `+
-      (def.ok?`<span style="color:#1b8a3a">se llega a tiempo.</span>`:`<span style="color:#b00020">no se llega a tiempo (faltan ~${Math.round(def.need-def.tc)} min)</span>: refuerza medios, ancla la línea en líneas de control existentes o combina con ataque paralelo y apoyo aéreo.`);
-    if(def.slope>.3) h+=` Pendiente media ${Math.round(def.slope*100)}%: construir siguiendo las curvas de nivel.`;
-    if(osm&&osm.ends.length) h+=`<br>Anclaje: ${a(osm.ends[0],"extremo izquierdo")} · ${a(osm.ends[1],"extremo derecho")}.`;
-    h+=`<br>Se construye con herramienta manual y maquinaria (cortafuegos) para <b>ataque indirecto</b>, con quema de ensanche hacia el fuego.</div>`;
-    const pr=par[rec], an=osm&&osm.par[rec];
-    h+=`<div style="margin-top:4px"><b style="color:#7b2cbf">Ataque paralelo</b> (morado punteado): flanco ${pr.name} recomendado (pendiente media ${Math.round(pr.slope*100)}% frente a ${Math.round(par[1-rec].slope*100)}%), a ${Math.round(pr.off)} m del borde (3 × llama de flanco), ${Math.round(pr.len)} m a los 90 min.`+
-      (an&&an.d<=500?` Arranque anclado en «${escapeHtml(an.name)}» (${escapeHtml(an.type)}, a ${Math.round(an.d)} m).`:"")+`</div>`;
-    return h;
+  const times=[30,60,90,120];
+  const styles={
+    30:{color:"#d7191c",dash:"2 5",weight:2},
+    60:{color:"#ed8b00",dash:"7 4",weight:2},
+    90:{color:"#2878b5",dash:"12 4 2 4",weight:2.5},
+    120:{color:"#238b45",dash:"",weight:3}
   };
-  q(".fs-def").innerHTML=fsDec(defCard(null));
-
-  /* Erregai-dentsitatea: baso-mapa ibilbidean zehar (saiakera) */
-  fsCover(fsIgn,fsFuelSource).then(res=>{
-    if(my!==fsBusy||!q(".fs-cov")) return;
-    if(!res.length){ q(".fs-cov").innerHTML=`<span style="color:#65736b">Mapa forestal: sin datos en este punto.</span>`; return; }
-    const sug=fsFuelFromCover(res), cur=fsCfg.fuel;
-    const inventoryRows=res.filter(r=>r.source==="inventory");
-    const sourceLabel=inventoryRows.length?"Inventario Forestal de Gipuzkoa 2024 · PMTiles":"WMS forestal externo (alternativa)";
-    const inventoryStatus=res.find(r=>r.inventoryStatus)?.inventoryStatus;
-    const inventoryStatusLabels={"layer-disabled":"capa desactivada","maplibre-unavailable":"visor MapLibre aún no disponible","style-not-loaded":"estilo PMTiles aún no cargado","style-layer-missing":"no existe la capa forestal-poligonos en el estilo","query-empty":"consulta espacial sin entidades renderizadas en ese punto","query-error":"error al consultar entidades PMTiles"};
-    const decisions=inventoryRows.length
-      ?inventoryRows.map((r,i)=>{const k=fsFuelFromInventoryProperties(r.properties);return `Entidad ${i+1}: ${k?FS_FUELS[k].n:"sin asignación automática"}`;})
-      :[`Heurística textual WMS: ${sug?FS_FUELS[sug].n:"sin correspondencia"}`];
-    q(".fs-cov").innerHTML=`<div style="font-size:11px;color:#52645a;margin-bottom:4px"><b>Origen efectivo:</b> ${escapeHtml(sourceLabel)} · ${res.length} registro(s) consultado(s)${!inventoryRows.length&&inventoryStatus? " · Inventario 2024: "+escapeHtml(inventoryStatusLabels[inventoryStatus]||inventoryStatus):""}</div>`+
-      `<details><summary style="cursor:pointer"><b>🌲 Cubierta y atributos originales</b></summary><div style="max-height:150px;overflow:auto">${res.map(r=>`<div><b>${escapeHtml(r.title)}</b>${r.html}</div>`).join("")}</div></details>`+
-      `<details><summary style="cursor:pointer"><b>Diagnóstico de clasificación</b></summary><div style="margin-top:3px">${decisions.map(x=>`<div>${escapeHtml(x)}</div>`).join("")}<div style="margin-top:3px">Resultado agregado: <b>${sug?escapeHtml(FS_FUELS[sug].n):"sin asignación automática"}</b></div><div style="color:#65736b;font-size:11px">La sugerencia agrupa cubierta; no determina carga, profundidad, continuidad ni humedad del combustible superficial.</div></div></details>`+
-      (inventoryStatus==="layer-disabled"?`<div style="margin-top:5px"><button type="button" data-fs-inventory-enable style="border:0;border-radius:6px;padding:4px 9px;background:#246b45;color:#fff;font-weight:700;cursor:pointer">Activar Inventario Forestal 2024 y repetir consulta</button></div>`:"")+
-      (sug&&sug!==cur?`<div style="margin-top:3px">Sugerencia orientativa de combustible: <b>${escapeHtml(FS_FUELS[sug].n)}</b> <button type="button" data-fs-fuel="${sug}" style="border:0;border-radius:6px;padding:3px 8px;background:#1b8a3a;color:#fff;font-weight:700;cursor:pointer">Aplicar</button></div>`:
-       (sug?`<div style="margin-top:3px;color:#1b8a3a">Coincide con el combustible elegido.</div>`:`<div style="margin-top:3px;color:#65736b">Sin sugerencia fiable; elige el combustible manualmente.</div>`));
-    // mugitzean zehar: erregai-karga handiagoko aldaketak
-    let prev=sug||cur; const picks=[60,120,180,240].map(T=>prof.find(p=>p.t>=T)).filter(Boolean);
-    return Promise.all(picks.map(p=>fsCover({lat:p.lat,lng:p.lon}).then(r=>({p,k:fsFuelFromCover(r)})).catch(()=>null))).then(list=>{
-      if(my!==fsBusy||!q(".fs-crit")) return;
-      list.filter(Boolean).forEach(({p,k})=>{ if(k&&k!==prev&&(k==="garoa"||k==="pinudia")){
-          const c={t:p.t,lat:p.lat,lon:p.lon,why:`combustible de mayor carga/intensidad (${FS_FUELS[k].n}), según el mapa forestal`}; D.crit.push(c);
-          L.marker([c.lat,c.lon],{icon:critIcon(D.crit.length),zIndexOffset:900}).bindTooltip(`Punto crítico ${D.crit.length} · ~${c.t} min`).addTo(fsGroup); }
-        if(k) prev=k; });
-      q(".fs-crit").innerHTML=fsDec(critHtml());
-    });
-  }).catch(err=>{ if(my===fsBusy&&q(".fs-cov")) q(".fs-cov").innerHTML=`<span style="color:#65736b">Mapa forestal no disponible (${escapeHtml(err.message||String(err))}); la densidad de combustible no se ha evaluado.</span>`; });
-
-  let osm=null, osmErr=null;
-  try{ osm=await fsOsm({rays,farBg,Lh,per60,def,par}); }catch(err){ osmErr=err.message||String(err); }
-  if(my!==fsBusy||!q(".fs-osm")) return;
-  { const ld=out.querySelector(".fs-osm-ld"); if(ld) ld.textContent=""; }
-  const li=(a,f)=>a.length?`<ol style="margin:2px 0 4px 18px;padding:0">${a.map(f).map(x=>`<li>${x}</li>`).join("")}</ol>`:"<div>— ninguna encontrada en el sector</div>";
-  const ln=l=>`${escapeHtml(l.type)}${l.name?" «"+escapeHtml(l.name)+"»":""} · llegada ~${Math.round(l.ta)} min · a ${Math.round(l.d)} m · ${Math.round(l.len)} m de trazado`;
-  if(osmErr) q(".fs-osm").innerHTML=`<div style="color:#8b2f2f">⚠️ No se pudieron consultar líneas de control, bienes ni zonas seguras (${escapeHtml(osmErr)}).</div>`;
-  else{
-    q(".fs-osm").style.color="";
-    q(".fs-def").innerHTML=fsDec(defCard(osm));
-    const bd=osm.bld, fb=bd.first;
-    q(".fs-osm").innerHTML=fsDec(
-      `<div><b style="color:#1565c0">Líneas de control existentes</b> (azul a trazos; ríos en celeste): ríos, carreteras, pistas y sendas ya existentes, transversales al avance:${li(osm.ctl,ln)}</div>`+
-      `<div><b>🏠 Bienes a proteger</b> alcanzables en 6 h: <b>${bd.n}</b> edificio(s)${bd.n?` (≤ 1 h: ${bd.b60} · ≤ 2 h: ${bd.b120} · ≤ 4 h: ${bd.b240}); el primero, en ~${Math.round(fb.ta)} min, a ${Math.round(fb.d)} m hacia ${fsCard(fb.b)}${bd.n>100?" (en el mapa, los 100 que antes se alcanzan)":""}`:""}.`+
-        (osm.infra.length?`<ul style="margin:2px 0 2px 18px;padding:0">${osm.infra.map(x=>`<li>${x.icon} ${escapeHtml(x.label)} · ~${Math.round(x.ta)} min · a ${Math.round(x.d)} m hacia ${fsCard(x.b)}</li>`).join("")}</ul>`:" Infraestructuras: ninguna alcanzable.")+
-        (osm.pl?` ⚡ ${osm.pl} tramo(s) de línea eléctrica en el área.`:"")+`</div>`+
-      `<div><b style="color:#1b8a3a">Zonas seguras candidatas</b> (verdes): sin combustible, radio ≥ ${Math.round(osm.rreq)} m (4 × llama):${li(osm.safe,s=>`${escapeHtml(s.name)} · r≈${Math.round(s.r)} m · a ${Math.round(s.d)} m hacia ${fsCard(s.b)}`)}</div>`+
-      `<div style="color:#65736b;font-size:11px">Basado en OpenStreetMap (${osm.total} elementos); puede estar incompleto. Para comprobar anchuras, estado de las pistas, edificios y zonas seguras, cambia el mapa base a la <b>ortofoto</b> (B5M o PNOA) en el control de capas. Valida siempre sobre el terreno.</div>`);
+  let rays;
+  const areas={};
+  try{
+    rays=fsSimulate(fu,met);
+    if(my!==fsBusy) return;
+    for(const t of times){
+      const perimeter=fsPerim(rays,t), st=styles[t];
+      areas[t]=fsHa(perimeter);
+      L.polygon(perimeter,{
+        color:st.color,weight:st.weight,opacity:.95,dashArray:st.dash,
+        fillColor:st.color,fillOpacity:.035
+      }).bindTooltip(`${manual?"Manual":"Prevista"} · ${t} min · ${areas[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup);
+    }
+  }catch(err){
+    if(my===fsBusy) out.innerHTML=`<div style="color:#8b2f2f">⚠️ ${escapeHtml(err.message||String(err))}</div>`;
+    return;
   }
-  if(q(".fs-oacel")) q(".fs-oacel").innerHTML=fsDec(fsOacel(b0,w0,Lh,osm));
+  if(my!==fsBusy) return;
+  const fmt=n=>fsDec(n.toFixed(1));
+  const table=`<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-top:8px">`+
+    times.map(t=>`<div style="padding:7px 3px;text-align:center;border-radius:5px;background:#f7f8f7;border-top:3px ${styles[t].dash?"dashed":"solid"} ${styles[t].color}"><b style="font-size:11px">${t} min</b><br><b>${fmt(areas[t])}</b><br><span style="font-size:10px;color:#65736b">ha</span></div>`).join("")+`</div>`;
+  const source=manual?"Meteorología introducida manualmente":"Meteorología automática y previsión";
+  const wxTable=manual?"":`<div style="margin-top:10px;overflow-x:auto"><b style="font-size:12px">Meteorología prevista por horizonte</b><table style="width:100%;min-width:430px;border-collapse:collapse;font-size:11px;margin-top:5px"><thead><tr><th style="text-align:left;padding:4px;border-bottom:1px solid #d8dfda">Variable</th>${times.map(t=>`<th style="padding:4px;border-bottom:1px solid #d8dfda">${t} min</th>`).join("")}</tr></thead><tbody>${[
+    ["Viento",w=>`${Math.round(w.spd)} km/h ${fsCard(w.dir)}`],
+    ["Racha",w=>Number.isFinite(w.gust)?`${Math.round(w.gust)} km/h`:"—"],
+    ["Temperatura",w=>`${w.T.toFixed(1)} °C`],
+    ["Humedad relativa",w=>`${Math.round(w.RH)} %`],
+    ["Precipitación",w=>Number.isFinite(w.P)?`${w.P.toFixed(1)} mm/h`:"—"],
+    ["Radiación solar",w=>Number.isFinite(w.R)?`${Math.round(w.R)} W/m²`:"—"],
+    ["Humedad combustible fino (1 h)",w=>Array.isArray(w.m)&&Number.isFinite(w.m[0])?`${w.m[0].toFixed(1)} %`:"—"]
+  ].map(([name,fmt])=>`<tr><td style="padding:4px;border-bottom:1px solid #edf0ed">${name}</td>${times.map(t=>{const w=met.at(t);return `<td style="text-align:center;padding:4px;border-bottom:1px solid #edf0ed">${fmt(w)}</td>`;}).join("")}</tr>`).join("")}</tbody></table><div style="font-size:10px;color:#65736b;margin-top:4px">Valores horarios de Open-Meteo correspondientes a cada horizonte (la precipitación es la prevista para esa hora).</div></div>`;
+  out.innerHTML=fsDec(`<div class="fs-sum"><b>Propagación ${manual?"manual":"prevista"} · superficie alcanzada</b>${table}${wxTable}
+    <div style="font-size:10px;color:#65736b;margin-top:8px">${source}. Los cuatro perímetros representan 30, 60, 90 y 120 minutos; el color y el tipo de línea identifican cada horizonte. Cambia el selector de meteorología para alternar entre prevista y manual; en modo manual se reutilizan los campos de viento, temperatura y humedad.</div>
+  </div>`);
+  fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0:null,met,farBg:null,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
+  const profileSlot=fsPanel.querySelector(".fs-prof-slot");
+  if(profileSlot) profileSlot.innerHTML="";
 }
 
 /* --- GIF animatua: lurzorua (itzalduna) + lerroak + ondasunak + puntu kritikoak + perimetroaren bilakaera --- */
