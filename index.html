@@ -3254,6 +3254,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div class="fs-fuel-manual" style="${fsFuelSource==="rothermel"?"":"display:none;"}${row}"><b>Combustible del modelo</b> <select class="fs-fuel" style="max-width:100%">${Object.keys(FS_FUELS).map(k=>`<option value="${k}"${k===fsCfg.fuel?" selected":""}>${FS_FUELS[k].n}</option>`).join("")}</select></div>`+
    `<div style="${row}"><b>Topografía</b> <select class="fs-terrain-source"><option value="mdt"${fsTerrainSource==="mdt"?" selected":""}>MDT LiDAR Gipuzkoa 2017 (16 m)</option><option value="terrarium"${fsTerrainSource==="terrarium"?" selected":""}>Terrarium (alternativa)</option></select></div>`+
    `<div class="fs-terrain-status" style="padding:6px 8px;margin:5px 0 8px;background:#edf4ef;border-left:3px solid #527c63;border-radius:5px;font-size:11px;font-weight:700">Fuente de terreno: ${escapeHtml(fsMdtLabel())}</div>`+
+   `<div class="fs-prof-slot" style="margin:6px 0 8px"><div style="font-weight:700;color:#52645a">📈 Gráfico de evolución, pendiente y Campbell</div><div style="font-size:11px;color:#65736b">Aparecerá después de marcar el punto de inicio y calcular la simulación.</div></div>`+
    `<div style="${row}"><b>Meteorología</b> <select class="fs-ws"><option value="auto">Automática (Open-Meteo + previsión)</option><option value="man">Manual</option></select></div>`+
    `<div class="fs-man" style="display:none;${row}">Viento del <input type="number" class="fs-dir" min="0" max="360" step="5" value="${fsCfg.dir}" style="width:50px">° · <input type="number" class="fs-spd" min="0" max="100" value="${fsCfg.spd}" style="width:44px"> km/h · T <input type="number" class="fs-t" min="-10" max="45" value="${fsCfg.temp}" style="width:42px">°C · HR <input type="number" class="fs-rh" min="5" max="100" value="${fsCfg.rh}" style="width:42px">%</div>`+
    `<div style="${row}"><b>Humedad de los combustibles</b></div>`+
@@ -3284,7 +3285,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
     const bt=e.target.closest&&e.target.closest("[data-fs-bt]"); if(bt) fsBacktest(bt);
   });
   q(".fs-set").onclick=()=>{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio."; };
-  q(".fs-clr").onclick=()=>{ fsGroup.clearLayers(); fsIgn=null; fsLast=null; fsBusy++; q(".fs-out").textContent="Pulsa «Marcar inicio» y haz clic en el mapa."; };
+  q(".fs-clr").onclick=()=>{ fsGroup.clearLayers(); fsIgn=null; fsLast=null; fsBusy++; q(".fs-out").textContent="Pulsa «Marcar inicio» y haz clic en el mapa."; fsPanel.querySelector(".fs-prof-slot").innerHTML=`<div style="font-weight:700;color:#52645a">📈 Gráfico de evolución, pendiente y Campbell</div><div style="font-size:11px;color:#65736b">Aparecerá después de marcar el punto de inicio y calcular la simulación.</div>`; };
 }
 map.on("click",e=>{
   if(!fsArmed||wiMode||!map.hasLayer(fsGroup)) return;
@@ -3450,12 +3451,12 @@ async function fsRun(){
     det('🔧 Defensa sugerida y ataque paralelo','<div class="fs-def"></div>')+
     det('🏠 Bienes a proteger, líneas de control, zonas seguras y escape <span class="fs-osm-ld">⏳</span>','<div class="fs-osm" style="color:#65736b">⏳ Consultando OpenStreetMap…</div>')+
     det('⚠️ Puntos críticos',`<div class="fs-crit">${critHtml()}</div>`)+
-    det('📈 Gráfico de evolución, pendiente y Campbell',`<div class="fs-prof">${profHtml}</div>`)+
     det('🌡️ Meteorología, humedad y lluvia (detalle)',`<div>${sumMeteo}</div>`)+
     det('🌲 Cubierta forestal','<div class="fs-cov" style="color:#65736b">⏳ Consultando el mapa forestal (geoEuskadi)…</div>')+
     `<div class="fs-oacel">${fsOacel(b0,w0,Lh,null)}</div>`+
     det('🎞️ GIF de la evolución','<div class="fs-gif"><button type="button" data-fs-gif style="border:0;border-radius:8px;padding:7px 12px;font:700 12px system-ui;cursor:pointer;color:#fff;background:#1565c0">Crear GIF</button><div class="fs-gifout" style="margin-top:6px"></div></div>')+
     det('🎨 Leyenda del mapa',legend));
+  fsPanel.querySelector('.fs-prof-slot').innerHTML=det('📈 Gráfico de evolución, pendiente y Campbell',`<div class="fs-prof">${profHtml}</div>`,true);
   const q=s=>out.querySelector(s);
   const defCard=osm=>{
     if(def.pts.length<2) return "";
