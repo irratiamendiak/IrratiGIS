@@ -43,6 +43,29 @@ jobs:
         run: |
           npx --yes wrangler@latest pages project create irratigis-wildfire-preview --production-branch main || true
 
+      - name: Create isolated preview API project if needed
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@latest pages project create irratigis-api-preview --production-branch preview || true
+
+      - name: Deploy isolated preview API bridge
+        working-directory: cf-api-preview
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@latest pages deploy . --project-name irratigis-api-preview --branch preview --commit-message "PR #13 isolated API bridge"
+
+      - name: Verify preview API CORS and health
+        run: |
+          set -euo pipefail
+          API_URL="https://preview.irratigis-api-preview.pages.dev"
+          ORIGIN="https://feature-wildfire-propagation.irratigis-wildfire-preview.pages.dev"
+          curl -fsS -D /tmp/api.headers -o /tmp/api-health.json -H "Origin: $ORIGIN" "$API_URL/api/health"
+          grep -Fqi "access-control-allow-origin: $ORIGIN" /tmp/api.headers
+          grep -Fq '"ok":true' /tmp/api-health.json
+          echo "Preview API health and CORS verified."
+
       - name: Deploy PR frontend to isolated Pages project
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
