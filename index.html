@@ -2041,6 +2041,7 @@ const fsMdt=fsMdtUrl&&window.IrratiMdtProvider
   ?window.IrratiMdtProvider.create({url:fsMdtUrl,targetResolutionM:Number(window.IRRATIGIS_MDT_TARGET_RESOLUTION_M)||14})
   :null;
 let fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};
+function fsMdtLabel(){return fsMdtStatus.loaded?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m`:(fsMdtStatus.active?`Terrarium · MDT provincial no disponible: ${fsMdtStatus.error||"sin datos"}`:"Terrarium · MDT provincial sin configurar");}
 function fsMdtXY(lat,lon){
   if(typeof proj4!=="function") return null;
   try{return proj4("EPSG:4326","EPSG:25830",[lon,lat]);}catch(_){return null;}
@@ -3334,7 +3335,7 @@ async function fsRun(){
   const my=++fsBusy, out=fsPanel.querySelector(".fs-out"), fu=FS_FUELS[fsCfg.fuel];
   fsGroup.clearLayers();
   L.marker(fsIgn,{icon:fsIcon("🔥",24)}).addTo(fsGroup);
-  out.textContent="⏳ Calculando…";
+  out.innerHTML=`<div style="font-weight:700;color:#52645a">Terreno: consultando fuente…</div><div>⏳ Calculando…</div>`;
   let met, ffn=null, netNote="";
   try{
     met=await fsMeteo(); await fsLoadDem(fsIgn.lat,fsIgn.lng,6500);
@@ -3342,12 +3343,12 @@ async function fsRun(){
     try{ const net=await fsNet(); ffn=fsFfmcNet(net,fsIgn); if(fsCfg.moistMode==="ffmcnet") fsCfg.ffmcEff=ffn.val; }
     catch(e){ if(fsCfg.moistMode==="ffmcnet"){ fsCfg.modeEff=met.hours.length?"calc":"inst"; netNote=`No se pudo leer el FFMC de la red de estaciones (${e.message||e}); se usa la humedad calculada.`; } }
     if(!Number.isFinite(fsElev(fsIgn.lat,fsIgn.lng))) throw new Error("No se pudo cargar el terreno (modelo digital de elevación).");
-  }catch(err){ if(my===fsBusy) out.innerHTML="⚠️ "+escapeHtml(err.message||String(err)); return; }
+  }catch(err){ if(my===fsBusy) out.innerHTML=`<div style="font-weight:700;color:#52645a">Terreno: ${escapeHtml(fsMdtLabel())}</div><div>⚠️ ${escapeHtml(err.message||String(err))}</div>`; return; }
   if(my!==fsBusy) return;
   const rays=fsSimulate(fu,met), far=rays.reduce((a,r)=>r.pts[180][1]>a.pts[180][1]?r:a,rays[0]), farBg=far.bg;
   const ter=fsTerrain(fsIgn.lat,fsIgn.lng), w00=met.at(0), m00=fsMoistAt(w00,fu,ter,met.sun(0));
   if(far.pts[180][1]<15){
-    out.innerHTML=fsDec(`Con estas condiciones el fuego <b>no se propaga</b> en las próximas 6 h: la humedad del combustible fino muerto es del ${m00.toFixed(1)} % (T ${Math.round(w00.T)} °C, HR ${Math.round(w00.RH)} %) y supera la de extinción de este combustible (${Math.round(fu.Mx*100)} %). Prueba otra hora de inicio (por la tarde baja la humedad), otro combustible, o pon la humedad a mano.`); return;
+    out.innerHTML=fsDec(`<div><b>Terreno:</b> ${escapeHtml(fsMdtLabel())}</div>Con estas condiciones el fuego <b>no se propaga</b> en las próximas 6 h: la humedad del combustible fino muerto es del ${m00.toFixed(1)} % (T ${Math.round(w00.T)} °C, HR ${Math.round(w00.RH)} %) y supera la de extinción de este combustible (${Math.round(fu.Mx*100)} %). Prueba otra hora de inicio (por la tarde baja la humedad), otro combustible, o pon la humedad a mano.`); return;
   }
   const bInit=fsBehavior(fu,ter.tan,ter.asp,w00.dir,w00.spd,m00), iRef=far.pts.findIndex(p=>p[1]>=15), tRef=(bInit.Rh>0||iRef<=0)?0:far.pts[iRef][0], w0=met.at(tRef), m0=fsMoistAt(w0,fu,ter,met.sun(tRef)), mNoSun=fsMoistAt(w0,fu,{tan:0,asp:0},null), b0=fsBehavior(fu,ter.tan,ter.asp,w0.dir,w0.spd,m0);
   fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0,met,farBg,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
@@ -3434,7 +3435,7 @@ async function fsRun(){
   const critHtml=()=>`<div>Cambios de viento, de pendiente y de combustible:<ol class="fs-critl" style="margin:2px 0 4px 18px;padding:0">${
     D.crit.length?D.crit.map(c=>`<li>~${c.t} min · ${escapeHtml(c.why)}</li>`).join(""):"<li>— ninguno detectado en el recorrido</li>"}</ol></div>`;
   const det=(title,html,open)=>`<details style="margin-top:6px"${open?" open":""}><summary style="cursor:pointer;font-weight:700">${title}</summary><div style="margin-top:3px">${html}</div></details>`;
-  out.innerHTML=fsDec(`<div class="fs-sum">${sumMain}</div>`+
+  out.innerHTML=fsDec(`<div style="font-size:11px;color:#52645a;margin:3px 0"><b>Fuente de terreno:</b> ${escapeHtml(fsMdtLabel())}</div><div class="fs-sum">${sumMain}</div>`+
     det('🔧 Defensa sugerida y ataque paralelo','<div class="fs-def"></div>')+
     det('🏠 Bienes a proteger, líneas de control, zonas seguras y escape <span class="fs-osm-ld">⏳</span>','<div class="fs-osm" style="color:#65736b">⏳ Consultando OpenStreetMap…</div>')+
     det('⚠️ Puntos críticos',`<div class="fs-crit">${critHtml()}</div>`)+
