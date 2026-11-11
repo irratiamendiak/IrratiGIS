@@ -15,7 +15,16 @@
     async function open() {
       if (!url) throw new Error("No se ha configurado la URL del MDT provincial.");
       if (!root.GeoTIFF || typeof root.GeoTIFF.fromUrl !== "function") throw new Error("No se ha podido cargar el lector GeoTIFF.");
-      const tiff = await root.GeoTIFF.fromUrl(url, { forceXHR: true });
+      // GeoTIFF.js usa FetchSource por defecto. Forzar XHR puede convertir
+      // errores CORS/Range de R2 en el mensaje opaco "Request failed".
+      let tiff;
+      try {
+        tiff = await root.GeoTIFF.fromUrl(url);
+      } catch (error) {
+        const detail = error && error.message ? error.message : String(error);
+        throw new Error("No se pudo abrir el COG MDT por HTTP Range (" + detail +
+          "). Comprueba CORS para este dominio y que el servidor admita solicitudes GET con Range.");
+      }
       const count = await tiff.getImageCount();
       const candidates = [];
       for (let i=0; i<count; i++) {
