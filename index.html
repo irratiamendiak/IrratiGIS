@@ -3426,7 +3426,7 @@ async function fsRun(){
     ["Humedad relativa",w=>`${Math.round(w.RH)} %`],
     ["Precipitación",w=>Number.isFinite(w.P)?`${w.P.toFixed(1)} mm/h`:"—"],
     ["Radiación solar",w=>Number.isFinite(w.R)?`${Math.round(w.R)} W/m²`:"—"],
-    ["Humedad combustible fino",w=>Number.isFinite(w.m)?`${w.m.toFixed(1)} %`:"—"]
+    ["Humedad combustible fino (1 h)",w=>Array.isArray(w.m)&&Number.isFinite(w.m[0])?`${w.m[0].toFixed(1)} %`:"—"]
   ].map(([name,fmt])=>`<tr><td style="padding:4px;border-bottom:1px solid #edf0ed">${name}</td>${times.map(t=>{const w=met.at(t);return `<td style="text-align:center;padding:4px;border-bottom:1px solid #edf0ed">${fmt(w)}</td>`;}).join("")}</tr>`).join("")}</tbody></table><div style="font-size:10px;color:#65736b;margin-top:4px">Valores horarios de Open-Meteo correspondientes a cada horizonte (la precipitación es la prevista para esa hora).</div></div>`;
   out.innerHTML=fsDec(`<div class="fs-sum"><b>Propagación ${manual?"manual":"prevista"} · superficie alcanzada</b>${table}${wxTable}
     <div style="font-size:10px;color:#65736b;margin-top:8px">${source}. Los cuatro perímetros representan 30, 60, 90 y 120 minutos; el color y el tipo de línea identifican cada horizonte. Cambia el selector de meteorología para alternar entre prevista y manual; en modo manual se reutilizan los campos de viento, temperatura y humedad.</div>
