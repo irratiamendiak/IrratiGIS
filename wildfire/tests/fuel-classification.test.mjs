@@ -97,8 +97,8 @@ test("inventory spatial query reports why the local layer did not provide featur
     const source = extractFunction("fsCoverFromInventory").replace(/^(?!async\s)function\s/, "async function ");
     return vm.runInNewContext(source + "\nfsCoverFromInventory", context);
   };
-  assert.equal(run({ enabled: false })({ lat: 43, lng: -2 }).status, "layer-disabled");
-  assert.equal(run()({ lat: 43, lng: -2 }).status, "maplibre-unavailable");
+  assert.equal((await run({ enabled: false })({ lat: 43, lng: -2 })).status, "layer-disabled");
+  assert.equal((await run()({ lat: 43, lng: -2 })).status, "maplibre-unavailable");
   const base = {
     isStyleLoaded: () => true,
     getLayer: () => ({}),
