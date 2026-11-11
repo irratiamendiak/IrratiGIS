@@ -560,7 +560,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
         <div><span class="badge">GeoGipuzkoa</span> <span class="badge">PNOA</span> <span class="badge blue">Katastro WMS</span></div>
       </div>
     </div>
-    <div id="map"></div></div>
+    <div id="map"></div><div id="runtimeStatus" role="status" style="margin-top:8px;padding:9px 11px;border-radius:8px;background:#fff4db;color:#704d00;font-size:13px">Comprobando la carga del visor…</div></div>
        <div class="tracktools icon-tools">
       <button id="openFileBtn" type="button" title="GPX / KML kargatu">📂</button>
       <button id="drawTrack" title="Track-a marraztu">✏️</button>
@@ -669,6 +669,31 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
   <div class="footer">V2.11.58 · Track/waypoint ezabatzean geruza desaktibatzen da · Waypoint GPX esportazioa · SHP Polygon · track itxia/azalera · B5M.</div>
 </main>
 
+<script>
+/* Diagnóstico visible de errores de arranque: evita que un fallo de CDN deje solo el fondo gris. */
+(function(){
+  function report(text){
+    var el=document.getElementById("runtimeStatus");
+    if(el){el.style.display="block";el.textContent="Diagnóstico del visor: "+text;}
+    console.error("[IrratiGIS visor]",text);
+  }
+  window.addEventListener("error",function(e){
+    var target=e.target;
+    if(target && (target.src||target.href)){
+      report("no se pudo cargar "+(target.src||target.href));
+    }else if(e.message){
+      report(e.message+" ("+(e.filename||"script")+(e.lineno?":"+e.lineno:"")+")");
+    }
+  },true);
+  window.addEventListener("unhandledrejection",function(e){
+    var reason=e.reason;
+    report("promesa rechazada: "+(reason&&reason.message?reason.message:String(reason)));
+  });
+  window.setTimeout(function(){
+    if(!window.IrratiGISMap) report("el mapa no llegó a inicializarse. Revisa el error anterior y las dependencias externas.");
+  },7000);
+})();
+</script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
 <script>window.forestalPmtilesProtocol=new pmtiles.Protocol();maplibregl.addProtocol("pmtiles",window.forestalPmtilesProtocol.tile);</script>
@@ -701,6 +726,10 @@ window.IrratiGISMap=map;
 const osm=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
   maxZoom:20, attribution:"© OpenStreetMap contributors"
 }).addTo(map);
+osm.on("tileerror",function(e){
+  const el=$("runtimeStatus");
+  if(el){el.style.display="block";el.textContent="Diagnóstico del visor: el mapa se ha inicializado, pero fallan las teselas de OpenStreetMap. Comprueba la red o el bloqueo del dominio tile.openstreetmap.org.";}
+});
 
 const gipMap=L.tileLayer.wms("https://b5m.gipuzkoa.eus/ogc/wms/gipuzkoa_map_wms",{
   layers:"udal_barrutiak_limites_municipales", format:"image/png", transparent:false,
