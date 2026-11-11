@@ -26,3 +26,6 @@ GitHub Actions workflow: `.github/workflows/deploy-wildfire-preview.yml`.
 Required repository secret: `CLOUDFLARE_API_TOKEN` with permission to manage
 Cloudflare Pages projects and deployments. The workflow creates/deploys only
 the separate `irratigis-wildfire-preview` Pages project.
+
+
+The deployment workflow verifies the exact Pages URL reported by Wrangler, rather than assuming the branch-alias hostname, and prints HTTP diagnostics if the preview is not yet reachable.
