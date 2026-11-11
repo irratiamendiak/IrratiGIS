@@ -47,22 +47,32 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
+          set -o pipefail
           npx --yes wrangler@latest pages deploy . \
             --project-name irratigis-wildfire-preview \
             --branch feature-wildfire-mdt-provider \
-            --commit-message "PR #10 wildfire terrain preview"
+            --commit-message "PR #10 wildfire terrain preview" | tee /tmp/pages-deploy.log
+          DEPLOY_URL=$(grep -Eo 'https://[A-Za-z0-9.-]+\.pages\.dev' /tmp/pages-deploy.log | tail -n 1)
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "::error::Wrangler did not report a Pages deployment URL."
+            exit 1
+          fi
+          echo "WILDFIRE_PREVIEW_URL=$DEPLOY_URL" >> "$GITHUB_ENV"
+          echo "Deployment URL reported by Wrangler: $DEPLOY_URL"
 
       - name: Verify preview HTML is reachable
         run: |
           set -euo pipefail
-          URL="https://feature-wildfire-mdt-provider.irratigis-wildfire-preview.pages.dev"
-          for attempt in $(seq 1 12); do
-            CODE=$(curl -sS -L -o /tmp/preview.html -w '%{http_code}' "$URL" || true)
-            if [ "$CODE" = "200" ] && grep -qi '<html' /tmp/preview.html; then
+          URL="$WILDFIRE_PREVIEW_URL"
+          for attempt in $(seq 1 18); do
+            CODE=$(curl -sS -L --max-time 20 -o /tmp/preview.html -w '%{http_code}' "$URL" || true)
+            if [ "$CODE" = "200" ] && grep -Eqi '<html([[:space:]>])' /tmp/preview.html; then
               echo "Preview is reachable: $URL"
               exit 0
             fi
+            echo "Attempt $attempt: HTTP $CODE from $URL"
             sleep 10
           done
-          echo "::error::Preview did not return an HTML 200 response: $URL"
+          echo "::error::Deployment exists, but its reported URL did not return HTML 200: $URL"
+          head -c 1000 /tmp/preview.html || true
           exit 1
