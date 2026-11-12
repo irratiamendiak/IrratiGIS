@@ -1655,7 +1655,6 @@ function vehPopup(v,stale){
   const idJ=escapeHtml(String(v.id));
   const btn="border:0;border-radius:8px;padding:6px 10px;font:700 12px system-ui;cursor:pointer;color:#fff;";
   return `<strong>🚙 ${escapeHtml(v.name)}</strong><br><br>`+
-    `<strong>Matrikula:</strong> ${escapeHtml(String(v.matricula||v.plate||"—"))}<br>`+
     (v.brand?`<strong>Marka:</strong> ${escapeHtml(String(v.brand))}<br>`:"")+
     `<strong>${v.brand?"Modeloa":"Marka / modeloa"}:</strong> ${escapeHtml(String(v.model||"—"))}<br>`+
     (v.acronym&&String(v.acronym)!==String(v.plate)&&String(v.acronym)!==String(v.matricula)?`<strong>Akronimoa:</strong> ${escapeHtml(String(v.acronym))}<br>`:"")+
