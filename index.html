@@ -695,6 +695,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 })();
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/esri-leaflet@3.0.19/dist/esri-leaflet.js"></script>
 <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
 <script>window.forestalPmtilesProtocol=new pmtiles.Protocol();maplibregl.addProtocol("pmtiles",window.forestalPmtilesProtocol.tile);</script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js"></script>
@@ -1098,6 +1099,18 @@ inventarioForestalLayer.on("add",()=>{
     gl.getCanvas().style.cursor="";
   });
 });
+/* MDT LiDAR Gipuzkoa 2017 · raster oficial de 1 m (geoEuskadi).
+   Se publica como overlay independiente; no interviene en el MDT del simulador. */
+const mdtLidar2017Layer=L.esri.dynamicMapLayer({
+  url:"https://www.geo.euskadi.eus/geoeuskadi/rest/services/U11/WCS_KARTOGRAFIA/MapServer",
+  layers:[20],
+  format:"png32",
+  transparent:true,
+  f:"image",
+  opacity:0.78,
+  attribution:"MDT LiDAR 2017 · geoEuskadi / Gobierno Vasco"
+});
+
 const layersControl=new GroupedLayersControl(
   {
     "OpenStreetMap":osm,
@@ -1114,6 +1127,7 @@ const layersControl=new GroupedLayersControl(
   "🔥 Baimendutako erreketak":controlledBurnLayer,
   "🔥 Suteak 2010-2025 (EGIF)":egifLayer,
   "🌳 Inventario forestal (2024)":inventarioForestalLayer,
+  "⛰️ MDT LiDAR Gipuzkoa 2017 (1 m)":mdtLidar2017Layer,
   "Katastroko partzelak · WMS":cadastralWms
 },
   {
