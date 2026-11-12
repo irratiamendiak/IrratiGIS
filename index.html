@@ -1560,7 +1560,7 @@ function vehNormalize(raw){
   const out=[];
   arr.forEach((o,i)=>{
     if(!o||typeof o!=="object") return;
-    const flat=Object.assign({},o.properties||{},o.position||{},o.Position||{},o);
+    const flat=Object.assign({},o.vehicle||{},o.Vehicle||{},o.properties||{},o.position||{},o.Position||{},o);
     const p={}; Object.keys(flat).forEach(k=>{ p[k.toLowerCase()]=flat[k]; });
     let lat=vehNum(vehPick(p,["lat","latitude","latitud","latitudea"]));
     let lon=vehNum(vehPick(p,["lon","lng","long","longitude","longitud","longitudea"]));
@@ -1578,16 +1578,18 @@ function vehNormalize(raw){
       else{ let str=String(ts); if(!/[zZ]|[+-]\d\d:?\d\d$/.test(str)) str+="Z"; t=Date.parse(str); } // UTC
       if(!Number.isFinite(t)) t=null;
     }
-    const plate=vehPick(p,["plate","matricula"]);
-    const desc=vehPick(p,["description","name","alias","acronym"]);
+    /* PALVIEW puede devolver "Plate" como etiqueta/nombre del vehículo; no usarlo
+       como matrícula. La matrícula se toma solo de campos explícitos de registro. */
+    const plate=vehPick(p,["licenseplate","licenseplatenumber","registrationnumber","registrationno","registration","vehicleregistration","vehicleregistrationnumber","registrationplate","vehicleplate","matricula"]);
+    const desc=vehPick(p,["description","name","alias","acronym","plate"]);
     out.push({
       id,
-      name:String(plate||desc||id),
+      name:String(desc||id),
       plate:plate, desc:desc,
       fleet:vehPick(p,["fleetname"]), subfleet:vehPick(p,["subfleetname"]),
       acronym:vehPick(p,["acronym"]), model:vehPick(p,["model"]),
       brand:vehPick(p,["brand","make","marca","manufacturer","brandname","vehiclebrand"]),
-      matricula:vehPick(p,["licenseplate","matricula"]),
+      matricula:plate,
       lat,lon,
       speed:vehNum(vehPick(p,["speed","velocidad"])),
       heading:vehNum(vehPick(p,["heading","course","bearing","rumbo"])),
