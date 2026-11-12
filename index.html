@@ -558,6 +558,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
       <div>
         <h2>Mapa-bisorea</h2>
         <div><span class="badge">GeoGipuzkoa</span> <span class="badge">PNOA</span> <span class="badge blue">Katastro WMS</span></div>
+      <button id="toggle3D" type="button" aria-pressed="false" style="margin-top:8px">🌄 Ikuspegi 3D</button>
       </div>
     </div>
     <div id="map"></div><div id="runtimeStatus" role="status" aria-live="polite" style="display:none;margin-top:8px;padding:9px 11px;border-radius:8px;background:#fff4db;color:#704d00;font-size:13px"></div></div>
@@ -720,8 +721,117 @@ const pdfLibrariesAvailable=typeof html2canvas!=="undefined"&&!!(window.jspdf&&w
 const shpWriteAvailable=(typeof shpwrite!=="undefined");
 
 
+
 const map=L.map("map",{center:[43.05,-2.2],zoom:9});
 window.IrratiGISMap=map;
+
+/* Vista 3D territorial: MapLibre usa el mismo COG LiDAR provincial del simulador
+   como fuente DEM (formato Terrarium generado al vuelo). La vista 2D original
+   permanece intacta y se recupera al pulsar el mismo botón. */
+let ir3dMap=null, ir3dActive=false, ir3dProtocolReady=false;
+let ir3dTileQueue=Promise.resolve();
+const ir3dTileCache=new Map();
+function ir3dLon(x,z){return x/Math.pow(2,z)*360-180;}
+function ir3dLat(y,z){const n=Math.PI-2*Math.PI*y/Math.pow(2,z);return Math.atan(Math.sinh(n))*180/Math.PI;}
+function ir3dTransparentTile(){
+  const c=document.createElement("canvas");c.width=c.height=256;
+  return new Promise(resolve=>c.toBlob(async b=>resolve(await b.arrayBuffer()),"image/png"));
+}
+function ir3dRegisterProtocol(){
+  if(ir3dProtocolReady)return;
+  if(!window.IrratiMdtProvider||!window.IRRATIGIS_MDT_COG_URL||typeof GeoTIFF==="undefined")
+    throw new Error("No está disponible el COG LiDAR de Gipuzkoa para construir el relieve 3D.");
+  const provider=window.IrratiMdtProvider.create({url:window.IRRATIGIS_MDT_COG_URL,targetResolutionM:16});
+  maplibregl.addProtocol("irratiadem",params=>{
+    const match=params.url.match(/^irratiadem:\/\/(\d+)\/(\d+)\/(\d+)$/);
+    if(!match)return Promise.reject(new Error("Coordenadas de tesela DEM no válidas."));
+    const z=Number(match[1]),x=Number(match[2]),y=Number(match[3]),key=z+"/"+x+"/"+y;
+    if(ir3dTileCache.has(key))return ir3dTileCache.get(key).then(data=>({data}));
+    const task=async()=>{
+      const n=Math.pow(2,z),west=ir3dLon(x,z),east=ir3dLon(x+1,z),north=ir3dLat(y,z),south=ir3dLat(y+1,z);
+      const toUtm=(lon,lat)=>proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[lon,lat]);
+      const corners=[[west,north],[east,north],[west,south],[east,south]].map(p=>toUtm(p[0],p[1]));
+      const xs=corners.map(p=>p[0]),ys=corners.map(p=>p[1]);
+      try{await provider.loadBounds([Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]);}
+      catch(e){return await ir3dTransparentTile();}
+      const canvas=document.createElement("canvas");canvas.width=canvas.height=256;
+      const ctx=canvas.getContext("2d"),img=ctx.createImageData(256,256),d=img.data;
+      for(let py=0;py<256;py++){
+        const lat=ir3dLat(y+(py+.5)/256,z);
+        for(let px=0;px<256;px++){
+          const lon=ir3dLon(x+(px+.5)/256,z),p=toUtm(lon,lat);
+          const h=provider.sample(p[0],p[1]),i=(py*256+px)*4;
+          if(!Number.isFinite(h)){d[i+3]=0;continue;}
+          const v=Math.max(0,Math.min(16777215,Math.round((h+32768)*256)));
+          d[i]=(v>>16)&255;d[i+1]=(v>>8)&255;d[i+2]=v&255;d[i+3]=255;
+        }
+      }
+      ctx.putImageData(img,0,0);
+      return await new Promise(resolve=>canvas.toBlob(async b=>resolve(await b.arrayBuffer()),"image/png"));
+    };
+    const pending=ir3dTileQueue.then(task,task);
+    ir3dTileQueue=pending.then(()=>undefined,()=>undefined);
+    ir3dTileCache.set(key,pending);
+    pending.catch(()=>ir3dTileCache.delete(key));
+    while(ir3dTileCache.size>48)ir3dTileCache.delete(ir3dTileCache.keys().next().value);
+    return pending.then(data=>({data}));
+  });
+  ir3dProtocolReady=true;
+}
+function ir3dCreate(){
+  const host=document.getElementById("map");
+  const el=document.createElement("div");el.id="irratiGIS3D";
+  el.style.cssText="position:absolute;inset:0;z-index:1200;border-radius:13px;overflow:hidden;background:#dce8ee";
+  host.style.position="relative";host.appendChild(el);
+  ir3dRegisterProtocol();
+  const style={
+    version:8,
+    sources:{
+      imagery:{type:"raster",tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],tileSize:256,attribution:"Esri, Maxar, Earthstar Geographics"},
+      terrain:{type:"raster-dem",tiles:["irratiadem://{z}/{x}/{y}"],tileSize:256,encoding:"terrarium",minzoom:8,maxzoom:15},
+      places:{type:"raster",tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"],tileSize:256},
+      roads:{type:"raster",tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}"],tileSize:256},
+      forestal:{type:"vector",url:"pmtiles://https://pub-997427d08539450780c6722ce7d23750.r2.dev/neatogeo_forestal_gipuzkoa%281%29.pmtiles"}
+    },
+    layers:[
+      {id:"imagery",type:"raster",source:"imagery"},
+      {id:"forestal-3d",type:"fill",source:"forestal","source-layer":"forestal_gipuzkoa_2024",paint:{"fill-color":"#6ca879","fill-opacity":0.22,"fill-outline-color":"#315f3d"}},
+      {id:"roads-3d",type:"raster",source:"roads",paint:{"raster-opacity":0.8}},
+      {id:"places-3d",type:"raster",source:"places",paint:{"raster-opacity":0.9}}
+    ]
+  };
+  ir3dMap=new maplibregl.Map({container:el,style,center:[-2.2,43.05],zoom:9,pitch:58,bearing:-12, maxPitch:80,attributionControl:true});
+  ir3dMap.addControl(new maplibregl.NavigationControl({visualizePitch:true}),"top-right");
+  ir3dMap.on("load",()=>{
+    ir3dMap.addSource("gipuzkoa-dem",{type:"raster-dem",tiles:["irratiadem://{z}/{x}/{y}"],tileSize:256,encoding:"terrarium",minzoom:8,maxzoom:15});
+    ir3dMap.setTerrain({source:"gipuzkoa-dem",exaggeration:1.25});
+    ir3dMap.setFog({range:[0.8,8],color:"#dbe7ed", "horizon-blend":0.18});
+  });
+  ir3dMap.on("error",e=>{console.warn("IrratiGIS 3D:",e.error||e);});
+  return el;
+}
+function ir3dToggle(){
+  const btn=document.getElementById("toggle3D"),host=document.getElementById("map");
+  if(!ir3dActive){
+    try{
+      if(!ir3dMap)ir3dCreate();
+      map.getContainer().style.visibility="hidden";
+      ir3dActive=true;btn.textContent="🗺️ Volver a 2D";btn.setAttribute("aria-pressed","true");
+      requestAnimationFrame(()=>ir3dMap&&ir3dMap.resize());
+    }catch(e){
+      const status=document.getElementById("runtimeStatus");
+      if(status){status.style.display="block";status.textContent="No se pudo iniciar la vista 3D: "+(e.message||String(e));}
+      console.error(e);
+    }
+  }else{
+    ir3dActive=false;map.getContainer().style.visibility="";
+    const el=document.getElementById("irratiGIS3D");if(el)el.remove();
+    if(ir3dMap){ir3dMap.remove();ir3dMap=null;}
+    btn.textContent="🌄 Ikuspegi 3D";btn.setAttribute("aria-pressed","false");
+    map.invalidateSize();
+  }
+}
+document.getElementById("toggle3D").addEventListener("click",ir3dToggle);
 
 const osm=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
   maxZoom:20, attribution:"© OpenStreetMap contributors"
