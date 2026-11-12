@@ -558,8 +558,11 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
       <div>
         <h2>Mapa-bisorea</h2>
         <div><span class="badge">GeoGipuzkoa</span> <span class="badge">PNOA</span> <span class="badge blue">Katastro WMS</span></div>
-      <button id="toggle3D" type="button" aria-pressed="false" style="margin-top:8px">🌄 Ikuspegi 3D</button>
       </div>
+    </div>
+    <div class="map3dbar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px">
+      <button id="toggle3D" type="button" aria-pressed="false" style="display:inline-flex!important;visibility:visible!important;opacity:1!important;position:relative;z-index:5;padding:10px 16px;background:#176b43;color:#fff;border:0;border-radius:9px;font-weight:800;cursor:pointer">🌄 Ikuspegi 3D · 3D ikuspegia</button>
+      <span style="font-size:12px;color:var(--muted)">Relieve LiDAR · Ortoargazkia · Toponimia</span>
     </div>
     <div id="map"></div><div id="runtimeStatus" role="status" aria-live="polite" style="display:none;margin-top:8px;padding:9px 11px;border-radius:8px;background:#fff4db;color:#704d00;font-size:13px"></div></div>
        <div class="tracktools icon-tools">
