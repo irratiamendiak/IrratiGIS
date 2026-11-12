@@ -3297,23 +3297,29 @@ async function fsCreateInventoryFuelSampler(ignition){
     gl.on("error",e=>{if(!gl.isStyleLoaded()) finish(e.error||new Error("No se pudo cargar el inventario PMTiles."));});
   });
   if(!gl.getLayer("forestal-poligonos")) throw new Error("No se ha cargado la capa vectorial del inventario.");
+  const counted=new Set();
   const fuelAt=(lat,lon)=>{
     // Cuadrícula de caché de ~80-100 m: evita repetir consultas en cada paso temporal.
     const key=lat.toFixed(3)+","+lon.toFixed(3);
-    if(cache.has(key)) return cache.get(key);
-    const px=gl.project([lon,lat]);
-    let features=[];
-    if(px.x>=0&&px.y>=0&&px.x<1024&&px.y<1024)
-      features=gl.queryRenderedFeatures(px,{layers:["forestal-poligonos"]})||[];
-    let mapped=null;
-    for(const f of features){
-      const k=fsFuelFromInventoryProperties(f.properties||{});
-      if(k){mapped=k;break;}
+    let value=cache.get(key);
+    if(!value){
+      const px=gl.project([lon,lat]);
+      let features=[];
+      if(px.x>=0&&px.y>=0&&px.x<1024&&px.y<1024)
+        features=gl.queryRenderedFeatures(px,{layers:["forestal-poligonos"]})||[];
+      let mapped=null;
+      for(const f of features){
+        const k=fsFuelFromInventoryProperties(f.properties||{});
+        if(k){mapped=k;break;}
+      }
+      value=mapped?{key:mapped,fuel:FS_FUELS[mapped],source:"inventory"}:
+        {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback"};
+      cache.set(key,value);
     }
-    const value=mapped?{key:mapped,fuel:FS_FUELS[mapped],source:"inventory"}:
-      {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback"};
-    cache.set(key,value);
-    if(mapped) result.stats.classified++; else result.stats.unknown++;
+    if(!counted.has(key)){
+      counted.add(key);
+      if(value.source==="inventory") result.stats.classified++; else result.stats.unknown++;
+    }
     return value;
   };
   result.fuelAt=fuelAt;
@@ -3593,6 +3599,10 @@ async function fsRun(){
   const areas={};
   try{
     rays=fsSimulate(fu,met,null,inventorySampler&&inventorySampler.fuelAt);
+    if(inventorySampler){
+      try{inventorySampler.map.remove();}catch(_){}
+      try{inventorySampler.container.remove();}catch(_){}
+    }
     if(my!==fsBusy) return;
     for(const t of times){
       const perimeter=fsPerim(rays,t), st=styles[t];
