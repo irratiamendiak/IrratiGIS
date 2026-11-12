@@ -1528,21 +1528,17 @@ const vehSearchControl=new VehSearchControl();
 map.addControl(vehSearchControl);
 
 function vehSearchNormalize(value){
-  return String(value??"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLocaleLowerCase("es").replace(/[^a-z0-9]/g,"");
+  return String(value??"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLocaleUpperCase("es").replace(/[^A-Z0-9]/g,"");
 }
 function vehRenderSearchResults(query){
   const out=document.getElementById("vehSearchResults");
   if(!out) return;
   out.replaceChildren();
-  const raw=String(query||"").trim().toLocaleLowerCase("es");
-  const q=vehSearchNormalize(raw);
-  if(!raw) return;
+  const q=vehSearchNormalize(query);
+  if(!q) return;
   const matches=[...vehLast.values()].filter(v=>{
-    const fields=[v.name,v.plate,v.matricula,v.desc,v.acronym,v.fleet,v.subfleet,v.id,v.searchText];
-    return fields.some(x=>x!==null&&x!==undefined&&(
-      String(x).toLocaleLowerCase("es").includes(raw) ||
-      (q.length>=3 && vehSearchNormalize(x).includes(q))
-    ));
+    const fields=[v.name,v.matricula];
+    return fields.some(x=>x!==null&&x!==undefined&&vehSearchNormalize(x).includes(q));
   }).sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"es")).slice(0,8);
   if(!matches.length){
     const empty=document.createElement("div"); empty.className="veh-search-empty"; empty.textContent="Ez da ibilgailurik aurkitu.";
@@ -1551,8 +1547,8 @@ function vehRenderSearchResults(query){
   matches.forEach(v=>{
     const b=document.createElement("button"); b.type="button"; b.className="veh-search-result";
     b.setAttribute("data-veh-search-id",String(v.id));
-    const name=document.createElement("strong"); name.textContent=v.name||v.desc||String(v.id);
-    const plate=document.createElement("small"); plate.textContent="Matrikula: "+String(v.matricula||v.plate||"—");
+    const name=document.createElement("strong"); name.textContent=v.name||"Izengabea";
+    const plate=document.createElement("small"); plate.textContent="Matrikula: "+String(v.matricula||"—");
     b.append(name,plate); out.appendChild(b);
   });
 }
@@ -1585,16 +1581,27 @@ function vehNormalize(raw){
       else{ let str=String(ts); if(!/[zZ]|[+-]\d\d:?\d\d$/.test(str)) str+="Z"; t=Date.parse(str); } // UTC
       if(!Number.isFinite(t)) t=null;
     }
-    /* "Plate" se conserva como dato buscable/nombre alternativo, pero no se
-       muestra como matrícula salvo que un campo explícito de registro exista. */
-    const plate=vehPick(p,["licenseplate","licenseplatenumber","registrationnumber","registrationno","registration","vehicleregistration","vehicleregistrationnumber","registrationplate","vehicleplate","matricula"]);
-    const plateLabel=vehPick(p,["plate"]);
-    const desc=vehPick(p,["description","name","alias","acronym"]);
+    /* PALVIEWren eremu guztietan bilatu benetako matrikula: 4 zenbaki + 3 letra. */
+    const scalarValues=[];
+    const seenObjects=new Set();
+    const collectScalars=(x,d=0)=>{
+      if(x===null||x===undefined||d>6)return;
+      if(typeof x==="object"){
+        if(seenObjects.has(x))return; seenObjects.add(x);
+        if(Array.isArray(x))x.forEach(v=>collectScalars(v,d+1));
+        else Object.values(x).forEach(v=>collectScalars(v,d+1));
+      }else scalarValues.push(String(x).trim());
+    };
+    collectScalars(o);
+    const plateMatch=scalarValues.map(x=>x.toUpperCase().match(/(?:^|[^A-Z0-9])(\\d{4})\\s*[- ]?\\s*([A-Z]{3})(?:$|[^A-Z0-9])/)).find(Boolean);
+    const plate=plateMatch?plateMatch[1]+plateMatch[2]:null;
+    const desc=vehPick(p,["description","vehiclename","vehicle_name","name","alias","acronym"]);
+    const displayName=desc||vehPick(p,["fleetname","subfleetname"])||("Ibilgailua "+id);
     out.push({
       id,
-      name:String(desc||plateLabel||id),
-      plate:plateLabel, desc:desc,
-      searchText:(()=>{const values=[];const seen=new Set();const walk=(x,d=0)=>{if(x===null||x===undefined||d>5)return;if(typeof x==="object"){if(seen.has(x))return;seen.add(x);if(Array.isArray(x)){x.forEach(v=>walk(v,d+1));}else Object.values(x).forEach(v=>walk(v,d+1));}else values.push(String(x));};walk(flat);return values.join(" ");})(),
+      name:String(displayName),
+      desc:desc,
+      plate:null,
       fleet:vehPick(p,["fleetname"]), subfleet:vehPick(p,["subfleetname"]),
       acronym:vehPick(p,["acronym"]), model:vehPick(p,["model"]),
       brand:vehPick(p,["brand","make","marca","manufacturer","brandname","vehiclebrand"]),
