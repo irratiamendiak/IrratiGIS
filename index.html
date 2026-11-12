@@ -741,6 +741,19 @@ const pnoa=L.tileLayer.wms("https://www.ign.es/wms-inspire/pnoa-ma",{
   version:"1.3.0", maxZoom:20, attribution:"PNOA Máxima Actualidad · IGN-CNIG"
 });
 
+/* Esri Hybrid: ortofoto + nombres de lugares + red de carreteras.
+   Los servicios de referencia de Esri son capas transparentes superpuestas. */
+const esriImagery=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{
+  maxZoom:19, attribution:"Imagery © Esri, Vantor, Earthstar Geographics, GIS User Community"
+});
+const esriPlaces=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",{
+  maxZoom:19, attribution:"Labels © Esri, HERE, Garmin, OpenStreetMap contributors"
+});
+const esriTransport=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}",{
+  maxZoom:19, attribution:"Road data © Esri, HERE, Garmin, OpenStreetMap contributors"
+});
+const esriHybrid=L.layerGroup([esriImagery,esriPlaces,esriTransport]);
+
 const ignRaster=L.tileLayer.wms("https://www.ign.es/wms-inspire/mapa-raster",{
   layers:"mtn_rasterizado", format:"image/png", transparent:false,
   continuousWorld:true, attribution:"© Instituto Geográfico Nacional de España"
@@ -865,7 +878,7 @@ b5mTopo.on("add",loadB5mTopo);
 
 /* Oinarrizko mapak: B5M ortoargazki bat hautatzean hauek kenduko dira.
    B5M kartografia-geruzak ez dira zerrenda honetan sartzen; overlay gisa mantentzen dira. */
-const standardBaseLayers=[osm,gipMap,pnoa,ignRaster,euHuts,b5mTopo];
+const standardBaseLayers=[osm,gipMap,pnoa,esriHybrid,ignRaster,euHuts,b5mTopo];
 
 const cadastralWms=L.tileLayer.wms("https://b5m.gipuzkoa.eus/inspire/wms/gipuzkoa_wms",{
   layers:"cp.CadastralParcel", format:"image/png", transparent:true,
@@ -1104,6 +1117,7 @@ const layersControl=new GroupedLayersControl(
     "GeoGipuzkoa · mapa":gipMap,
     "B5M · Topografikoa":b5mTopo,
     "PNOA · azken ortoargazkia":pnoa,
+    "Esri · Ortoargazki hibridoa":esriHybrid,
     "SP IGM Raster · IGN":ignRaster,
     "EU Huts":euHuts
   },
