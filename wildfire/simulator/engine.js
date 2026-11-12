@@ -54,7 +54,7 @@
 
   function simulate(options) {
     const {
-      fuel, ignition, durationMinutes, stepMinutes, weatherAt, terrainAt,
+      fuel, fuelAt, ignition, durationMinutes, stepMinutes, weatherAt, terrainAt,
       moistureAt, heatContent, windFactor = 1, moistureDelta = 0,
       bearingStepDegrees = 5
     } = options;
@@ -68,12 +68,18 @@
     for (let bearing = 0; bearing < 360; bearing += bearingStepDegrees) {
       let lat = ignition.lat, lon = ignition.lng, distance = 0;
       const bearingRadians = bearing * RAD;
-      const points = [[0, 0, lat, lon]];
+      const initialFuel = fuelAt ? (fuelAt(lat, lon) || {}) : {};
+      let activeFuel = initialFuel.fuel || fuel;
+      let activeFuelKey = initialFuel.key || "default";
+      const points = [[0, 0, lat, lon, activeFuelKey]];
       for (let time = stepMinutes; time <= durationMinutes; time += stepMinutes) {
         const weather = weatherAt(time);
         const terrain = terrainAt(lat, lon);
-        const moisture = Math.max(2, moistureAt(weather, fuel, terrain, time) + moistureDelta);
-        const spread = behavior(fuel, terrain.tan, terrain.asp, weather.dir,
+        const selected = fuelAt ? (fuelAt(lat, lon) || {}) : {};
+        activeFuel = selected.fuel || fuel;
+        activeFuelKey = selected.key || "default";
+        const moisture = Math.max(2, moistureAt(weather, activeFuel, terrain, time) + moistureDelta);
+        const spread = behavior(activeFuel, terrain.tan, terrain.asp, weather.dir,
           weather.spd * windFactor, moisture);
         const increment = spread.Rh > 0
           ? ellipseRate(spread, angleDifference(bearing, spread.head)) * stepMinutes
@@ -81,7 +87,7 @@
         lat += increment * Math.cos(bearingRadians) / 111320;
         lon += increment * Math.sin(bearingRadians) / metersPerLongitudeDegree;
         distance += increment;
-        points.push([time, distance, lat, lon]);
+        points.push([time, distance, lat, lon, activeFuelKey]);
       }
       rays.push({ bg: bearing, pts: points });
     }
