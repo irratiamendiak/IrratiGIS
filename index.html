@@ -3808,8 +3808,7 @@ async function fetchParcel(ref){
     const toLL=pl=>{
       const v=pl.trim().split(/\s+/).map(Number), out=[];
       for(let i=0;i+1<v.length;i+=2){ const ll=L.CRS.EPSG3857.unproject(L.point(v[i],v[i+1])); out.push([ll.lat,ll.lng]); }
-      out.forEach(row=>{row.inventoryStatus=local.status;});
-  return out;
+      return out;
     };
     const polys=[];
     [...el.getElementsByTagNameNS("*","Polygon"),...el.getElementsByTagNameNS("*","PolygonPatch")].forEach(pg=>{
