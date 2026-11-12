@@ -1474,7 +1474,14 @@ let vehTimer=null, vehBusy=false, vehFitted=false;
     ".veh-ico{filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.7));line-height:0}"+
     ".veh-label{font:700 11px system-ui;padding:1px 6px;border-radius:6px;border:1px solid rgba(0,0,0,.25);box-shadow:0 1px 3px rgba(0,0,0,.3)}"+
     ".veh-label:before{display:none}"+
-    ".veh-nolabels .veh-label{display:none}";
+    ".veh-nolabels .veh-label{display:none}"+
+    ".veh-search-control{width:min(290px,78vw);margin-top:7px;padding:10px;background:#fff;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.25);font:12px system-ui;color:#16231c}"+
+    ".veh-search-control label{display:block;font-weight:800;margin-bottom:6px}"+
+    ".veh-search-control input{width:100%;padding:9px;border:1px solid #cfdad3;border-radius:7px;font:inherit;box-sizing:border-box}"+
+    ".veh-search-result{display:block;width:100%;min-height:0;text-align:left;margin-top:5px;padding:7px 8px;border-radius:7px;background:#f2f7f4;color:#16231c}"+
+    ".veh-search-result strong,.veh-search-result small{display:block}"+
+    ".veh-search-result small,.veh-search-empty{font-size:11px;color:#65736b;margin-top:2px}"+
+    "#vehSearchResults{max-height:230px;overflow:auto}";
   document.head.appendChild(st);
 })();
 map.on("zoomend",()=>{ map.getContainer().classList.toggle("veh-nolabels",map.getZoom()<12); });
@@ -1490,6 +1497,58 @@ const VehCounter=L.Control.extend({
   }
 });
 map.addControl(new VehCounter());
+
+/* Buscador de vehículos: nombre o matrícula, con salto directo al marcador. */
+const VehSearchControl=L.Control.extend({
+  options:{position:"topleft"},
+  onAdd:function(){
+    const box=L.DomUtil.create("div","veh-search-control");
+    box.id="vehSearchControl";
+    box.style.display="none";
+    box.innerHTML='<label for="vehSearchInput">🔎 Buscar vehículo</label><input id="vehSearchInput" type="search" placeholder="Nombre o matrícula…" autocomplete="off"><div id="vehSearchResults" role="listbox"></div>';
+    L.DomEvent.disableClickPropagation(box);
+    L.DomEvent.disableScrollPropagation(box);
+    const input=box.querySelector("#vehSearchInput");
+    input.addEventListener("input",()=>vehRenderSearchResults(input.value));
+    box.querySelector("#vehSearchResults").addEventListener("click",e=>{
+      const btn=e.target.closest("[data-veh-search-id]");
+      if(!btn) return;
+      const id=btn.getAttribute("data-veh-search-id");
+      const v=vehLast.get(id), m=vehicleMarkers.get(id);
+      if(!v||!m) return;
+      map.setView([v.lat,v.lon],Math.max(map.getZoom(),16),{animate:true});
+      m.openPopup();
+      input.value=v.name||v.plate||v.matricula||"";
+      box.querySelector("#vehSearchResults").innerHTML="";
+    });
+    return box;
+  }
+});
+const vehSearchControl=new VehSearchControl();
+map.addControl(vehSearchControl);
+
+function vehRenderSearchResults(query){
+  const out=document.getElementById("vehSearchResults");
+  if(!out) return;
+  out.replaceChildren();
+  const q=String(query||"").trim().toLocaleLowerCase("es");
+  if(!q) return;
+  const matches=[...vehLast.values()].filter(v=>{
+    const fields=[v.name,v.plate,v.matricula,v.desc,v.acronym,v.fleet,v.subfleet,v.id];
+    return fields.some(x=>x!==null&&x!==undefined&&String(x).toLocaleLowerCase("es").includes(q));
+  }).sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"es")).slice(0,8);
+  if(!matches.length){
+    const empty=document.createElement("div"); empty.className="veh-search-empty"; empty.textContent="No se han encontrado vehículos.";
+    out.appendChild(empty); return;
+  }
+  matches.forEach(v=>{
+    const b=document.createElement("button"); b.type="button"; b.className="veh-search-result";
+    b.setAttribute("data-veh-search-id",String(v.id));
+    const name=document.createElement("strong"); name.textContent=v.name||v.desc||String(v.id);
+    const plate=document.createElement("small"); plate.textContent="Matrícula: "+String(v.matricula||v.plate||"—");
+    b.append(name,plate); out.appendChild(b);
+  });
+}
 
 function vehNum(v){ if(v===null||v===undefined||v==="") return null; const n=typeof v==="string"?parseFloat(v.replace(",",".")):Number(v); return Number.isFinite(n)?n:null; }
 function vehPick(o,keys){ for(const k of keys){ const v=o[k]; if(v!==undefined&&v!==null&&v!=="") return v; } return null; }
@@ -1652,6 +1711,7 @@ async function updateVehicles(){
       vehFitted=true;
       map.fitBounds(L.featureGroup([...vehicleMarkers.values()]).getBounds().pad(0.2),{maxZoom:13});
     }
+    vehRenderSearchResults(document.getElementById("vehSearchInput")?.value||"");
     const c=document.getElementById("vehCounter");
     if(c){ c.textContent=`🚙 ${list.length} ibilgailu · ${list.filter(x=>x.stopped).length} geldirik · ${new Date().toLocaleTimeString("eu-ES")}`; c.style.display="block"; }
   }catch(err){
@@ -1665,12 +1725,13 @@ function startVehicles(){ stopVehicles(); updateVehicles(); vehTimer=setInterval
 function stopVehicles(){ if(vehTimer){ clearInterval(vehTimer); vehTimer=null; } }
 
 layersControl.addOverlay(vehicleLayer,"🚙 Ibilgailuak (PALVIEW · denbora errealean)");
-map.on("overlayadd",e=>{ if(e.layer===vehicleLayer) startVehicles(); });
+map.on("overlayadd",e=>{ if(e.layer===vehicleLayer){ const sc=document.getElementById("vehSearchControl"); if(sc) sc.style.display="block"; startVehicles(); } });
 map.on("overlayremove",e=>{
   if(e.layer!==vehicleLayer) return;
   stopVehicles();
   vehicleLayer.clearLayers(); vehicleMarkers.clear(); vehMotion.clear(); vehLast.clear(); vehFitted=false;
   const c=document.getElementById("vehCounter"); if(c) c.style.display="none";
+  const sc=document.getElementById("vehSearchControl"); if(sc) sc.style.display="none";
 });
 /* Fitxa atzeko planoan dagoenean ez da eskaerarik egiten. */
 document.addEventListener("visibilitychange",()=>{
