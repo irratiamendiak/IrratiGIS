@@ -1702,7 +1702,7 @@ async function updateVehicles(){
       if(!m){
         m=L.marker([v.lat,v.lon],{icon:vehIcon(v,stale),zIndexOffset:500});
         m.bindTooltip(escapeHtml(v.name),{permanent:true,direction:"top",offset:[0,-14],className:"veh-label"});
-        m.bindPopup(vehPopup(v,stale));
+        m.bindPopup(vehPopup(v,stale),{autoPan:false});
         m.addTo(vehicleLayer);
         vehicleMarkers.set(v.id,m);
       }else{
