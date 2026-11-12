@@ -791,20 +791,53 @@ function ir3dCreate(){
     version:8,
     sources:{
       imagery:{type:"raster",tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],tileSize:256,attribution:"Esri, Maxar, Earthstar Geographics"},
+      pnoa:{type:"raster",tiles:["https://www.ign.es/wms-inspire/pnoa-ma?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=OI.OrthoimageCoverage&STYLES=&FORMAT=image/jpeg&TRANSPARENT=FALSE&SRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256"],tileSize:256, attribution:"PNOA · IGN-CNIG"},
+      cadastral:{type:"raster",tiles:["https://b5m.gipuzkoa.eus/inspire/wms/gipuzkoa_wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=cp.CadastralParcel&STYLES=&FORMAT=image/png&TRANSPARENT=TRUE&SRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256"],tileSize:256},
       terrain:{type:"raster-dem",tiles:["irratiadem://{z}/{x}/{y}"],tileSize:256,encoding:"terrarium",minzoom:8,maxzoom:15},
       places:{type:"raster",tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"],tileSize:256},
       roads:{type:"raster",tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}"],tileSize:256},
       forestal:{type:"vector",url:"pmtiles://https://pub-997427d08539450780c6722ce7d23750.r2.dev/neatogeo_forestal_gipuzkoa%281%29.pmtiles"}
     },
     layers:[
-      {id:"imagery",type:"raster",source:"imagery"},
-      {id:"forestal-3d",type:"fill",source:"forestal","source-layer":"forestal_gipuzkoa_2024",paint:{"fill-color":"#6ca879","fill-opacity":0.22,"fill-outline-color":"#315f3d"}},
-      {id:"roads-3d",type:"raster",source:"roads",paint:{"raster-opacity":0.8}},
-      {id:"places-3d",type:"raster",source:"places",paint:{"raster-opacity":0.9}}
+      {id:"imagery-3d",type:"raster",source:"imagery"},
+      {id:"pnoa-3d",type:"raster",source:"pnoa",layout:{"visibility":"none"}},
+      {id:"forestal-3d",type:"fill",source:"forestal","source-layer":"forestal_gipuzkoa_2024",layout:{"visibility":"visible"},paint:{"fill-color":"#6ca879","fill-opacity":0.22,"fill-outline-color":"#315f3d"}},
+      {id:"roads-3d",type:"raster",source:"roads",layout:{"visibility":"visible"},paint:{"raster-opacity":0.8}},
+      {id:"places-3d",type:"raster",source:"places",layout:{"visibility":"visible"},paint:{"raster-opacity":0.9}},
+      {id:"cadastral-3d",type:"raster",source:"cadastral",layout:{"visibility":"none"},paint:{"raster-opacity":0.9}}
     ]
   };
   ir3dMap=new maplibregl.Map({container:el,style,center:[-2.2,43.05],zoom:9,pitch:58,bearing:-12, maxPitch:80,attributionControl:true});
   ir3dMap.addControl(new maplibregl.NavigationControl({visualizePitch:true}),"top-right");
+  const layerControl={
+    onAdd:function(){
+      const root=document.createElement("div");
+      root.className="maplibregl-ctrl maplibregl-ctrl-group";
+      root.style.cssText="background:#fff;padding:10px 12px;min-width:205px;max-height:55vh;overflow:auto;border-radius:8px;font:12px/1.45 system-ui;color:#20352a;box-shadow:0 1px 5px #0003";
+      root.innerHTML='<strong style="display:block;margin-bottom:7px">🗺️ Capas 3D</strong>'+
+        '<div style="font-weight:800;margin:5px 0">Mapa base</div>'+
+        '<label style="display:block;margin:4px 0"><input type="radio" name="ig3d-base" value="imagery-3d" checked> Esri · Ortofoto</label>'+
+        '<label style="display:block;margin:4px 0"><input type="radio" name="ig3d-base" value="pnoa-3d"> PNOA · IGN</label>'+
+        '<div style="font-weight:800;margin:8px 0 4px">Capas superpuestas</div>'+
+        '<label style="display:block;margin:4px 0"><input type="checkbox" data-layer="places-3d" checked> Toponimia y límites</label>'+
+        '<label style="display:block;margin:4px 0"><input type="checkbox" data-layer="roads-3d" checked> Carreteras</label>'+
+        '<label style="display:block;margin:4px 0"><input type="checkbox" data-layer="forestal-3d" checked> Inventario forestal 2024</label>'+
+        '<label style="display:block;margin:4px 0"><input type="checkbox" data-layer="cadastral-3d"> Catastro · parcelas</label>';
+      root.addEventListener("change",ev=>{
+        if(!ir3dMap||!ir3dMap.isStyleLoaded())return;
+        const input=ev.target;
+        if(input.name==="ig3d-base"){
+          ["imagery-3d","pnoa-3d"].forEach(id=>ir3dMap.setLayoutProperty(id,"visibility",id===input.value?"visible":"none"));
+        }else if(input.dataset.layer){
+          ir3dMap.setLayoutProperty(input.dataset.layer,"visibility",input.checked?"visible":"none");
+        }
+      });
+      this._container=root;
+      return root;
+    },
+    onRemove:function(){this._container?.remove();this._container=null;}
+  };
+  ir3dMap.addControl(layerControl,"top-left");
   ir3dMap.on("load",()=>{
     ir3dMap.addSource("gipuzkoa-dem",{type:"raster-dem",tiles:["irratiadem://{z}/{x}/{y}"],tileSize:256,encoding:"terrarium",minzoom:8,maxzoom:15});
     ir3dMap.setTerrain({source:"gipuzkoa-dem",exaggeration:1.25});
