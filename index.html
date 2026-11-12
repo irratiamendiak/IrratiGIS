@@ -1505,7 +1505,7 @@ const VehSearchControl=L.Control.extend({
     const box=L.DomUtil.create("div","veh-search-control");
     box.id="vehSearchControl";
     box.style.display="none";
-    box.innerHTML='<label for="vehSearchInput">🔎 Buscar vehículo</label><input id="vehSearchInput" type="search" placeholder="Nombre o matrícula…" autocomplete="off"><div id="vehSearchResults" role="listbox"></div>';
+    box.innerHTML='<label for="vehSearchInput">🔎 Bilatu ibilgailua</label><input id="vehSearchInput" type="search" placeholder="Izena edo matrikula…" autocomplete="off"><div id="vehSearchResults" role="listbox"></div>';
     L.DomEvent.disableClickPropagation(box);
     L.DomEvent.disableScrollPropagation(box);
     const input=box.querySelector("#vehSearchInput");
@@ -1538,14 +1538,14 @@ function vehRenderSearchResults(query){
     return fields.some(x=>x!==null&&x!==undefined&&String(x).toLocaleLowerCase("es").includes(q));
   }).sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"es")).slice(0,8);
   if(!matches.length){
-    const empty=document.createElement("div"); empty.className="veh-search-empty"; empty.textContent="No se han encontrado vehículos.";
+    const empty=document.createElement("div"); empty.className="veh-search-empty"; empty.textContent="Ez da ibilgailurik aurkitu.";
     out.appendChild(empty); return;
   }
   matches.forEach(v=>{
     const b=document.createElement("button"); b.type="button"; b.className="veh-search-result";
     b.setAttribute("data-veh-search-id",String(v.id));
     const name=document.createElement("strong"); name.textContent=v.name||v.desc||String(v.id);
-    const plate=document.createElement("small"); plate.textContent="Matrícula: "+String(v.matricula||v.plate||"—");
+    const plate=document.createElement("small"); plate.textContent="Matrikula: "+String(v.matricula||v.plate||"—");
     b.append(name,plate); out.appendChild(b);
   });
 }
@@ -2113,11 +2113,11 @@ map.on("overlayremove",e=>{
    Lur-iturria hautagarria da (MDT LiDAR edo Terrarium); kalkulu numerikoa wildfire/simulator/engine.js moduluan dago. */
 const FS_Z=13, FS_H=18600, FS_DT=2, FS_T=360;
 const FS_FUELS={
-  belarra:{n:"Pasto / herbazal (modelos 1-2)",R0:1.7,sig:3500,beta:.002,waf:.45,w:.17,Mx:.15,Rmax:60,cls:[1,0,0],sun:1},
-  garoa:{n:"Matorral atlántico: argoma, brezal (modelos 4-6)",R0:.5,sig:1800,beta:.006,waf:.4,w:.9,Mx:.20,Rmax:40,cls:[.5,.3,.2],sun:.9},
-  iratzea:{n:"Helechal (modelos 5-6)",R0:.6,sig:2200,beta:.004,waf:.35,w:.5,Mx:.20,Rmax:30,cls:[.5,.3,.2],sun:.8},
-  pinudia:{n:"Pinar / plantación con acículas (modelos 9-10)",R0:.25,sig:2000,beta:.02,waf:.2,w:.6,Mx:.25,Rmax:15,cls:[.45,.35,.2],sun:.5},
-  hostozabala:{n:"Hayedo / robledal, hojarasca (modelos 8-9)",R0:.2,sig:2200,beta:.03,waf:.15,w:.35,Mx:.30,Rmax:8,cls:[.5,.3,.2],sun:.4}
+  belarra:{n:"Belardia / larrea (1-2 ereduak)",R0:1.7,sig:3500,beta:.002,waf:.45,w:.17,Mx:.15,Rmax:60,cls:[1,0,0],sun:1},
+  garoa:{n:"Atlantikoko sastrakadia: oteak, txilardiak (4-6 ereduak)",R0:.5,sig:1800,beta:.006,waf:.4,w:.9,Mx:.20,Rmax:40,cls:[.5,.3,.2],sun:.9},
+  iratzea:{n:"Iratze-saila (5-6 ereduak)",R0:.6,sig:2200,beta:.004,waf:.35,w:.5,Mx:.20,Rmax:30,cls:[.5,.3,.2],sun:.8},
+  pinudia:{n:"Pinudia / orratz-hostoen landaketa (9-10 ereduak)",R0:.25,sig:2000,beta:.02,waf:.2,w:.6,Mx:.25,Rmax:15,cls:[.45,.35,.2],sun:.5},
+  hostozabala:{n:"Pagadia / hariztia, hojarasca (modelos 8-9)",R0:.2,sig:2200,beta:.03,waf:.15,w:.35,Mx:.30,Rmax:8,cls:[.5,.3,.2],sun:.4}
 };
 const fsCfg={fuel:"garoa",moistMode:"calc",startH:0,ffmc:85,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
 let fsIgn=null, fsBusy=0, fsLast=null, fsFlat=false;
@@ -2135,7 +2135,7 @@ const fsMdt=fsMdtUrl&&window.IrratiMdtProvider
   :null;
 let fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};
 function fsMdtLabel(){if(fsTerrainSource==="terrarium")return "Terrarium · fuente seleccionada";return fsMdtStatus.loaded?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m`:(fsMdtStatus.error?`MDT LiDAR · error: ${fsMdtStatus.error}`:"MDT LiDAR · pendiente de consultar");}
-function fsUpdateTerrainStatus(){const el=fsPanel&&fsPanel.querySelector(".fs-terrain-status");if(el)el.textContent="Fuente de terreno: "+fsMdtLabel();}
+function fsUpdateTerrainStatus(){const el=fsPanel&&fsPanel.querySelector(".fs-terrain-status");if(el)el.textContent="Lurzoruaren iturria: "+fsMdtLabel();}
 function fsMdtXY(lat,lon){
   if(typeof proj4!=="function") return null;
   try{
@@ -3335,27 +3335,27 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
 {
   const bs="border:0;border-radius:8px;padding:6px 10px;font:700 12px system-ui;cursor:pointer;color:#fff;", row="margin-bottom:4px";
   fsPanel.innerHTML=
-   `<div style="display:flex;justify-content:space-between;align-items:center"><strong style="font-size:13px">🔥 Evolución del incendio · simulación</strong><button type="button" class="fs-x" style="border:0;background:none;font-size:16px;cursor:pointer">✕</button></div>`+
-   `<div style="color:#8b2f2f;font-size:11px;margin:3px 0 6px"><b>Estimación orientativa</b>, con modelo simplificado: el error puede ser del 50 % o más. Úsala como orden de magnitud. No sustituye al mando ni a las herramientas operativas; no modela focos secundarios ni fuego de copa.</div>`+
-   `<div style="display:flex;gap:6px;margin:6px 0"><button type="button" class="fs-set" style="${bs}background:#d9480f">📍 Marcar inicio</button><button type="button" class="fs-clr" style="${bs}background:#65736b">Limpiar</button></div>`+
-   `<div style="font-weight:800;margin:8px 0 5px;padding-bottom:4px;border-bottom:1px solid #dce5df">1. Configuración del incendio</div>`+
-   `<div style="${row}"><b>Hora de inicio</b> <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap"><input type="datetime-local" class="fs-start-at" value="${(()=>{const d=new Date(Date.now()-new Date().getTimezoneOffset()*60000);return d.toISOString().slice(0,16);})()}" style="max-width:190px"><button type="button" class="fs-now" style="${bs}background:#65736b">Ahora</button></div><div style="font-size:10px;color:#65736b">Elige fecha y hora de inicio (hasta 72 h vista) o pulsa «Ahora».</div></div>`+
-   `<div style="${row}"><b>Tipo de combustible</b> <select class="fs-fuel-source" style="max-width:100%"><option value="inventory"${fsFuelSource==="inventory"?" selected":""}>Activar inventario forestal (Gipuzkoa 2024)</option><option value="wms"${fsFuelSource==="wms"?" selected":""}>WMS forestal externo</option><option value="rothermel"${fsFuelSource==="rothermel"?" selected":""}>Modelo de Rothermel (combustible manual)</option></select></div>`+
-   `<div class="fs-fuel-help" style="font-size:10px;color:#65736b;margin:-2px 0 5px">${fsFuelSource==="inventory"?"El inventario forestal será la fuente seleccionada; la capa del mapa se puede activar o desactivar por separado.":fsFuelSource==="wms"?"Se consultará el WMS forestal externo como fuente de cubierta.":"Selecciona un combustible del catálogo simplificado de Rothermel."}</div>`+
-   `<div class="fs-fuel-manual" style="${fsFuelSource==="rothermel"?"":"display:none;"}${row}"><b>Combustible del modelo</b> <select class="fs-fuel" style="max-width:100%">${Object.keys(FS_FUELS).map(k=>`<option value="${k}"${k===fsCfg.fuel?" selected":""}>${FS_FUELS[k].n}</option>`).join("")}</select></div>`+
-   `<div style="${row}"><b>Topografía</b> <select class="fs-terrain-source"><option value="mdt"${fsTerrainSource==="mdt"?" selected":""}>MDT LiDAR Gipuzkoa 2017 (16 m)</option><option value="terrarium"${fsTerrainSource==="terrarium"?" selected":""}>Terrarium (alternativa)</option></select></div>`+
-   `<div class="fs-terrain-status" style="padding:6px 8px;margin:5px 0 8px;background:#edf4ef;border-left:3px solid #527c63;border-radius:5px;font-size:11px;font-weight:700">Fuente de terreno: ${escapeHtml(fsMdtLabel())}</div>`+
-   `<div class="fs-prof-slot" style="display:none;margin:6px 0 8px"><div style="font-weight:700;color:#52645a">📈 Gráfico de evolución, pendiente y Campbell</div><div style="font-size:11px;color:#65736b">Aparecerá después de marcar el punto de inicio y calcular la simulación.</div></div>`+
-   `<div style="${row}"><b>Propagación</b> <select class="fs-ws"><option value="auto">Prevista (Open-Meteo + previsión)</option><option value="man">Manual</option></select></div>`+
-   `<div class="fs-man" style="display:none;${row}">Viento del <input type="number" class="fs-dir" min="0" max="360" step="5" value="${fsCfg.dir}" style="width:50px">° · <input type="number" class="fs-spd" min="0" max="100" value="${fsCfg.spd}" style="width:44px"> km/h · T <input type="number" class="fs-t" min="-10" max="45" value="${fsCfg.temp}" style="width:42px">°C · HR <input type="number" class="fs-rh" min="5" max="100" value="${fsCfg.rh}" style="width:42px">%</div>`+
-   `<div style="${row}"><b>Humedad de los combustibles</b></div>`+
-   `<div style="${row}">Combustible fino muerto <select class="fs-mm"><option value="calc">Previsión (Open-Meteo: T, HR, lluvia y sol)</option><option value="inst">solo T y HR (+ sol)</option><option value="ffmcnet">FFMC de la red (50 % con T/HR)</option><option value="ffmc">FFMC a mano (50 % con T/HR)</option><option value="man">manual</option></select> <span class="fs-mff" style="display:none">FFMC <input type="number" class="fs-ffmc" min="30" max="99" step="0.5" value="${fsCfg.ffmc}" style="width:52px"></span> <span class="fs-msl" style="display:none"><input type="range" class="fs-m" min="3" max="25" value="${fsCfg.moist}" style="width:80px;vertical-align:middle"> <b class="fs-mv">${fsCfg.moist}%</b></span></div>`+
-   `<div class="fs-out" style="color:#65736b">Pulsa «Marcar inicio» y haz clic en el mapa. Después elige propagación prevista o manual.</div>`;
+   `<div style="display:flex;justify-content:space-between;align-items:center"><strong style="font-size:13px">🔥 Sutea nola hedatzen den · simulazioa</strong><button type="button" class="fs-x" style="border:0;background:none;font-size:16px;cursor:pointer">✕</button></div>`+
+   `<div style="color:#8b2f2f;font-size:11px;margin:3px 0 6px"><b>Gutxi gorabeherako estimazioa</b>, eredu sinplifikatu batean oinarritua: errorea % 50ekoa edo handiagoa izan daiteke. Erabili magnitude-ordena gisa. Ez ditu agintea edo tresna operatiboak ordezkatzen; ez ditu bigarren mailako su-fokuak edo zuhaitzen adaburuetako sua modelizatzen.</div>`+
+   `<div style="display:flex;gap:6px;margin:6px 0"><button type="button" class="fs-set" style="${bs}background:#d9480f">📍 Markatu hasiera</button><button type="button" class="fs-clr" style="${bs}background:#65736b">Garbitu</button></div>`+
+   `<div style="font-weight:800;margin:8px 0 5px;padding-bottom:4px;border-bottom:1px solid #dce5df">1. Sutea konfiguratzea</div>`+
+   `<div style="${row}"><b>Hasiera-ordua</b> <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap"><input type="datetime-local" class="fs-start-at" value="${(()=>{const d=new Date(Date.now()-new Date().getTimezoneOffset()*60000);return d.toISOString().slice(0,16);})()}" style="max-width:190px"><button type="button" class="fs-now" style="${bs}background:#65736b">Orain</button></div><div style="font-size:10px;color:#65736b">Elige fecha y hora de inicio (hasta 72 h vista) o pulsa «Orain».</div></div>`+
+   `<div style="${row}"><b>Erregai mota</b> <select class="fs-fuel-source" style="max-width:100%"><option value="inventory"${fsFuelSource==="inventory"?" selected":""}>Baso-inbentarioa aktibatu (Gipuzkoa 2024)</option><option value="wms"${fsFuelSource==="wms"?" selected":""}>Kanpoko baso-WMSa</option><option value="rothermel"${fsFuelSource==="rothermel"?" selected":""}>Rothermel eredua (eskuzko erregaia)</option></select></div>`+
+   `<div class="fs-fuel-help" style="font-size:10px;color:#65736b;margin:-2px 0 5px">${fsFuelSource==="inventory"?"Baso-inbentarioa izango da hautatutako iturria; mapako geruza bereizita aktiba edo desaktiba daiteke.":fsFuelSource==="wms"?"Se consultará el Kanpoko baso-WMSa como fuente de cubierta.":"Hautatu erregai bat Rothermel-en katalogo sinplifikatutik."}</div>`+
+   `<div class="fs-fuel-manual" style="${fsFuelSource==="rothermel"?"":"display:none;"}${row}"><b>Ereduaren erregaia</b> <select class="fs-fuel" style="max-width:100%">${Object.keys(FS_FUELS).map(k=>`<option value="${k}"${k===fsCfg.fuel?" selected":""}>${FS_FUELS[k].n}</option>`).join("")}</select></div>`+
+   `<div style="${row}"><b>Topografia</b> <select class="fs-terrain-source"><option value="mdt"${fsTerrainSource==="mdt"?" selected":""}>MDT LiDAR Gipuzkoa 2017 (16 m)</option><option value="terrarium"${fsTerrainSource==="terrarium"?" selected":""}>Terrarium (ordezkoa)</option></select></div>`+
+   `<div class="fs-terrain-status" style="padding:6px 8px;margin:5px 0 8px;background:#edf4ef;border-left:3px solid #527c63;border-radius:5px;font-size:11px;font-weight:700">Lurzoruaren iturria: ${escapeHtml(fsMdtLabel())}</div>`+
+   `<div class="fs-prof-slot" style="display:none;margin:6px 0 8px"><div style="font-weight:700;color:#52645a">📈 Hedapenaren, maldaren eta Campbell-en grafikoa</div><div style="font-size:11px;color:#65736b">Hasiera-puntua markatu eta simulazioa kalkulatu ondoren agertuko da.</div></div>`+
+   `<div style="${row}"><b>Hedapena</b> <select class="fs-ws"><option value="auto">Aurreikusitakoa (Open-Meteo + iragarpena)</option><option value="man">Eskuzkoa</option></select></div>`+
+   `<div class="fs-man" style="display:none;${row}">Haizea <input type="number" class="fs-dir" min="0" max="360" step="5" value="${fsCfg.dir}" style="width:50px">° · <input type="number" class="fs-spd" min="0" max="100" value="${fsCfg.spd}" style="width:44px"> km/h · T <input type="number" class="fs-t" min="-10" max="45" value="${fsCfg.temp}" style="width:42px">°C · HR <input type="number" class="fs-rh" min="5" max="100" value="${fsCfg.rh}" style="width:42px">%</div>`+
+   `<div style="${row}"><b>Erregaien hezetasuna</b></div>`+
+   `<div style="${row}">Erregai fin hila <select class="fs-mm"><option value="calc">Iragarpena (Open-Meteo: T, HE, euria eta eguzkia)</option><option value="inst">T eta HE soilik (+ eguzkia)</option><option value="ffmcnet">Sareko FFMCa (% 50 T/HE bidez)</option><option value="ffmc">Eskuzko FFMCa (% 50 T/HE bidez)</option><option value="man">eskuzkoa</option></select> <span class="fs-mff" style="display:none">FFMC <input type="number" class="fs-ffmc" min="30" max="99" step="0.5" value="${fsCfg.ffmc}" style="width:52px"></span> <span class="fs-msl" style="display:none"><input type="range" class="fs-m" min="3" max="25" value="${fsCfg.moist}" style="width:80px;vertical-align:middle"> <b class="fs-mv">${fsCfg.moist}%</b></span></div>`+
+   `<div class="fs-out" style="color:#65736b">Sakatu «Markatu hasiera» eta egin klik mapan. Ondoren, aukeratu hedapen aurreikusia edo eskuzkoa.</div>`;
   const q=s=>fsPanel.querySelector(s), rerun=()=>{ if(fsIgn) fsRun(); }, num=(e,lo,hi,d)=>Math.min(hi,Math.max(lo,Number(e.target.value)||d));
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
   fsPanelWindow(fsPanel);
   q(".fs-terrain-source").onchange=e=>{fsTerrainSource=e.target.value==="terrarium"?"terrarium":"mdt";fsTerrainSamples={mdt:0,terrarium:0};fsDem.clear();fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};fsUpdateTerrainStatus();rerun();};
-  q(".fs-fuel-source").onchange=e=>{ fsFuelSource=e.target.value; q(".fs-fuel-manual").style.display=fsFuelSource==="rothermel"?"block":"none"; q(".fs-fuel-help").textContent=fsFuelSource==="inventory"?"El inventario forestal será la fuente seleccionada; la capa del mapa se puede activar o desactivar por separado.":fsFuelSource==="wms"?"Se consultará el WMS forestal externo como fuente de cubierta.":"Selecciona un combustible del catálogo simplificado de Rothermel."; if(fsFuelSource==="inventory"&&!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer); rerun(); };
+  q(".fs-fuel-source").onchange=e=>{ fsFuelSource=e.target.value; q(".fs-fuel-manual").style.display=fsFuelSource==="rothermel"?"block":"none"; q(".fs-fuel-help").textContent=fsFuelSource==="inventory"?"Baso-inbentarioa izango da hautatutako iturria; mapako geruza bereizita aktiba edo desaktiba daiteke.":fsFuelSource==="wms"?"Se consultará el Kanpoko baso-WMSa como fuente de cubierta.":"Hautatu erregai bat Rothermel-en katalogo sinplifikatutik."; if(fsFuelSource==="inventory"&&!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer); rerun(); };
   q(".fs-fuel").onchange=e=>{ fsCfg.fuel=e.target.value; rerun(); };
   q(".fs-ws").onchange=e=>{ fsCfg.wind=e.target.value; q(".fs-man").style.display=fsCfg.wind==="man"?"block":"none"; rerun(); };
   q(".fs-dir").onchange=e=>{ fsCfg.dir=((Number(e.target.value)||0)%360+360)%360; rerun(); };
@@ -3363,7 +3363,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-t").onchange=e=>{ fsCfg.temp=num(e,-10,45,20); rerun(); };
   q(".fs-rh").onchange=e=>{ fsCfg.rh=num(e,5,100,50); rerun(); };
   q(".fs-start-at").min=q(".fs-start-at").value;
-  q(".fs-start-at").onchange=e=>{ const t=new Date(e.target.value).getTime(), delta=(t-Date.now())/3600000; if(!Number.isFinite(t)||delta<0||delta>72){ e.target.value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16); fsCfg.startH=0; alert("Elige una hora entre ahora y las próximas 72 horas."); } else fsCfg.startH=delta; rerun(); };
+  q(".fs-start-at").onchange=e=>{ const t=new Date(e.target.value).getTime(), delta=(t-Date.now())/3600000; if(!Number.isFinite(t)||delta<0||delta>72){ e.target.value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16); fsCfg.startH=0; alert("Aukeratu ordu bat hemendik 72 ordura arteko tartean."); } else fsCfg.startH=delta; rerun(); };
   q(".fs-now").onclick=()=>{ q(".fs-start-at").value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16); fsCfg.startH=0; rerun(); };
   q(".fs-mm").onchange=e=>{ fsCfg.moistMode=e.target.value; q(".fs-msl").style.display=fsCfg.moistMode==="man"?"inline":"none"; q(".fs-mff").style.display=fsCfg.moistMode==="ffmc"?"inline":"none"; rerun(); };
   q(".fs-ffmc").onchange=e=>{ fsCfg.ffmc=num(e,30,99,85); rerun(); };
@@ -3376,8 +3376,8 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
     const g=e.target.closest&&e.target.closest("[data-fs-gif]"); if(g){ fsMakeGif(g); return; }
     const bt=e.target.closest&&e.target.closest("[data-fs-bt]"); if(bt) fsBacktest(bt);
   });
-  q(".fs-set").onclick=()=>{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio."; };
-  q(".fs-clr").onclick=()=>{ fsGroup.clearLayers(); fsIgn=null; fsLast=null; fsBusy++; q(".fs-out").textContent="Pulsa «Marcar inicio» y haz clic en el mapa."; fsPanel.querySelector(".fs-prof-slot").innerHTML=`<div style="font-weight:700;color:#52645a">📈 Gráfico de evolución, pendiente y Campbell</div><div style="font-size:11px;color:#65736b">Aparecerá después de marcar el punto de inicio y calcular la simulación.</div>`; };
+  q(".fs-set").onclick=()=>{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Sute-simulazioa: egin klik mapan hasiera-puntua markatzeko."; };
+  q(".fs-clr").onclick=()=>{ fsGroup.clearLayers(); fsIgn=null; fsLast=null; fsBusy++; q(".fs-out").textContent="Sakatu «Markatu hasiera» eta egin klik mapan."; fsPanel.querySelector(".fs-prof-slot").innerHTML=`<div style="font-weight:700;color:#52645a">📈 Hedapenaren, maldaren eta Campbell-en grafikoa</div><div style="font-size:11px;color:#65736b">Hasiera-puntua markatu eta simulazioa kalkulatu ondoren agertuko da.</div>`; };
 }
 map.on("click",e=>{
   if(!fsArmed||wiMode||!map.hasLayer(fsGroup)) return;
@@ -3389,7 +3389,7 @@ map.on("overlayadd",e=>{
   if(e.layer!==fsGroup) return;
   fsPanel.style.display="block";
   if(fsFuelSource==="inventory"&&!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer);
-  if(fsIgn) fsRun(); else{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Simulación de incendio: haz clic en el mapa para marcar el punto de inicio."; }
+  if(fsIgn) fsRun(); else{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Sute-simulazioa: egin klik mapan hasiera-puntua markatzeko."; }
 });
 map.on("overlayremove",e=>{ if(e.layer===fsGroup){ fsPanel.style.display="none"; fsArmed=false; fsBusy++; map.getContainer().style.cursor=""; } });
 
@@ -3469,7 +3469,7 @@ async function fsRun(){
       L.polygon(perimeter,{
         color:st.color,weight:st.weight,opacity:.95,dashArray:st.dash,
         fillColor:st.color,fillOpacity:.035
-      }).bindTooltip(`${manual?"Manual":"Prevista"} · ${t} min · ${areas[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup);
+      }).bindTooltip(`${manual?"Eskuzkoa":"Prevista"} · ${t} min · ${areas[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup);
     }
   }catch(err){
     if(my===fsBusy) out.innerHTML=`<div style="color:#8b2f2f">⚠️ ${escapeHtml(err.message||String(err))}</div>`;
@@ -3489,7 +3489,7 @@ async function fsRun(){
     ["Radiación solar",w=>Number.isFinite(w.R)?`${Math.round(w.R)} W/m²`:"—"],
     ["Humedad combustible fino (1 h)",w=>Array.isArray(w.m)&&Number.isFinite(w.m[0])?`${w.m[0].toFixed(1)} %`:"—"]
   ].map(([name,fmt])=>`<tr><td style="padding:4px;border-bottom:1px solid #edf0ed">${name}</td>${times.map(t=>{const w=met.at(t);return `<td style="text-align:center;padding:4px;border-bottom:1px solid #edf0ed">${fmt(w)}</td>`;}).join("")}</tr>`).join("")}</tbody></table><div style="font-size:10px;color:#65736b;margin-top:4px">Valores horarios de Open-Meteo correspondientes a cada horizonte (la precipitación es la prevista para esa hora).</div></div>`;
-  out.innerHTML=fsDec(`<div class="fs-sum"><b>Propagación ${manual?"manual":"prevista"} · superficie alcanzada</b>${table}${wxTable}
+  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"manual":"prevista"} · superficie alcanzada</b>${table}${wxTable}
     <div style="font-size:10px;color:#65736b;margin-top:8px">${source}. Los cuatro perímetros representan 30, 60, 90 y 120 minutos; el color y el tipo de línea identifican cada horizonte. Cambia el selector de meteorología para alternar entre prevista y manual; en modo manual se reutilizan los campos de viento, temperatura y humedad.</div>
   </div>`);
   fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0:null,met,farBg:null,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
@@ -3645,7 +3645,7 @@ L.DomEvent.disableClickPropagation(wiPanel); L.DomEvent.disableScrollPropagation
   wiPanel.innerHTML=
    `<div style="display:flex;justify-content:space-between;align-items:center"><strong style="font-size:13px">🧠 Wildfire Intelligence · ficha por punto</strong><button type="button" class="wi-x" style="border:0;background:none;font-size:16px;cursor:pointer">✕</button></div>`+
    `<div style="color:#65736b;font-size:11px;margin:3px 0 6px">Resume los <b>hechos conocidos</b> de un lugar (historia, exposición, medios, líneas). No es un simulador: para eso, «Simular desde aquí».</div>`+
-   `<div style="display:flex;gap:6px;margin:4px 0"><button type="button" class="wi-pick" data-wi-act="pick" style="${bs}background:#1565c0">📍 Elegir punto</button><button type="button" data-wi-act="clear" style="${bs}background:#65736b">Limpiar</button></div>`+
+   `<div style="display:flex;gap:6px;margin:4px 0"><button type="button" class="wi-pick" data-wi-act="pick" style="${bs}background:#1565c0">📍 Elegir punto</button><button type="button" data-wi-act="clear" style="${bs}background:#65736b">Garbitu</button></div>`+
    `<div class="wi-out" style="color:#65736b">Haz clic en el mapa para ver la ficha de ese punto.</div>`;
   wiPanel.querySelector(".wi-x").onclick=()=>map.removeLayer(wiGroup);
   fsPanelWindow(wiPanel);
@@ -3694,7 +3694,7 @@ async function wiRun(ll){
     if(net&&!net.err){ const f=fsFfmcNet(net,ll); h+=`<b>FFMC</b> ${f.val.toFixed(1)} (<b>${wiFfmcCat(f.val)}</b>) <span style="color:#65736b">· ${f.near.map(s=>escapeHtml(s.n)+" "+Math.round(s.w*100)+"%").join(", ")}; datos del ${f.date.slice(8,10)}/${f.date.slice(5,7)}</span><br>`; sum.ffmc=`🔥 FFMC ${f.val.toFixed(0)}: <b>${wiFfmcCat(f.val)}</b>`; }
     else h+=`<span style="color:#8b2f2f">FFMC de la red no disponible (${escapeHtml((net&&net.err&&net.err.message)||"")}).</span><br>`;
     if(wx){
-      const n=wx.now; h+=`Ahora: viento ${fsCard(n.dir)} ${Math.round(n.spd)} km/h (racha ${Math.round(n.gust)}) · T ${Math.round(n.T)} °C · HR ${Math.round(n.RH)} %<br>`;
+      const n=wx.now; h+=`Orain: viento ${fsCard(n.dir)} ${Math.round(n.spd)} km/h (racha ${Math.round(n.gust)}) · T ${Math.round(n.T)} °C · HR ${Math.round(n.RH)} %<br>`;
       const mx=wx.hrs.reduce((a,w)=>w.gust>a.gust?w:a,wx.hrs[0]); h+=`Racha máxima prevista (72 h): <b>${Math.round(mx.gust)} km/h</b> del ${fsCard(mx.dir)}, ${wiStamp(mx.t)}<br>`;
       const ep=wiRuns(wx.hrs,w=>(w.dir>=112.5&&w.dir<=247.5&&(w.gust>=50||w.spd>=30))?1:0);
       if(ep.length){ h+=`<div style="margin-top:3px;padding:3px 6px;background:#fff1e6;border-left:3px solid #d9480f"><b style="color:#b00020">⚠️ Episodio de viento sur previsto</b>: ${ep.slice(0,3).map(x=>`${wiStamp(wx.hrs[x.i0].t)} → ${wiStamp(wx.hrs[x.i1].t)} (racha hasta ${Math.round(x.max)} km/h)`).join("; ")}.<br><span style="color:#65736b;font-size:11px">En el EGIF 2010–2025, el ${wiSouthPct()} % de la superficie quemada se dio con vientos de componente sur.</span></div>`; sum.viento=`⚠️ Episodio de viento sur previsto (racha ${Math.round(ep[0].max)} km/h)`; }
@@ -4524,7 +4524,7 @@ $("addWaypoint").addEventListener("click",()=>{
   if(waypointMode){
     drawingTrack=false;
     coordPickMode=false;
-    updateManualTrack();
+    updateEskuzkoaTrack();
     $("pickCoord").classList.remove("active");
     $("pickCoord").textContent="Puntua mapatik hartu";
     $("message").textContent="Waypoint modua aktibatuta: egin klik mapan.";
@@ -4590,7 +4590,7 @@ ${pts}
 refreshWaypoints();
 
 
-function updateManualTrack(){
+function updateEskuzkoaTrack(){
   manualTrackLayer.clearLayers();
   // Punturik ez badago, geruza desaktibatu (kontrolean ere desmarkatzen da).
   if(manualTrackPoints.length){
@@ -4664,7 +4664,7 @@ $("drawTrack").addEventListener("click",()=>{
   drawingTrack=!drawingTrack;
   if(drawingTrack && manualTrackClosed){manualTrackClosed=false;currentRings=null;}
   if(drawingTrack){ waypointMode=false; refreshWaypoints(); }
-  updateManualTrack();
+  updateEskuzkoaTrack();
   $("message").textContent=drawingTrack
     ?"Track marrazketa aktibatuta: egin klik mapan puntuak gehitzeko."
     :"Track marrazketa geldituta.";
@@ -4675,7 +4675,7 @@ $("undoTrack").addEventListener("click",()=>{
   manualTrackClosed=false;
   currentRings=null;
   manualTrackPoints.pop();
-  updateManualTrack();
+  updateEskuzkoaTrack();
 });
 
 $("clearTrack").addEventListener("click",()=>{
@@ -4706,7 +4706,7 @@ $("clearTrack").addEventListener("click",()=>{
   if($("file"))$("file").value="";
   if($("fileInfo"))$("fileInfo").textContent="Ez da fitxategirik hautatu.";
 
-  updateManualTrack();
+  updateEskuzkoaTrack();
 
   // Waypoint-ak eta koordenatu-puntua.
   clearMapCreatedWaypoints();
@@ -4722,7 +4722,7 @@ $("clearTrack").addEventListener("click",()=>{
   $("message").textContent="Mapa garbitu da: track-a, GPX/KML, waypoint-ak eta kontsultak.";
 });
 
-function closeManualTrackAsSurface(){
+function closeEskuzkoaTrackAsSurface(){
   if(manualTrackPoints.length<3){
     $("message").textContent="Azalera sortzeko gutxienez 3 puntu behar dira.";
     return;
@@ -4730,7 +4730,7 @@ function closeManualTrackAsSurface(){
 
   manualTrackClosed=!manualTrackClosed;
   drawingTrack=false;
-  updateManualTrack();
+  updateEskuzkoaTrack();
 
   if(manualTrackClosed){
     const coords=manualTrackPoints.map(p=>[p.lng,p.lat]);
@@ -4750,7 +4750,7 @@ function closeManualTrackAsSurface(){
     $("message").textContent="Track-a berriro ireki da.";
   }
 }
-if($("closeTrack"))$("closeTrack").addEventListener("click",closeManualTrackAsSurface);
+if($("closeTrack"))$("closeTrack").addEventListener("click",closeEskuzkoaTrackAsSurface);
 
 $("exportTrack").addEventListener("click",()=>{
   if(manualTrackPoints.length<2){
@@ -4803,10 +4803,10 @@ map.on("click",async e=>{
   manualTrackClosed=false;
     currentRings=null;
     manualTrackPoints.push(e.latlng);
-  updateManualTrack();
+  updateEskuzkoaTrack();
 });
 
-updateManualTrack();
+updateEskuzkoaTrack();
 
 
 /* Koordenatu bihurgailua */
@@ -4904,7 +4904,7 @@ $("pickCoord").addEventListener("click",()=>{
     waypointMode=false;
     refreshWaypoints();
     drawingTrack=false;
-    updateManualTrack();
+    updateEskuzkoaTrack();
   }
   $("pickCoord").classList.toggle("active",coordPickMode);
   $("pickCoord").textContent=coordPickMode?"Klik egin mapan…":"Puntua mapatik hartu";
