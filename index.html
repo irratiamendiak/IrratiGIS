@@ -3289,14 +3289,20 @@ async function fsCreateInventoryFuelSampler(ignition){
   };
   const gl=new maplibregl.Map({container:div,style,center:[ignition.lng,ignition.lat],zoom:11,interactive:false,attributionControl:false,logoPosition:"bottom-right"});
   result.map=gl;
-  await new Promise((resolve,reject)=>{
-    let done=false;
-    const finish=(err)=>{if(done)return;done=true;clearTimeout(timer);err?reject(err):resolve();};
-    const timer=setTimeout(()=>finish(new Error("Tiempo agotado cargando el Inventario Forestal 2024.")),20000);
-    gl.once("load",()=>{gl.resize();gl.once("idle",()=>finish());});
-    gl.on("error",e=>{if(!gl.isStyleLoaded()) finish(e.error||new Error("No se pudo cargar el inventario PMTiles."));});
-  });
-  if(!gl.getLayer("forestal-poligonos")) throw new Error("No se ha cargado la capa vectorial del inventario.");
+  try{
+    await new Promise((resolve,reject)=>{
+      let done=false;
+      const finish=(err)=>{if(done)return;done=true;clearTimeout(timer);err?reject(err):resolve();};
+      const timer=setTimeout(()=>finish(new Error("Tiempo agotado cargando el Inventario Forestal 2024.")),20000);
+      gl.once("load",()=>{gl.resize();gl.once("idle",()=>finish());});
+      gl.on("error",e=>{if(!gl.isStyleLoaded()) finish(e.error||new Error("No se pudo cargar el inventario PMTiles."));});
+    });
+    if(!gl.getLayer("forestal-poligonos")) throw new Error("No se ha cargado la capa vectorial del inventario.");
+  }catch(err){
+    try{gl.remove();}catch(_){}
+    try{div.remove();}catch(_){}
+    throw err;
+  }
   const counted=new Set();
   const fuelAt=(lat,lon)=>{
     // Cuadrícula de caché de ~80-100 m: evita repetir consultas en cada paso temporal.
@@ -3613,6 +3619,10 @@ async function fsRun(){
       }).bindTooltip(`${manual?"Eskuzkoa":"Prevista"} · ${t} min · ${areas[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup);
     }
   }catch(err){
+    if(inventorySampler){
+      try{inventorySampler.map.remove();}catch(_){}
+      try{inventorySampler.container.remove();}catch(_){}
+    }
     if(my===fsBusy) out.innerHTML=`<div style="color:#8b2f2f">⚠️ ${escapeHtml(err.message||String(err))}</div>`;
     return;
   }
