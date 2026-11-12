@@ -815,7 +815,8 @@ function ir3dToggle(){
   if(!ir3dActive){
     try{
       if(!ir3dMap)ir3dCreate();
-      map.getContainer().style.visibility="hidden";
+      Object.values(map.getPanes()).forEach(p=>{p.style.visibility="hidden";});
+      const controls=map.getContainer().querySelector(".leaflet-control-container");if(controls)controls.style.visibility="hidden";
       ir3dActive=true;btn.textContent="🗺️ Volver a 2D";btn.setAttribute("aria-pressed","true");
       requestAnimationFrame(()=>ir3dMap&&ir3dMap.resize());
     }catch(e){
@@ -824,7 +825,9 @@ function ir3dToggle(){
       console.error(e);
     }
   }else{
-    ir3dActive=false;map.getContainer().style.visibility="";
+    ir3dActive=false;
+    Object.values(map.getPanes()).forEach(p=>{p.style.visibility="";});
+    const controls=map.getContainer().querySelector(".leaflet-control-container");if(controls)controls.style.visibility="";
     const el=document.getElementById("irratiGIS3D");if(el)el.remove();
     if(ir3dMap){ir3dMap.remove();ir3dMap=null;}
     btn.textContent="🌄 Ikuspegi 3D";btn.setAttribute("aria-pressed","false");
