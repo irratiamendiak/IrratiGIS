@@ -1528,7 +1528,7 @@ const vehSearchControl=new VehSearchControl();
 map.addControl(vehSearchControl);
 
 function vehSearchNormalize(value){
-  return String(value??"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLocaleUpperCase("es").replace(/[^A-Z0-9]/g,"");
+  return String(value??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleUpperCase("es").replace(/[^A-Z0-9]/g,"");
 }
 function vehRenderSearchResults(query){
   const out=document.getElementById("vehSearchResults");
@@ -1593,7 +1593,7 @@ function vehNormalize(raw){
       }else scalarValues.push(String(x).trim());
     };
     collectScalars(o);
-    const plateMatch=scalarValues.map(x=>x.toUpperCase().match(/(?:^|[^A-Z0-9])(\\d{4})\\s*[- ]?\\s*([A-Z]{3})(?:$|[^A-Z0-9])/)).find(Boolean);
+    const plateMatch=scalarValues.map(x=>x.toUpperCase().match(/(?:^|[^A-Z0-9])(\d{4})\s*[- ]?\s*([A-Z]{3})(?:$|[^A-Z0-9])/)).find(Boolean);
     const plate=plateMatch?plateMatch[1]+plateMatch[2]:null;
     const desc=vehPick(p,["description","vehiclename","vehicle_name","name","alias","acronym"]);
     const displayName=desc||vehPick(p,["fleetname","subfleetname"])||("Ibilgailua "+id);
