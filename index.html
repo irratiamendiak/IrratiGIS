@@ -1527,15 +1527,22 @@ const VehSearchControl=L.Control.extend({
 const vehSearchControl=new VehSearchControl();
 map.addControl(vehSearchControl);
 
+function vehSearchNormalize(value){
+  return String(value??"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLocaleLowerCase("es").replace(/[^a-z0-9]/g,"");
+}
 function vehRenderSearchResults(query){
   const out=document.getElementById("vehSearchResults");
   if(!out) return;
   out.replaceChildren();
-  const q=String(query||"").trim().toLocaleLowerCase("es");
-  if(!q) return;
+  const raw=String(query||"").trim().toLocaleLowerCase("es");
+  const q=vehSearchNormalize(raw);
+  if(!raw) return;
   const matches=[...vehLast.values()].filter(v=>{
     const fields=[v.name,v.plate,v.matricula,v.desc,v.acronym,v.fleet,v.subfleet,v.id,v.searchText];
-    return fields.some(x=>x!==null&&x!==undefined&&String(x).toLocaleLowerCase("es").includes(q));
+    return fields.some(x=>x!==null&&x!==undefined&&(
+      String(x).toLocaleLowerCase("es").includes(raw) ||
+      (q.length>=3 && vehSearchNormalize(x).includes(q))
+    ));
   }).sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"es")).slice(0,8);
   if(!matches.length){
     const empty=document.createElement("div"); empty.className="veh-search-empty"; empty.textContent="Ez da ibilgailurik aurkitu.";
@@ -1587,7 +1594,7 @@ function vehNormalize(raw){
       id,
       name:String(desc||plateLabel||id),
       plate:plateLabel, desc:desc,
-      searchText:Object.values(p).filter(x=>x!==null&&x!==undefined&&typeof x!=="object").join(" "),
+      searchText:(()=>{const values=[];const seen=new Set();const walk=(x,d=0)=>{if(x===null||x===undefined||d>5)return;if(typeof x==="object"){if(seen.has(x))return;seen.add(x);if(Array.isArray(x)){x.forEach(v=>walk(v,d+1));}else Object.values(x).forEach(v=>walk(v,d+1));}else values.push(String(x));};walk(flat);return values.join(" ");})(),
       fleet:vehPick(p,["fleetname"]), subfleet:vehPick(p,["subfleetname"]),
       acronym:vehPick(p,["acronym"]), model:vehPick(p,["model"]),
       brand:vehPick(p,["brand","make","marca","manufacturer","brandname","vehiclebrand"]),
