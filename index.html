@@ -1498,14 +1498,14 @@ const VehCounter=L.Control.extend({
 });
 map.addControl(new VehCounter());
 
-/* Buscador de vehículos: nombre o matrícula, con salto directo al marcador. */
+/* Buscador de vehículos: búsqueda únicamente por nombre, con salto directo al marcador. */
 const VehSearchControl=L.Control.extend({
   options:{position:"topleft"},
   onAdd:function(){
     const box=L.DomUtil.create("div","veh-search-control");
     box.id="vehSearchControl";
     box.style.display="none";
-    box.innerHTML='<label for="vehSearchInput">🔎 Bilatu ibilgailua</label><input id="vehSearchInput" type="search" placeholder="Izena edo matrikula…" autocomplete="off"><div id="vehSearchResults" role="listbox"></div>';
+    box.innerHTML='<label for="vehSearchInput">🔎 Bilatu ibilgailua</label><input id="vehSearchInput" type="search" placeholder="Izenaren arabera bilatu…" autocomplete="off"><div id="vehSearchResults" role="listbox"></div>';
     L.DomEvent.disableClickPropagation(box);
     L.DomEvent.disableScrollPropagation(box);
     const input=box.querySelector("#vehSearchInput");
@@ -1518,7 +1518,7 @@ const VehSearchControl=L.Control.extend({
       if(!v||!m) return;
       map.setView([v.lat,v.lon],Math.max(map.getZoom(),16),{animate:true});
       m.openPopup();
-      input.value=v.name||v.plate||v.matricula||"";
+      input.value=v.name||"";
       box.querySelector("#vehSearchResults").innerHTML="";
     });
     return box;
@@ -1537,7 +1537,7 @@ function vehRenderSearchResults(query){
   const q=vehSearchNormalize(query);
   if(!q) return;
   const matches=[...vehLast.values()].filter(v=>{
-    const fields=[v.name,v.matricula];
+    const fields=[v.name];
     return fields.some(x=>x!==null&&x!==undefined&&vehSearchNormalize(x).includes(q));
   }).sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"es")).slice(0,8);
   if(!matches.length){
@@ -1548,8 +1548,7 @@ function vehRenderSearchResults(query){
     const b=document.createElement("button"); b.type="button"; b.className="veh-search-result";
     b.setAttribute("data-veh-search-id",String(v.id));
     const name=document.createElement("strong"); name.textContent=v.name||"Izengabea";
-    const plate=document.createElement("small"); plate.textContent="Matrikula: "+String(v.matricula||"—");
-    b.append(name,plate); out.appendChild(b);
+    b.append(name); out.appendChild(b);
   });
 }
 
