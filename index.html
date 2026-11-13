@@ -2296,11 +2296,21 @@ function fsSync3D(){
       gl.addLayer({id:"irrati-fs-3d-ignition",type:"circle",source:"irrati-fs-3d",filter:["==",["get","kind"],"ignition"],paint:{"circle-radius":8,"circle-color":"#e53935","circle-stroke-color":"#fff","circle-stroke-width":2}});
     }else gl.getSource("irrati-fs-3d").setData(data);
     fsGroup.eachLayer(layer=>{
-      if(layer instanceof L.Polygon) layer.setStyle({opacity:0,fillOpacity:0});
-      else if(layer instanceof L.Marker){const el=layer.getElement();if(el)el.style.opacity="0";}
+      if(layer instanceof L.Polygon){
+        if(!layer._fs3dOriginalStyle)layer._fs3dOriginalStyle={opacity:layer.options.opacity,fillOpacity:layer.options.fillOpacity};
+        layer.setStyle({opacity:0,fillOpacity:0});
+      }else if(layer instanceof L.Marker){layer.setOpacity(0);}
     });
   }catch(err){console.warn("Ezin izan dira suteen geometriak 3D mapara bidali:",err);}
 }
+if(lidarRelief3D) lidarRelief3D.on("remove",()=>{
+  fsGroup.eachLayer(layer=>{
+    if(layer instanceof L.Polygon){
+      const st=layer._fs3dOriginalStyle||{};
+      layer.setStyle({opacity:st.opacity??.95,fillOpacity:st.fillOpacity??.035});
+    }else if(layer instanceof L.Marker)layer.setOpacity(1);
+  });
+});
 
 const fsCard=d=>["N","NE","E","SE","S","SO","O","NO"][Math.round((((d%360)+360)%360)/45)%8];
 const fsRad=Math.PI/180;
