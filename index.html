@@ -3659,7 +3659,7 @@ async function fsBacktest(btn){
     for(let i=0;i<fires.length;i++){
       const f=fires[i]; box.textContent=`⏳ Incendio ${i+1} de ${fires.length}…`; await new Promise(r=>setTimeout(r,0));
       fsIgn={lat:f[0],lng:f[1]}; fsDem.clear();
-      try{ await fsLoadDem(f[0],f[1],4500); }catch(e){}
+      try{ await fsLoadDem(f[0],f[1],23000); }catch(e){}
       const ok=Number.isFinite(fsElev(f[0],f[1])), w={dir:f[6],spd:f[5]*wf,gust:NaN,T:f[3],RH:f[4]}, met={at:()=>w,sun:()=>null,hours:[],m0:0,sh:0};
       const fu=FS_FUELS[FUEL[f[10]]], T=Math.min(360,Math.max(30,Math.round(Math.min(Math.max(f[9]==null?2:f[9],.5),6)*30)*2));
       fsFlat=false; const ter=fsTerrain(f[0],f[1]), R=fsBehavior(fu,ter.tan,ter.asp,w.dir,w.spd,fsMoistAt(w,fu,ter,null)).Rh; const A=fsHa(fsPerim(fsSimulate(fu,met),T)); fsFlat=true; const B=fsHa(fsPerim(fsSimulate(fu,met),T)); fsFlat=false;
@@ -3693,7 +3693,7 @@ async function fsRun(){
   out.innerHTML=`<div style="font-weight:700;color:#52645a">Consultando terreno y calculando la propagación ${manual?"manual":"prevista"}…</div>`;
   let met, ffn=null, netNote="", inventorySampler=null, inventoryNote="";
   try{
-    met=await fsMeteo(); await fsLoadDem(fsIgn.lat,fsIgn.lng,6500);
+    met=await fsMeteo(); await fsLoadDem(fsIgn.lat,fsIgn.lng,23000);
     if(fsFuelSource==="inventory"){
       try{
         inventorySampler=await fsCreateInventoryFuelSampler(fsIgn);
