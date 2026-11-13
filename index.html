@@ -997,7 +997,7 @@ try{
         lidarRelief3D._ir3dControl=nav;
       }
     }catch(err){console.warn("Controles de navegación 3D:",err);}
-    const enableTerrain=()=>{try{gl.setTerrain({source:"gipuzkoa-dem",exaggeration:1.15});}catch(err){console.warn("LiDAR terrain:",err);}};
+    const enableTerrain=()=>{try{gl.setTerrain({source:"gipuzkoa-dem",exaggeration:1.15});}catch(err){console.warn("LiDAR terrain:",err);} fsSync3D();};
     if(gl.isStyleLoaded())enableTerrain();else gl.once("load",enableTerrain);
   });
 }catch(err){console.warn("No se pudo preparar el mapa base LiDAR sombreado:",err);}
@@ -2266,7 +2266,42 @@ const fsCfg={fuel:"garoa",moistMode:"calc",startH:0,ffmc:85,moist:8,wind:"auto",
 let fsIgn=null, fsBusy=0, fsLast=null, fsFlat=false;
 let fsTerrainSource="mdt", fsTerrainSamples={mdt:0,terrarium:0};
 let fsFuelSource="inventory";
+
 const fsGroup=L.layerGroup(), fsDem=new Map();
+/* Suteen simulazioaren geometria MapLibre 3D mapan marraztu, kamerarekin batera mugitzeko. */
+function fsSync3D(){
+  if(!lidarRelief3D||!map.hasLayer(lidarRelief3D)) return;
+  const gl=lidarRelief3D.getMaplibreMap(); if(!gl) return;
+  if(!gl.isStyleLoaded()){gl.once("idle",fsSync3D);return;}
+  try{
+    const features=[];
+    fsGroup.eachLayer(layer=>{
+      if(layer instanceof L.Polygon){
+        const rings=layer.getLatLngs();
+        const ring=arr=>arr.map(p=>[p.lng,p.lat]);
+        const coords=Array.isArray(rings[0])&&rings[0][0] instanceof L.LatLng
+          ?[ring(rings[0]),...rings.slice(1).map(ring)]
+          :rings.map(poly=>poly.map(ring));
+        features.push({type:"Feature",properties:{kind:"perimeter",color:layer.options.color||"#d7191c",fillColor:layer.options.fillColor||layer.options.color||"#d7191c",fillOpacity:layer.options.fillOpacity??.04,weight:layer.options.weight||2},geometry:{type:"Polygon",coordinates:coords}});
+      }else if(layer instanceof L.Marker){
+        const p=layer.getLatLng();
+        features.push({type:"Feature",properties:{kind:"ignition"},geometry:{type:"Point",coordinates:[p.lng,p.lat]}});
+      }
+    });
+    const data={type:"FeatureCollection",features};
+    if(!gl.getSource("irrati-fs-3d")){
+      gl.addSource("irrati-fs-3d",{type:"geojson",data});
+      gl.addLayer({id:"irrati-fs-3d-fill",type:"fill",source:"irrati-fs-3d",filter:["==",["get","kind"],"perimeter"],paint:{"fill-color":["get","fillColor"],"fill-opacity":["get","fillOpacity"]}});
+      gl.addLayer({id:"irrati-fs-3d-line",type:"line",source:"irrati-fs-3d",filter:["==",["get","kind"],"perimeter"],paint:{"line-color":["get","color"],"line-width":["get","weight"],"line-dasharray":[2,2]}});
+      gl.addLayer({id:"irrati-fs-3d-ignition",type:"circle",source:"irrati-fs-3d",filter:["==",["get","kind"],"ignition"],paint:{"circle-radius":8,"circle-color":"#e53935","circle-stroke-color":"#fff","circle-stroke-width":2}});
+    }else gl.getSource("irrati-fs-3d").setData(data);
+    fsGroup.eachLayer(layer=>{
+      if(layer instanceof L.Polygon) layer.setStyle({opacity:0,fillOpacity:0});
+      else if(layer instanceof L.Marker){const el=layer.getElement();if(el)el.style.opacity="0";}
+    });
+  }catch(err){console.warn("Ezin izan dira suteen geometriak 3D mapara bidali:",err);}
+}
+
 const fsCard=d=>["N","NE","E","SE","S","SO","O","NO"][Math.round((((d%360)+360)%360)/45)%8];
 const fsRad=Math.PI/180;
 
@@ -3581,7 +3616,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
     const bt=e.target.closest&&e.target.closest("[data-fs-bt]"); if(bt) fsBacktest(bt);
   });
   q(".fs-set").onclick=()=>{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Sute-simulazioa: egin klik mapan hasiera-puntua markatzeko."; };
-  q(".fs-clr").onclick=()=>{ fsGroup.clearLayers(); fsIgn=null; fsLast=null; fsBusy++; q(".fs-out").textContent="Sakatu «Markatu hasiera» eta egin klik mapan."; fsPanel.querySelector(".fs-prof-slot").innerHTML=`<div style="font-weight:700;color:#52645a">📈 Hedapenaren, maldaren eta Campbell-en grafikoa</div><div style="font-size:11px;color:#65736b">Hasiera-puntua markatu eta simulazioa kalkulatu ondoren agertuko da.</div>`; };
+  q(".fs-clr").onclick=()=>{ fsGroup.clearLayers(); fsSync3D(); fsIgn=null; fsLast=null; fsBusy++; q(".fs-out").textContent="Sakatu «Markatu hasiera» eta egin klik mapan."; fsPanel.querySelector(".fs-prof-slot").innerHTML=`<div style="font-weight:700;color:#52645a">📈 Hedapenaren, maldaren eta Campbell-en grafikoa</div><div style="font-size:11px;color:#65736b">Hasiera-puntua markatu eta simulazioa kalkulatu ondoren agertuko da.</div>`; };
 }
 map.on("click",e=>{
   if(!fsArmed||wiMode||!map.hasLayer(fsGroup)) return;
@@ -3591,6 +3626,7 @@ map.on("click",e=>{
 layersControl.addOverlay(fsGroup,"🔥 Suteen bilakaera (simulazioa)");
 map.on("overlayadd",e=>{
   if(e.layer!==fsGroup) return;
+  fsSync3D();
   fsPanel.style.display="block";
   if(fsFuelSource==="inventory"&&!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer);
   if(fsIgn) fsRun(); else{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Sute-simulazioa: egin klik mapan hasiera-puntua markatzeko."; }
@@ -3641,6 +3677,7 @@ async function fsRun(){
   fsTerrainSamples={mdt:0,terrarium:0};
   fsGroup.clearLayers();
   L.marker(fsIgn,{icon:fsIcon("🔥",24)}).addTo(fsGroup);
+  fsSync3D();
   const manual=fsCfg.wind==="man";
   out.innerHTML=`<div style="font-weight:700;color:#52645a">Consultando terreno y calculando la propagación ${manual?"manual":"prevista"}…</div>`;
   let met, ffn=null, netNote="", inventorySampler=null, inventoryNote="";
@@ -3687,6 +3724,7 @@ async function fsRun(){
         color:st.color,weight:st.weight,opacity:.95,dashArray:st.dash,
         fillColor:st.color,fillOpacity:.035
       }).bindTooltip(`${manual?"Eskuzkoa":"Prevista"} · ${t} min · ${areas[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup);
+      fsSync3D();
     }
   }catch(err){
     if(inventorySampler){
