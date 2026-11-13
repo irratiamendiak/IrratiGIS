@@ -66,24 +66,29 @@
       noData = rawNoData === undefined ? null : Number(String(rawNoData).replace(/\\0/g, ""));
       return {width:image.getWidth(),height:image.getHeight(),resolutionM:sourceResolution,noData};
     }
-    async function loadBounds(bounds25830) {
-      if (!image) await open();
+    function windowForBounds(bounds25830) {
       const xs=[bounds25830[0],bounds25830[2]], ys=[bounds25830[1],bounds25830[3]];
       const corners=[[xs[0],ys[0]],[xs[0],ys[1]],[xs[1],ys[0]],[xs[1],ys[1]]].map(([x,y])=>pixelOf(x,y));
-      const pad=3;
+      const pad=3, px=corners.map(p=>p[0]), py=corners.map(p=>p[1]);
+      const x0=Math.floor(Math.min(...px))-pad, y0=Math.floor(Math.min(...py))-pad;
+      const x1=Math.ceil(Math.max(...px))+pad+1, y1=Math.ceil(Math.max(...py))+pad+1;
+      return {x0,y0,x1,y1};
+    }
+    async function canLoadBounds(bounds25830) {
+      if (!image) await open();
+      const w=windowForBounds(bounds25830);
+      return w.x0>=0&&w.y0>=0&&w.x1<=image.getWidth()&&w.y1<=image.getHeight()&&w.x1>w.x0&&w.y1>w.y0;
+    }
+    async function loadBounds(bounds25830) {
+      if (!image) await open();
+      const {x0,y0,x1,y1}=windowForBounds(bounds25830);
       // No recortar silenciosamente la ventana: el simulador necesita conocer
-      // si el MDT cubre toda el área potencial de propagación.
-      const px=corners.map(p=>p[0]), py=corners.map(p=>p[1]);
-      const x0=Math.floor(Math.min(...px))-pad;
-      const y0=Math.floor(Math.min(...py))-pad;
-      const x1=Math.ceil(Math.max(...px))+pad+1;
-      const y1=Math.ceil(Math.max(...py))+pad+1;
+      // si el MDT cubre toda el área solicitada.
       if(x0<0||y0<0||x1>image.getWidth()||y1>image.getHeight()){
         throw new Error(
           "La ventana de simulación excede la cobertura del MDT LiDAR. " +
           "Solicitada (píxeles): ["+x0+","+y0+","+x1+","+y1+"], " +
-          "disponible: [0,0,"+image.getWidth()+","+image.getHeight()+"]. " +
-          "Reduce el radio de simulación o elige un punto de ignición más alejado del límite del MDT."
+          "disponible: [0,0,"+image.getWidth()+","+image.getHeight()+"]."
         );
       }
       if(x1<=x0||y1<=y0) throw new Error("La ventana solicitada queda fuera de la cobertura del MDT.");
@@ -101,7 +106,7 @@
       if(![a,b,c,d].every(Number.isFinite)) return NaN;
       return a*(1-ax)*(1-ay)+b*ax*(1-ay)+c*(1-ax)*ay+d*ax*ay;
     }
-    return {open,loadBounds,sample,get resolutionM(){return sourceResolution;},get loadedBounds(){return windowInfo?{...windowInfo}:null;}};
+    return {open,canLoadBounds,loadBounds,sample,get resolutionM(){return sourceResolution;},get loadedBounds(){return windowInfo?{...windowInfo}:null;}};
   }
   root.IrratiMdtProvider={create};
 })(window);
