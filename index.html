@@ -950,6 +950,7 @@ try{
     attributionControl:false,
     style:{
       version:8,
+      glyphs:"https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
       sources:{
         imagery:{type:"raster",tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],tileSize:256,attribution:"Esri, Maxar, Earthstar Geographics"},
         "gipuzkoa-dem":{type:"raster-dem",tiles:["irratiadem://{z}/{x}/{y}"],tileSize:256,encoding:"terrarium",minzoom:8,maxzoom:15}
@@ -2293,7 +2294,7 @@ function fsSync3D(){
       gl.addSource("irrati-fs-3d",{type:"geojson",data});
       gl.addLayer({id:"irrati-fs-3d-fill",type:"fill",source:"irrati-fs-3d",filter:["==",["get","kind"],"perimeter"],paint:{"fill-color":["get","fillColor"],"fill-opacity":["get","fillOpacity"]}});
       gl.addLayer({id:"irrati-fs-3d-line",type:"line",source:"irrati-fs-3d",filter:["==",["get","kind"],"perimeter"],paint:{"line-color":["get","color"],"line-width":["get","weight"],"line-dasharray":[2,2]}});
-      gl.addLayer({id:"irrati-fs-3d-ignition",type:"circle",source:"irrati-fs-3d",filter:["==",["get","kind"],"ignition"],paint:{"circle-radius":8,"circle-color":"#e53935","circle-stroke-color":"#fff","circle-stroke-width":2}});
+      gl.addLayer({id:"irrati-fs-3d-ignition",type:"symbol",source:"irrati-fs-3d",filter:["==",["get","kind"],"ignition"],layout:{"text-field":"\u{1F525}","text-font":["Open Sans Regular"],"text-size":24,"text-allow-overlap":true,"text-ignore-placement":true,"text-offset":[0,-0.15]}});
     }else gl.getSource("irrati-fs-3d").setData(data);
     fsGroup.eachLayer(layer=>{
       if(layer instanceof L.Polygon){
