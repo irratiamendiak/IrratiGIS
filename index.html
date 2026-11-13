@@ -2373,7 +2373,7 @@ async function fsLoadDem(lat,lng,maxExtent){
       const info=await fsMdt.loadBounds(fsDemBounds(lat,lng,radius));
       fsMdtStatus={active:true,loaded:true,resolutionM:info.resolutionM,error:null,radiusM:radius,limited:radius<maxExtent-1};
       fsUpdateTerrainStatus();
-      return {radiusM:radius,maxExtentM:maxExtent,limited:radius<requestedRadius-1};
+      return {radiusM:radius,maxExtentM:maxExtent,limited:radius<maxExtent-1};
     }catch(e){
       fsMdtStatus={active:true,loaded:false,resolutionM:null,error:e.message||String(e)};
       fsUpdateTerrainStatus(); throw e;
@@ -3690,12 +3690,13 @@ async function fsBacktest(btn){
     for(let i=0;i<fires.length;i++){
       const f=fires[i]; box.textContent=`⏳ Incendio ${i+1} de ${fires.length}…`; await new Promise(r=>setTimeout(r,0));
       fsIgn={lat:f[0],lng:f[1]}; fsDem.clear();
-      const ok=Number.isFinite(fsElev(f[0],f[1])), w={dir:f[6],spd:f[5]*wf,gust:NaN,T:f[3],RH:f[4]}, met={at:()=>w,sun:()=>null,hours:[],m0:0,sh:0};
+      const w={dir:f[6],spd:f[5]*wf,gust:NaN,T:f[3],RH:f[4]}, met={at:()=>w,sun:()=>null,hours:[],m0:0,sh:0};
       const fu=FS_FUELS[FUEL[f[10]]], T=Math.min(360,Math.max(30,Math.round(Math.min(Math.max(f[9]==null?2:f[9],.5),6)*30)*2));
       try{ await fsLoadDem(f[0],f[1],fsMaxSpreadExtent(T)); }catch(e){}
+      const ok=Number.isFinite(fsElev(f[0],f[1]));
       fsFlat=false; const ter=fsTerrain(f[0],f[1]);
       if(!ter){res.push({f,T,ok:false,A:0,B:0,R:NaN,sl:NaN});continue;}
-      const R=fsBehavior(fu,ter.tan,ter.asp,w.dir,w.spd,fsMoistAt(w,fu,ter,null)).Rh; const A=fsHa(fsPerim(fsSimulate(fu,met,null,null,T),T)); fsFlat=true; const B=fsHa(fsPerim(fsSimulate(fu,met),T)); fsFlat=false;
+      const R=fsBehavior(fu,ter.tan,ter.asp,w.dir,w.spd,fsMoistAt(w,fu,ter,null)).Rh; const A=fsHa(fsPerim(fsSimulate(fu,met,null,null,T),T)); fsFlat=true; const B=fsHa(fsPerim(fsSimulate(fu,met,null,null,T),T)); fsFlat=false;
       res.push({f,T,ok,A,B,R,sl:ok?ter.tan:NaN});
     }
   }finally{ fsFlat=false; fsIgn=ign0; fsCfg.moistMode=mm0; fsCfg.modeEff=me0; fsDem.clear(); btn.disabled=false; btn.textContent=old; fsBtRunning=false; }
