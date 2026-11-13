@@ -708,8 +708,8 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <script src="https://cdn.jsdelivr.net/npm/proj4@2.12.1/dist/proj4.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
 <script src="wildfire/terrain-config.js?v=2"></script>
-<script src="wildfire/terrain/mdt-cog-provider.js?v=2"></script>
-<script src="wildfire/simulator/engine.js?v=2"></script>
+<script src="wildfire/terrain/mdt-cog-provider.js?v=3"></script>
+<script src="wildfire/simulator/engine.js?v=3"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <script src="https://unpkg.com/@mapbox/shp-write@0.4.3/shpwrite.js"></script>
@@ -2466,7 +2466,7 @@ function fsProfile(ray,met){
   const p=[];
   for(const q of ray.pts){
     const z=fsElev(q[2],q[3]); if(!Number.isFinite(z)) break;
-    const ter=fsTerrain(q[2],q[3]);
+    const ter=fsTerrain(q[2],q[3]); if(!ter) break;
     p.push({t:q[0],d:q[1],lat:q[2],lon:q[3],z,tan:ter.tan,asp:ter.asp,lvl:fsCampbell(ter.asp,ter.tan,met.at(q[0]))});
   }
   return p;
@@ -3179,7 +3179,8 @@ function fsDefLine(rays,farBg,rate){
     if(c.ok) return c;
     if(!best||need-tc<best.need-best.tc) best=c;
   }
-  best.slope=best.pts.reduce((s,p)=>s+fsTerrain(p[0],p[1]).tan,0)/Math.max(1,best.pts.length);
+  const terrain=best.pts.map(p=>fsTerrain(p[0],p[1]));
+  best.slope=terrain.length&&terrain.every(Boolean)?terrain.reduce((s,t)=>s+t.tan,0)/terrain.length:NaN;
   return best;
 }
 /* ATAKE PARALELOA: bi hegaletan, ertzetik ≥ 3 × garaiera, orpotik burura */
@@ -3188,7 +3189,8 @@ function fsParallel(rays,farBg,Lf){
   return [-1,1].map(side=>{
     const sel=rays.filter(r=>{ const s=side*fsSigned(r.bg,farBg); return s>=55&&s<=160; }).sort((a,b)=>side*fsSigned(b.bg,farBg)-side*fsSigned(a.bg,farBg));
     const pts=sel.map(r=>{ const p=r.pts[tP/FS_DT], br=r.bg*fsRad; return [p[2]+off*Math.cos(br)/111320,p[3]+off*Math.sin(br)/(111320*Math.cos(p[2]*fsRad))]; });
-    const slope=pts.reduce((s,p)=>s+fsTerrain(p[0],p[1]).tan,0)/Math.max(1,pts.length);
+    const terrain=pts.map(p=>fsTerrain(p[0],p[1]));
+    const slope=terrain.length&&terrain.every(Boolean)?terrain.reduce((s,t)=>s+t.tan,0)/terrain.length:NaN;
     return {side,name:side>0?"derecho":"izquierdo",pts,slope,len:fsPolyLen(pts),off};
   });
 }
@@ -3686,7 +3688,9 @@ async function fsBacktest(btn){
       try{ await fsLoadDem(f[0],f[1],23000); }catch(e){}
       const ok=Number.isFinite(fsElev(f[0],f[1])), w={dir:f[6],spd:f[5]*wf,gust:NaN,T:f[3],RH:f[4]}, met={at:()=>w,sun:()=>null,hours:[],m0:0,sh:0};
       const fu=FS_FUELS[FUEL[f[10]]], T=Math.min(360,Math.max(30,Math.round(Math.min(Math.max(f[9]==null?2:f[9],.5),6)*30)*2));
-      fsFlat=false; const ter=fsTerrain(f[0],f[1]), R=fsBehavior(fu,ter.tan,ter.asp,w.dir,w.spd,fsMoistAt(w,fu,ter,null)).Rh; const A=fsHa(fsPerim(fsSimulate(fu,met),T)); fsFlat=true; const B=fsHa(fsPerim(fsSimulate(fu,met),T)); fsFlat=false;
+      fsFlat=false; const ter=fsTerrain(f[0],f[1]);
+      if(!ter){res.push({f,T,ok:false,A:0,B:0,R:NaN,sl:NaN});continue;}
+      const R=fsBehavior(fu,ter.tan,ter.asp,w.dir,w.spd,fsMoistAt(w,fu,ter,null)).Rh; const A=fsHa(fsPerim(fsSimulate(fu,met),T)); fsFlat=true; const B=fsHa(fsPerim(fsSimulate(fu,met),T)); fsFlat=false;
       res.push({f,T,ok,A,B,R,sl:ok?ter.tan:NaN});
     }
   }finally{ fsFlat=false; fsIgn=ign0; fsCfg.moistMode=mm0; fsCfg.modeEff=me0; fsDem.clear(); btn.disabled=false; btn.textContent=old; fsBtRunning=false; }
