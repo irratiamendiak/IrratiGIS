@@ -56,7 +56,7 @@
     const {
       fuel, fuelAt, ignition, durationMinutes, stepMinutes, weatherAt, terrainAt,
       moistureAt, heatContent, windFactor = 1, moistureDelta = 0,
-      bearingStepDegrees = 2, terrainStepMinutes = 0.5
+      bearingStepDegrees = 3, terrainStepMinutes = 1
     } = options;
     if (!fuel || !ignition || typeof weatherAt !== "function" ||
         typeof terrainAt !== "function" || typeof moistureAt !== "function" ||
