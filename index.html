@@ -750,9 +750,10 @@ function ir3dRegisterProtocol(){
     const match=params.url.match(/^irratiadem:\/\/(\d+)\/(\d+)\/(\d+)$/);
     if(!match)return Promise.reject(new Error("Coordenadas de tesela DEM no válidas."));
     const z=Number(match[1]),x=Number(match[2]),y=Number(match[3]),key=z+"/"+x+"/"+y;
-    if(ir3dTileCache.has(key))return ir3dTileCache.get(key).then(data=>({data}));
+    const cached=ir3dTileCache.get(key);
+    if(cached)return cached.promise.then(data=>({data}));
     const task=async()=>{
-      const n=Math.pow(2,z),west=ir3dLon(x,z),east=ir3dLon(x+1,z),north=ir3dLat(y,z),south=ir3dLat(y+1,z);
+      const west=ir3dLon(x,z),east=ir3dLon(x+1,z),north=ir3dLat(y,z),south=ir3dLat(y+1,z);
       const toUtm=(lon,lat)=>proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[lon,lat]);
       const corners=[[west,north],[east,north],[west,south],[east,south]].map(p=>toUtm(p[0],p[1]));
       const xs=corners.map(p=>p[0]),ys=corners.map(p=>p[1]);
@@ -771,14 +772,28 @@ function ir3dRegisterProtocol(){
         }
       }
       ctx.putImageData(img,0,0);
-      return await new Promise(resolve=>canvas.toBlob(async b=>resolve(await b.arrayBuffer()),"image/png"));
+      return await new Promise((resolve,reject)=>canvas.toBlob(async b=>{
+        if(!b){reject(new Error("No se pudo codificar una tesela del MDT 3D."));return;}
+        try{resolve(await b.arrayBuffer());}catch(e){reject(e);}
+      },"image/png"));
     };
     const pending=ir3dTileQueue.then(task,task);
     ir3dTileQueue=pending.then(()=>undefined,()=>undefined);
-    ir3dTileCache.set(key,pending);
-    pending.catch(()=>ir3dTileCache.delete(key));
-    while(ir3dTileCache.size>48)ir3dTileCache.delete(ir3dTileCache.keys().next().value);
-    return pending.then(data=>({data}));
+    const entry={promise:null,settled:false};
+    entry.promise=pending.then(data=>{entry.settled=true;return data;},error=>{
+      entry.settled=true;ir3dTileCache.delete(key);throw error;
+    });
+    ir3dTileCache.set(key,entry);
+    // No expulsar teselas aún en cola: al desplazarse rápidamente, borrarlas
+    // provocaba peticiones duplicadas y una cola interminable de DEM antiguos.
+    while(ir3dTileCache.size>160){
+      let removed=false;
+      for(const [cacheKey,value] of ir3dTileCache){
+        if(value.settled){ir3dTileCache.delete(cacheKey);removed=true;break;}
+      }
+      if(!removed)break;
+    }
+    return entry.promise.then(data=>({data}));
   });
   ir3dProtocolReady=true;
 }
@@ -998,6 +1013,10 @@ try{
         lidarRelief3D._ir3dControl=nav;
       }
     }catch(err){console.warn("Controles de navegación 3D:",err);}
+    gl.on("error",e=>console.warn("MapLibre 3D:",e&&e.error?e.error:e));
+    // Tras mover la cámara, fuerza a MapLibre a recalcular el tamaño y repintar.
+    // Es especialmente importante para el canvas WebGL embebido en el overlay Leaflet.
+    gl.on("moveend",()=>requestAnimationFrame(()=>{try{gl.resize();gl.triggerRepaint();}catch(_){}}));
     const enableTerrain=()=>{try{gl.setTerrain({source:"gipuzkoa-dem",exaggeration:1.15});}catch(err){console.warn("LiDAR terrain:",err);} fsSync3D();};
     if(gl.isStyleLoaded())enableTerrain();else gl.once("load",enableTerrain);
   });
