@@ -2311,7 +2311,18 @@ function fsSync3D(){
       gl.addSource("irrati-fs-3d",{type:"geojson",data});
       gl.addLayer({id:"irrati-fs-3d-fill",type:"fill",source:"irrati-fs-3d",filter:["==",["get","kind"],"perimeter"],paint:{"fill-color":["get","fillColor"],"fill-opacity":["get","fillOpacity"]}});
       gl.addLayer({id:"irrati-fs-3d-line",type:"line",source:"irrati-fs-3d",filter:["==",["get","kind"],"perimeter"],paint:{"line-color":["get","color"],"line-width":["get","weight"],"line-dasharray":[2,2]}});
-      gl.addLayer({id:"irrati-fs-3d-ignition",type:"symbol",source:"irrati-fs-3d",filter:["==",["get","kind"],"ignition"],layout:{"text-field":"\u{1F525}","text-font":["Open Sans Regular"],"text-size":24,"text-allow-overlap":true,"text-ignore-placement":true,"text-offset":[0,-0.15]}});
+      // Dibujar el emoji como imagen propia: las fuentes glyph remotas de MapLibre
+      // no siempre incluyen pictogramas emoji y por eso la ignición podía desaparecer.
+      if(!gl.hasImage("irrati-fire-emoji")){
+        const fireCanvas=document.createElement("canvas");
+        fireCanvas.width=fireCanvas.height=72;
+        const fireCtx=fireCanvas.getContext("2d");
+        fireCtx.textAlign="center";fireCtx.textBaseline="middle";
+        fireCtx.font='60px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+        fireCtx.fillText("🔥",36,38);
+        gl.addImage("irrati-fire-emoji",fireCanvas,{pixelRatio:2});
+      }
+      gl.addLayer({id:"irrati-fs-3d-ignition",type:"symbol",source:"irrati-fs-3d",filter:["==",["get","kind"],"ignition"],layout:{"icon-image":"irrati-fire-emoji","icon-size":0.8,"icon-allow-overlap":true,"icon-ignore-placement":true}});
     }else gl.getSource("irrati-fs-3d").setData(data);
     fsGroup.eachLayer(layer=>{
       if(layer instanceof L.Polygon){
@@ -3687,7 +3698,6 @@ map.on("overlayadd",e=>{
   if(e.layer!==fsGroup) return;
   fsSync3D();
   fsPanel.style.display="block";
-  if(fsFuelSource==="inventory"&&!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer);
   if(fsIgn) fsRun(); else{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Sute-simulazioa: egin klik mapan hasiera-puntua markatzeko."; }
 });
 map.on("overlayremove",e=>{ if(e.layer===fsGroup){ fsPanel.style.display="none"; fsArmed=false; fsBusy++; map.getContainer().style.cursor=""; } });
