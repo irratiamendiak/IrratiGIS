@@ -74,27 +74,36 @@
       const points = [[0, 0, lat, lon, activeFuelKey]];
       const substeps = Math.max(1, Math.ceil(stepMinutes / Math.max(0.1, terrainStepMinutes)));
       const dt = stepMinutes / substeps;
+      let limited = false;
       for (let time = stepMinutes; time <= durationMinutes; time += stepMinutes) {
-        for (let sub = 0; sub < substeps; sub++) {
-          const sampleTime = time - stepMinutes + (sub + 1) * dt;
-          const weather = weatherAt(sampleTime);
-          const terrain = terrainAt(lat, lon);
-          const selected = fuelAt ? (fuelAt(lat, lon) || {}) : {};
-          activeFuel = selected.fuel || fuel;
-          activeFuelKey = selected.key || "default";
-          const moisture = Math.max(2, moistureAt(weather, activeFuel, terrain, sampleTime) + moistureDelta);
-          const spread = behavior(activeFuel, terrain.tan, terrain.asp, weather.dir,
-            weather.spd * windFactor, moisture);
-          const increment = spread.Rh > 0
-            ? ellipseRate(spread, angleDifference(bearing, spread.head)) * dt
-            : 0;
-          lat += increment * Math.cos(bearingRadians) / 111320;
-          lon += increment * Math.sin(bearingRadians) / metersPerLongitudeDegree;
-          distance += increment;
+        if (!limited) {
+          for (let sub = 0; sub < substeps; sub++) {
+            const sampleTime = time - stepMinutes + (sub + 1) * dt;
+            const weather = weatherAt(sampleTime);
+            const terrain = terrainAt(lat, lon);
+            // null/undefined o una muestra incompleta significa que no hay
+            // terreno válido: se detiene este rayo, sin extrapolar ni rellenar.
+            if (!terrain || !Number.isFinite(terrain.tan) || !Number.isFinite(terrain.asp)) {
+              limited = true;
+              break;
+            }
+            const selected = fuelAt ? (fuelAt(lat, lon) || {}) : {};
+            activeFuel = selected.fuel || fuel;
+            activeFuelKey = selected.key || "default";
+            const moisture = Math.max(2, moistureAt(weather, activeFuel, terrain, sampleTime) + moistureDelta);
+            const spread = behavior(activeFuel, terrain.tan, terrain.asp, weather.dir,
+              weather.spd * windFactor, moisture);
+            const increment = spread.Rh > 0
+              ? ellipseRate(spread, angleDifference(bearing, spread.head)) * dt
+              : 0;
+            lat += increment * Math.cos(bearingRadians) / 111320;
+            lon += increment * Math.sin(bearingRadians) / metersPerLongitudeDegree;
+            distance += increment;
+          }
         }
         points.push([time, distance, lat, lon, activeFuelKey]);
       }
-      rays.push({ bg: bearing, pts: points });
+      rays.push({ bg: bearing, pts: points, limited });
     }
     return rays;
   }
