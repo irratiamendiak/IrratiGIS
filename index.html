@@ -2338,20 +2338,42 @@ function fsMdtXY(lat,lon){
     return Array.isArray(xy)&&xy.length===2&&xy.every(Number.isFinite)?xy:null;
   }catch(_){return null;}
 }
-async function fsLoadDem(lat,lng,rad){
-  const dLat=rad/111320, dLon=rad/(111320*Math.cos(lat*fsRad)), jobs=[];
+function fsDemBounds(lat,lng,rad){
+  const dLat=rad/111320, dLon=rad/(111320*Math.cos(lat*fsRad));
+  const corners=[[lat+dLat,lng-dLon],[lat+dLat,lng+dLon],[lat-dLat,lng-dLon],[lat-dLat,lng+dLon]]
+    .map(([a,b])=>fsMdtXY(a,b)).filter(Boolean);
+  if(corners.length!==4) throw new Error("No se pudo transformar el área a EPSG:25830.");
+  const xs=corners.map(p=>p[0]),ys=corners.map(p=>p[1]);
+  return [Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)];
+}
+async function fsLoadDem(lat,lng,requestedRadius){
+  const dLat=requestedRadius/111320, dLon=requestedRadius/(111320*Math.cos(lat*fsRad)), jobs=[];
   if(fsTerrainSource==="mdt"){
     if(!fsMdt) throw new Error("El proveedor MDT LiDAR no está configurado.");
     try{
-      const corners=[[lat+dLat,lng-dLon],[lat+dLat,lng+dLon],[lat-dLat,lng-dLon],[lat-dLat,lng+dLon]]
-        .map(([a,b])=>fsMdtXY(a,b)).filter(Boolean);
-      if(corners.length!==4) throw new Error("No se pudo transformar el área a EPSG:25830.");
-      const xs=corners.map(p=>p[0]),ys=corners.map(p=>p[1]);
-      const info=await fsMdt.loadBounds([Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]);
-      fsMdtStatus={active:true,loaded:true,resolutionM:info.resolutionM,error:null}; fsUpdateTerrainStatus();
-    }catch(e){fsMdtStatus={active:true,loaded:false,resolutionM:null,error:e.message||String(e)}; fsUpdateTerrainStatus(); throw e;}
+      await fsMdt.open();
+      let radius=requestedRadius;
+      if(!await fsMdt.canLoadBounds(fsDemBounds(lat,lng,radius))){
+        let lo=0,hi=requestedRadius;
+        for(let i=0;i<22;i++){
+          const mid=(lo+hi)/2;
+          if(await fsMdt.canLoadBounds(fsDemBounds(lat,lng,mid))) lo=mid;
+          else hi=mid;
+        }
+        // Margen para que las muestras cardinales de pendiente no dependan
+        // del último píxel del raster.
+        radius=Math.max(0,lo-100);
+      }
+      if(radius<250) throw new Error("La cobertura LiDAR alrededor de la ignición es demasiado pequeña para simular con fiabilidad (menos de 250 m).");
+      const info=await fsMdt.loadBounds(fsDemBounds(lat,lng,radius));
+      fsMdtStatus={active:true,loaded:true,resolutionM:info.resolutionM,error:null,radiusM:radius,limited:radius<requestedRadius-1};
+      fsUpdateTerrainStatus();
+      return {radiusM:radius,requestedRadiusM:requestedRadius,limited:radius<requestedRadius-1};
+    }catch(e){
+      fsMdtStatus={active:true,loaded:false,resolutionM:null,error:e.message||String(e)};
+      fsUpdateTerrainStatus(); throw e;
+    }
   }
-  if(fsTerrainSource==="mdt") return;
   const [x0,y0]=fsPix(lat+dLat,lng-dLon), [x1,y1]=fsPix(lat-dLat,lng+dLon);
   for(let tx=Math.floor(x0/256);tx<=Math.floor(x1/256);tx++) for(let ty=Math.floor(y0/256);ty<=Math.floor(y1/256);ty++){
     const key=tx+"/"+ty; if(fsDem.has(key)) continue;
@@ -2366,6 +2388,7 @@ async function fsLoadDem(lat,lng,rad){
     }));
   }
   await Promise.all(jobs);
+  return {radiusM:requestedRadius,requestedRadiusM:requestedRadius,limited:false};
 }
 function fsElev(lat,lon){
   if(fsTerrainSource==="mdt"){
@@ -2387,7 +2410,7 @@ function fsTerrain(lat,lon){   // malda (tan) eta orientazioa (maldan behera, gr
   const d=40, dl=d/111320, dn=d/(111320*Math.cos(lat*fsRad));
   const E=fsElev(lat,lon+dn), W=fsElev(lat,lon-dn), N=fsElev(lat+dl,lon), S=fsElev(lat-dl,lon);
   if(![E,W,N,S].every(Number.isFinite)){
-    if(fsTerrainSource==="mdt") throw new Error("El MDT LiDAR no cubre alguna muestra necesaria para calcular la pendiente; no se ha sustituido por Terrarium.");
+    if(fsTerrainSource==="mdt") return null; // Sin cobertura LiDAR: el motor detiene únicamente este rayo.
     return {tan:0,asp:0};
   }
   const gx=(E-W)/(2*d), gy=(N-S)/(2*d);
@@ -3692,9 +3715,9 @@ async function fsRun(){
   fsSync3D();
   const manual=fsCfg.wind==="man";
   out.innerHTML=`<div style="font-weight:700;color:#52645a">Consultando terreno y calculando la propagación ${manual?"manual":"prevista"}…</div>`;
-  let met, ffn=null, netNote="", inventorySampler=null, inventoryNote="";
+  let met, ffn=null, netNote="", inventorySampler=null, inventoryNote="", demCoverage=null;
   try{
-    met=await fsMeteo(); await fsLoadDem(fsIgn.lat,fsIgn.lng,23000);
+    met=await fsMeteo(); demCoverage=await fsLoadDem(fsIgn.lat,fsIgn.lng,23000);
     if(fsFuelSource==="inventory"){
       try{
         inventorySampler=await fsCreateInventoryFuelSampler(fsIgn);
@@ -3763,6 +3786,10 @@ async function fsRun(){
     }
   }
   const fuelNames={belarra:"Herbazal/prado",garoa:"Matorral",iratzea:"Helechal",pinudia:"Pinar",hostozabala:"Frondosas"};
+  const lidarLimited=fsTerrainSource==="mdt"&&(demCoverage?.limited||rays.some(r=>r.limited));
+  const lidarNote=lidarLimited
+    ? `<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px"><b>⚠️ Cobertura LiDAR limitada</b><br>Radio de terreno cargado: ${Math.round(demCoverage.radiusM/100)/10} km (máximo solicitado: 23 km). Los sectores que alcanzan el borde o una zona sin datos del MDT se han detenido en la última muestra válida; no se ha extrapolado el relieve ni usado Terrarium.</div>`
+    : "";
   const fuelNote=inventorySampler
     ? `<div style="margin-top:9px;padding:8px;background:#f1f6f2;border-left:3px solid #527c63;border-radius:5px;font-size:11px"><b>Combustible variable · Inventario Forestal 2024</b><br>Clases identificadas en consultas espaciales: ${inventorySampler.stats.classified} · Muestras sin clase: ${inventorySampler.stats.unknown} (combustible de respaldo: ${escapeHtml(fu.n)}).<br>Transiciones detectadas: ${fuelCounts.size?[...fuelCounts.entries()].map(([k,n])=>escapeHtml(k.replace(/belarra|garoa|iratzea|pinudia|hostozabala/g,x=>fuelNames[x]||x))+" ("+n+")").join("; "):"ninguna en las rutas muestreadas"}.</div>`
     : (inventoryNote?`<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px">${escapeHtml(inventoryNote)}</div>`:"");
@@ -3775,7 +3802,7 @@ async function fsRun(){
     ["Radiación solar",w=>Number.isFinite(w.R)?`${Math.round(w.R)} W/m²`:"—"],
     ["Humedad combustible fino (1 h)",w=>Array.isArray(w.m)&&Number.isFinite(w.m[0])?`${w.m[0].toFixed(1)} %`:"—"]
   ].map(([name,fmt])=>`<tr><td style="padding:4px;border-bottom:1px solid #edf0ed">${name}</td>${times.map(t=>{const w=met.at(t);return `<td style="text-align:center;padding:4px;border-bottom:1px solid #edf0ed">${fmt(w)}</td>`;}).join("")}</tr>`).join("")}</tbody></table><div style="font-size:10px;color:#65736b;margin-top:4px">Valores horarios de Open-Meteo correspondientes a cada horizonte (la precipitación es la prevista para esa hora).</div></div>`;
-  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"manual":"prevista"} · superficie alcanzada</b>${table}${fuelNote}${wxTable}
+  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"manual":"prevista"} · superficie alcanzada</b>${table}${lidarNote}${fuelNote}${wxTable}
     <div style="font-size:10px;color:#65736b;margin-top:8px">${source}. Los cuatro perímetros representan 30, 60, 90 y 120 minutos; el color y el tipo de línea identifican cada horizonte. Cambia el selector de meteorología para alternar entre prevista y manual; en modo manual se reutilizan los campos de viento, temperatura y humedad.</div>
   </div>`);
   fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0:null,met,farBg:null,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
