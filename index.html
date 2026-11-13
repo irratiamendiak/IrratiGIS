@@ -2323,7 +2323,7 @@ const fsMdt=fsMdtUrl&&window.IrratiMdtProvider
   ?window.IrratiMdtProvider.create({url:fsMdtUrl,targetResolutionM:Number(window.IRRATIGIS_MDT_TARGET_RESOLUTION_M)||14})
   :null;
 let fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};
-function fsMdtLabel(){if(fsTerrainSource==="terrarium")return "Terrarium · fuente seleccionada";return fsMdtStatus.loaded?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m`:(fsMdtStatus.error?`MDT LiDAR · error: ${fsMdtStatus.error}`:"MDT LiDAR · pendiente de consultar");}
+function fsMdtLabel(){if(fsTerrainSource==="terrarium")return "Terrarium · fuente seleccionada";return fsMdtStatus.loaded?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m${Number.isFinite(fsMdtStatus.radiusM)?` · radio ${ (fsMdtStatus.radiusM/1000).toFixed(1)} km`:``}`:(fsMdtStatus.error?`MDT LiDAR · error: ${fsMdtStatus.error}`:"MDT LiDAR · pendiente de consultar");}
 function fsUpdateTerrainStatus(){const el=fsPanel&&fsPanel.querySelector(".fs-terrain-status");if(el)el.textContent="Lurzoruaren iturria: "+fsMdtLabel();}
 function fsMdtXY(lat,lon){
   if(typeof proj4!=="function") return null;
