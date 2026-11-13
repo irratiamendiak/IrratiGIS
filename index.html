@@ -38,6 +38,13 @@ input[type=file]{position:absolute;left:-9999px}
 .badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#e8f5ed;color:#176b43;font-size:12px;font-weight:800}
 .badge.blue{background:#e8f2f8;color:#175f8f}
 #map{height:62vh;min-height:430px;border-radius:13px;background:#e7ece9}
+.ir3d-nav-control{background:#fff;border:1px solid rgba(0,0,0,.22);border-radius:8px;box-shadow:0 1px 5px rgba(0,0,0,.35);padding:5px}
+.ir3d-nav-grid{display:grid;grid-template-columns:repeat(3,38px);gap:3px}
+.ir3d-nav-grid button{min-height:36px;height:36px;padding:0;border:0;border-radius:5px;background:#f3f6f4;color:#173d2b;font:700 19px/1 system-ui;cursor:pointer}
+.ir3d-nav-grid button:hover{background:#dcebe2}
+.ir3d-nav-caption{text-align:center;font:700 9px/1.4 system-ui;color:#40564a;padding-top:3px;white-space:nowrap}
+@media(max-width:520px){.ir3d-nav-grid{grid-template-columns:repeat(3,34px)}.ir3d-nav-grid button{min-height:34px;height:34px}.ir3d-nav-caption{font-size:8px}}
+
 .layers-note,.footer{font-size:12px;color:var(--muted)}
 .details{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .details div{padding:11px;background:#f7faf8;border-radius:10px;overflow-wrap:anywhere}
@@ -957,14 +964,38 @@ try{
     const gl=lidarRelief3D.getMaplibreMap();
     if(!gl||lidarRelief3D._terrainReady)return;
     lidarRelief3D._terrainReady=true;
-    // Navegación 3D habilitada: arrastrar para desplazar, rueda para zoom,
-    // y controles de orientación/inclinación con ratón o pantalla táctil.
+    // Navegación 3D: gestos del mapa y controles Leaflet siempre visibles.
     try{
-      gl.addControl(new maplibregl.NavigationControl({visualizePitch:true}),"top-left");
       gl.dragPan.enable();
       gl.scrollZoom.enable();
       gl.dragRotate.enable();
       gl.touchZoomRotate.enable();
+      if(!lidarRelief3D._ir3dControl){
+        const nav=L.control({position:"topright"});
+        nav.onAdd=()=>{
+          const el=L.DomUtil.create("div","leaflet-bar ir3d-nav-control");
+          el.setAttribute("role","group");
+          el.setAttribute("aria-label","Controles de navegación 3D");
+          el.innerHTML='<div class="ir3d-nav-grid"><button type="button" data-act="tilt-up" title="Inclinar hacia el horizonte" aria-label="Inclinar hacia el horizonte">▲</button><button type="button" data-act="north" title="Restablecer orientación norte" aria-label="Restablecer orientación norte">N</button><button type="button" data-act="tilt-down" title="Ver desde arriba" aria-label="Ver desde arriba">▼</button><button type="button" data-act="left" title="Girar a la izquierda" aria-label="Girar a la izquierda">↶</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar">＋</button><button type="button" data-act="right" title="Girar a la derecha" aria-label="Girar a la derecha">↷</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar">－</button></div><div class="ir3d-nav-caption">Mover · girar · inclinar</div>';
+          L.DomEvent.disableClickPropagation(el);
+          L.DomEvent.disableScrollPropagation(el);
+          el.addEventListener("click",ev=>{
+            const b=ev.target.closest("button[data-act]");
+            if(!b)return;
+            const act=b.dataset.act, pitch=gl.getPitch(), bearing=gl.getBearing(), zoom=gl.getZoom();
+            if(act==="tilt-up")gl.easeTo({pitch:Math.min(85,pitch+10),duration:250});
+            if(act==="tilt-down")gl.easeTo({pitch:Math.max(0,pitch-10),duration:250});
+            if(act==="left")gl.easeTo({bearing:bearing-15,duration:250});
+            if(act==="right")gl.easeTo({bearing:bearing+15,duration:250});
+            if(act==="north")gl.easeTo({bearing:0,pitch:0,duration:350});
+            if(act==="zoom-in")gl.easeTo({zoom:Math.min(gl.getMaxZoom(),zoom+1),duration:250});
+            if(act==="zoom-out")gl.easeTo({zoom:Math.max(gl.getMinZoom(),zoom-1),duration:250});
+          });
+          return el;
+        };
+        nav.addTo(lidarRelief3D._map);
+        lidarRelief3D._ir3dControl=nav;
+      }
     }catch(err){console.warn("Controles de navegación 3D:",err);}
     const enableTerrain=()=>{try{gl.setTerrain({source:"gipuzkoa-dem",exaggeration:1.15});}catch(err){console.warn("LiDAR terrain:",err);}};
     if(gl.isStyleLoaded())enableTerrain();else gl.once("load",enableTerrain);
