@@ -2255,7 +2255,7 @@ map.on("overlayremove",e=>{
    Eredu sinplifikatua (Rothermel motakoa): malda eta haizea bektore gisa batzen dira, elipsea (Anderson 1983),
    Byram intentsitatea eta garaiera. Lur-eredua: Terrarium (Campbell geruzaren berbera). Lerroak/lekuak: OpenStreetMap (Overpass).
    Lur-iturria hautagarria da (MDT LiDAR edo Terrarium); kalkulu numerikoa wildfire/simulator/engine.js moduluan dago. */
-const FS_Z=13, FS_H=18600, FS_DT=2, FS_T=360;
+const FS_Z=13, FS_H=18600, FS_DT=2, FS_T=120;
 const FS_FUELS={
   belarra:{n:"Belardia / larrea (1-2 ereduak)",R0:1.7,sig:3500,beta:.002,waf:.45,w:.17,Mx:.15,Rmax:60,cls:[1,0,0],sun:1},
   garoa:{n:"Atlantikoko sastrakadia: oteak, txilardiak (4-6 ereduak)",R0:.5,sig:1800,beta:.006,waf:.4,w:.9,Mx:.20,Rmax:40,cls:[.5,.3,.2],sun:.9},
@@ -2315,6 +2315,11 @@ if(lidarRelief3D) lidarRelief3D.on("remove",()=>{
 
 const fsCard=d=>["N","NE","E","SE","S","SO","O","NO"][Math.round((((d%360)+360)%360)/45)%8];
 const fsRad=Math.PI/180;
+// Extensión calculada desde la velocidad radial máxima del modelo; no es un radio solicitado.
+function fsMaxSpreadExtent(durationMinutes){
+  const maxRate=Math.max(...Object.values(FS_FUELS).map(f=>Number(f.Rmax)||0));
+  return Math.ceil(maxRate*durationMinutes+160); // margen para muestreo de pendiente y borde del raster.
+}
 
 /* --- terreno (Terrarium z13, ~14 m/px) --- */
 function fsPix(lat,lon){ const n=256*Math.pow(2,FS_Z), s=Math.sin(lat*fsRad); return [(lon+180)/360*n,(0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n]; }
@@ -2323,7 +2328,7 @@ const fsMdt=fsMdtUrl&&window.IrratiMdtProvider
   ?window.IrratiMdtProvider.create({url:fsMdtUrl,targetResolutionM:Number(window.IRRATIGIS_MDT_TARGET_RESOLUTION_M)||14})
   :null;
 let fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};
-function fsMdtLabel(){if(fsTerrainSource==="terrarium")return "Terrarium · fuente seleccionada";return fsMdtStatus.loaded?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m${Number.isFinite(fsMdtStatus.radiusM)?` · radio ${ (fsMdtStatus.radiusM/1000).toFixed(1)} km`:``}`:(fsMdtStatus.error?`MDT LiDAR · error: ${fsMdtStatus.error}`:"MDT LiDAR · pendiente de consultar");}
+function fsMdtLabel(){if(fsTerrainSource==="terrarium")return "Terrarium · fuente seleccionada";return fsMdtStatus.loaded?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m${Number.isFinite(fsMdtStatus.radiusM)?` · cobertura ${ (fsMdtStatus.radiusM/1000).toFixed(1)} km`:``}`:(fsMdtStatus.error?`MDT LiDAR · error: ${fsMdtStatus.error}`:"MDT LiDAR · pendiente de consultar");}
 function fsUpdateTerrainStatus(){const el=fsPanel&&fsPanel.querySelector(".fs-terrain-status");if(el)el.textContent="Lurzoruaren iturria: "+fsMdtLabel();}
 function fsMdtXY(lat,lon){
   if(typeof proj4!=="function") return null;
@@ -2346,15 +2351,15 @@ function fsDemBounds(lat,lng,rad){
   const xs=corners.map(p=>p[0]),ys=corners.map(p=>p[1]);
   return [Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)];
 }
-async function fsLoadDem(lat,lng,requestedRadius){
-  const dLat=requestedRadius/111320, dLon=requestedRadius/(111320*Math.cos(lat*fsRad)), jobs=[];
+async function fsLoadDem(lat,lng,maxExtent){
+  const dLat=maxExtent/111320, dLon=maxExtent/(111320*Math.cos(lat*fsRad)), jobs=[];
   if(fsTerrainSource==="mdt"){
     if(!fsMdt) throw new Error("El proveedor MDT LiDAR no está configurado.");
     try{
       await fsMdt.open();
-      let radius=requestedRadius;
+      let radius=maxExtent;
       if(!await fsMdt.canLoadBounds(fsDemBounds(lat,lng,radius))){
-        let lo=0,hi=requestedRadius;
+        let lo=0,hi=maxExtent;
         for(let i=0;i<22;i++){
           const mid=(lo+hi)/2;
           if(await fsMdt.canLoadBounds(fsDemBounds(lat,lng,mid))) lo=mid;
@@ -2366,9 +2371,9 @@ async function fsLoadDem(lat,lng,requestedRadius){
       }
       if(radius<250) throw new Error("La cobertura LiDAR alrededor de la ignición es demasiado pequeña para simular con fiabilidad (menos de 250 m).");
       const info=await fsMdt.loadBounds(fsDemBounds(lat,lng,radius));
-      fsMdtStatus={active:true,loaded:true,resolutionM:info.resolutionM,error:null,radiusM:radius,limited:radius<requestedRadius-1};
+      fsMdtStatus={active:true,loaded:true,resolutionM:info.resolutionM,error:null,radiusM:radius,limited:radius<maxExtent-1};
       fsUpdateTerrainStatus();
-      return {radiusM:radius,requestedRadiusM:requestedRadius,limited:radius<requestedRadius-1};
+      return {radiusM:radius,maxExtentM:maxExtent,limited:radius<requestedRadius-1};
     }catch(e){
       fsMdtStatus={active:true,loaded:false,resolutionM:null,error:e.message||String(e)};
       fsUpdateTerrainStatus(); throw e;
@@ -2388,7 +2393,7 @@ async function fsLoadDem(lat,lng,requestedRadius){
     }));
   }
   await Promise.all(jobs);
-  return {radiusM:requestedRadius,requestedRadiusM:requestedRadius,limited:false};
+  return {radiusM:maxExtent,maxExtentM:maxExtent,limited:false};
 }
 function fsElev(lat,lon){
   if(fsTerrainSource==="mdt"){
@@ -2425,10 +2430,10 @@ const fsBehavior=(fu,tan,asp,windFrom,u10,mpct)=>fsEngine.behavior(fu,tan,asp,wi
 const fsR=(b,th)=>fsEngine.ellipseRate(b,th);
 const fsInt=(fu,r)=>fsEngine.intensity(fu,r,FS_H);
 const fsFlame=I=>fsEngine.flameLength(I);
-function fsSimulate(fu,met,sc,fuelAt){
+function fsSimulate(fu,met,sc,fuelAt,durationMinutes=FS_T){
   sc=sc||{wf:1,dm:0};
   return fsEngine.simulate({
-    fuel:fu, fuelAt, ignition:fsIgn, durationMinutes:FS_T, stepMinutes:FS_DT,
+    fuel:fu, fuelAt, ignition:fsIgn, durationMinutes, stepMinutes:FS_DT,
     heatContent:FS_H, windFactor:sc.wf, moistureDelta:sc.dm,
     weatherAt:t=>met.at(t),
     terrainAt:(lat,lon)=>fsTerrain(lat,lon),
@@ -3685,12 +3690,12 @@ async function fsBacktest(btn){
     for(let i=0;i<fires.length;i++){
       const f=fires[i]; box.textContent=`⏳ Incendio ${i+1} de ${fires.length}…`; await new Promise(r=>setTimeout(r,0));
       fsIgn={lat:f[0],lng:f[1]}; fsDem.clear();
-      try{ await fsLoadDem(f[0],f[1],23000); }catch(e){}
       const ok=Number.isFinite(fsElev(f[0],f[1])), w={dir:f[6],spd:f[5]*wf,gust:NaN,T:f[3],RH:f[4]}, met={at:()=>w,sun:()=>null,hours:[],m0:0,sh:0};
       const fu=FS_FUELS[FUEL[f[10]]], T=Math.min(360,Math.max(30,Math.round(Math.min(Math.max(f[9]==null?2:f[9],.5),6)*30)*2));
+      try{ await fsLoadDem(f[0],f[1],fsMaxSpreadExtent(T)); }catch(e){}
       fsFlat=false; const ter=fsTerrain(f[0],f[1]);
       if(!ter){res.push({f,T,ok:false,A:0,B:0,R:NaN,sl:NaN});continue;}
-      const R=fsBehavior(fu,ter.tan,ter.asp,w.dir,w.spd,fsMoistAt(w,fu,ter,null)).Rh; const A=fsHa(fsPerim(fsSimulate(fu,met),T)); fsFlat=true; const B=fsHa(fsPerim(fsSimulate(fu,met),T)); fsFlat=false;
+      const R=fsBehavior(fu,ter.tan,ter.asp,w.dir,w.spd,fsMoistAt(w,fu,ter,null)).Rh; const A=fsHa(fsPerim(fsSimulate(fu,met,null,null,T),T)); fsFlat=true; const B=fsHa(fsPerim(fsSimulate(fu,met),T)); fsFlat=false;
       res.push({f,T,ok,A,B,R,sl:ok?ter.tan:NaN});
     }
   }finally{ fsFlat=false; fsIgn=ign0; fsCfg.moistMode=mm0; fsCfg.modeEff=me0; fsDem.clear(); btn.disabled=false; btn.textContent=old; fsBtRunning=false; }
@@ -3721,7 +3726,7 @@ async function fsRun(){
   out.innerHTML=`<div style="font-weight:700;color:#52645a">Consultando terreno y calculando la propagación ${manual?"manual":"prevista"}…</div>`;
   let met, ffn=null, netNote="", inventorySampler=null, inventoryNote="", demCoverage=null;
   try{
-    met=await fsMeteo(); demCoverage=await fsLoadDem(fsIgn.lat,fsIgn.lng,23000);
+    met=await fsMeteo(); demCoverage=await fsLoadDem(fsIgn.lat,fsIgn.lng,fsMaxSpreadExtent(FS_T));
     if(fsFuelSource==="inventory"){
       try{
         inventorySampler=await fsCreateInventoryFuelSampler(fsIgn);
@@ -3792,7 +3797,7 @@ async function fsRun(){
   const fuelNames={belarra:"Herbazal/prado",garoa:"Matorral",iratzea:"Helechal",pinudia:"Pinar",hostozabala:"Frondosas"};
   const lidarLimited=fsTerrainSource==="mdt"&&(demCoverage?.limited||rays.some(r=>r.limited));
   const lidarNote=lidarLimited
-    ? `<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px"><b>⚠️ Cobertura LiDAR limitada</b><br>Radio de terreno cargado: ${Math.round(demCoverage.radiusM/100)/10} km (máximo solicitado: 23 km). Los sectores que alcanzan el borde o una zona sin datos del MDT se han detenido en la última muestra válida; no se ha extrapolado el relieve ni usado Terrarium.</div>`
+    ? `<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px"><b>⚠️ Cobertura LiDAR limitada</b><br>Cobertura LiDAR disponible: hasta ${Math.round(demCoverage.radiusM/100)/10} km desde la ignición. Los sectores que alcanzan el límite de datos se han detenido en la última muestra válida; los demás continúan hasta completar los 120 minutos. No se ha extrapolado el relieve ni usado Terrarium.</div>`
     : "";
   const fuelNote=inventorySampler
     ? `<div style="margin-top:9px;padding:8px;background:#f1f6f2;border-left:3px solid #527c63;border-radius:5px;font-size:11px"><b>Combustible variable · Inventario Forestal 2024</b><br>Clases identificadas en consultas espaciales: ${inventorySampler.stats.classified} · Muestras sin clase: ${inventorySampler.stats.unknown} (combustible de respaldo: ${escapeHtml(fu.n)}).<br>Transiciones detectadas: ${fuelCounts.size?[...fuelCounts.entries()].map(([k,n])=>escapeHtml(k.replace(/belarra|garoa|iratzea|pinudia|hostozabala/g,x=>fuelNames[x]||x))+" ("+n+")").join("; "):"ninguna en las rutas muestreadas"}.</div>`
