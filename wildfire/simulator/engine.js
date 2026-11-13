@@ -56,7 +56,7 @@
     const {
       fuel, fuelAt, ignition, durationMinutes, stepMinutes, weatherAt, terrainAt,
       moistureAt, heatContent, windFactor = 1, moistureDelta = 0,
-      bearingStepDegrees = 5
+      bearingStepDegrees = 2, terrainStepMinutes = 0.5
     } = options;
     if (!fuel || !ignition || typeof weatherAt !== "function" ||
         typeof terrainAt !== "function" || typeof moistureAt !== "function" ||
@@ -72,21 +72,26 @@
       let activeFuel = initialFuel.fuel || fuel;
       let activeFuelKey = initialFuel.key || "default";
       const points = [[0, 0, lat, lon, activeFuelKey]];
+      const substeps = Math.max(1, Math.ceil(stepMinutes / Math.max(0.1, terrainStepMinutes)));
+      const dt = stepMinutes / substeps;
       for (let time = stepMinutes; time <= durationMinutes; time += stepMinutes) {
-        const weather = weatherAt(time);
-        const terrain = terrainAt(lat, lon);
-        const selected = fuelAt ? (fuelAt(lat, lon) || {}) : {};
-        activeFuel = selected.fuel || fuel;
-        activeFuelKey = selected.key || "default";
-        const moisture = Math.max(2, moistureAt(weather, activeFuel, terrain, time) + moistureDelta);
-        const spread = behavior(activeFuel, terrain.tan, terrain.asp, weather.dir,
-          weather.spd * windFactor, moisture);
-        const increment = spread.Rh > 0
-          ? ellipseRate(spread, angleDifference(bearing, spread.head)) * stepMinutes
-          : 0;
-        lat += increment * Math.cos(bearingRadians) / 111320;
-        lon += increment * Math.sin(bearingRadians) / metersPerLongitudeDegree;
-        distance += increment;
+        for (let sub = 0; sub < substeps; sub++) {
+          const sampleTime = time - stepMinutes + (sub + 1) * dt;
+          const weather = weatherAt(sampleTime);
+          const terrain = terrainAt(lat, lon);
+          const selected = fuelAt ? (fuelAt(lat, lon) || {}) : {};
+          activeFuel = selected.fuel || fuel;
+          activeFuelKey = selected.key || "default";
+          const moisture = Math.max(2, moistureAt(weather, activeFuel, terrain, sampleTime) + moistureDelta);
+          const spread = behavior(activeFuel, terrain.tan, terrain.asp, weather.dir,
+            weather.spd * windFactor, moisture);
+          const increment = spread.Rh > 0
+            ? ellipseRate(spread, angleDifference(bearing, spread.head)) * dt
+            : 0;
+          lat += increment * Math.cos(bearingRadians) / 111320;
+          lon += increment * Math.sin(bearingRadians) / metersPerLongitudeDegree;
+          distance += increment;
+        }
         points.push([time, distance, lat, lon, activeFuelKey]);
       }
       rays.push({ bg: bearing, pts: points });
