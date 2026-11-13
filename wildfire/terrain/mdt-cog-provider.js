@@ -71,10 +71,21 @@
       const xs=[bounds25830[0],bounds25830[2]], ys=[bounds25830[1],bounds25830[3]];
       const corners=[[xs[0],ys[0]],[xs[0],ys[1]],[xs[1],ys[0]],[xs[1],ys[1]]].map(([x,y])=>pixelOf(x,y));
       const pad=3;
-      const x0=Math.max(0,Math.floor(Math.min(...corners.map(p=>p[0])))-pad);
-      const y0=Math.max(0,Math.floor(Math.min(...corners.map(p=>p[1])))-pad);
-      const x1=Math.min(image.getWidth(),Math.ceil(Math.max(...corners.map(p=>p[0])))+pad+1);
-      const y1=Math.min(image.getHeight(),Math.ceil(Math.max(...corners.map(p=>p[1])))+pad+1);
+      // No recortar silenciosamente la ventana: el simulador necesita conocer
+      // si el MDT cubre toda el área potencial de propagación.
+      const px=corners.map(p=>p[0]), py=corners.map(p=>p[1]);
+      const x0=Math.floor(Math.min(...px))-pad;
+      const y0=Math.floor(Math.min(...py))-pad;
+      const x1=Math.ceil(Math.max(...px))+pad+1;
+      const y1=Math.ceil(Math.max(...py))+pad+1;
+      if(x0<0||y0<0||x1>image.getWidth()||y1>image.getHeight()){
+        throw new Error(
+          "La ventana de simulación excede la cobertura del MDT LiDAR. " +
+          "Solicitada (píxeles): ["+x0+","+y0+","+x1+","+y1+"], " +
+          "disponible: [0,0,"+image.getWidth()+","+image.getHeight()+"]. " +
+          "Reduce el radio de simulación o elige un punto de ignición más alejado del límite del MDT."
+        );
+      }
       if(x1<=x0||y1<=y0) throw new Error("La ventana solicitada queda fuera de la cobertura del MDT.");
       raster=await image.readRasters({window:[x0,y0,x1,y1],samples:[0],interleave:true});
       windowInfo={x0,y0,x1,y1,width:x1-x0,height:y1-y0};
