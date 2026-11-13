@@ -2408,7 +2408,8 @@ function fsSimulate(fu,met,sc,fuelAt){
     heatContent:FS_H, windFactor:sc.wf, moistureDelta:sc.dm,
     weatherAt:t=>met.at(t),
     terrainAt:(lat,lon)=>fsTerrain(lat,lon),
-    moistureAt:(w,f,ter,t)=>fsMoistAt(w,f,ter,met.sun(t))
+    moistureAt:(w,f,ter,t)=>fsMoistAt(w,f,ter,met.sun(t)),
+    bearingStepDegrees:2, terrainStepMinutes:.5
   });
 }
 const fsPerim=(rays,t)=>rays.map(r=>{ const p=r.pts[t/FS_DT]; return [p[2],p[3]]; });
