@@ -961,7 +961,9 @@ let lidarRelief3D=null;
 try{
   ir3dRegisterProtocol();
   lidarRelief3D=L.maplibreGL({
-    interactive:true,
+    // El adaptador MapLibre-Leaflet sincroniza la cámara desde Leaflet.
+    // No debe recibir gestos/cámara propios de MapLibre en paralelo.
+    interactive:false,
     attributionControl:false,
     style:{
       version:8,
@@ -980,39 +982,35 @@ try{
     const gl=lidarRelief3D.getMaplibreMap();
     if(!gl||lidarRelief3D._terrainReady)return;
     lidarRelief3D._terrainReady=true;
-    // Navegación 3D: gestos del mapa y controles Leaflet siempre visibles.
+    // El adaptador maplibre-gl-leaflet no admite pitch/bearing ni cámara
+    // interactiva propia: Leaflet debe ser el único dueño de la navegación.
     try{
-      gl.dragPan.enable();
-      gl.scrollZoom.enable();
-      gl.dragRotate.enable();
-      gl.touchZoomRotate.enable();
       if(!lidarRelief3D._ir3dControl){
         const nav=L.control({position:"topright"});
         nav.onAdd=()=>{
           const el=L.DomUtil.create("div","leaflet-bar ir3d-nav-control");
           el.setAttribute("role","group");
-          el.setAttribute("aria-label","Controles de navegación 3D");
-          el.innerHTML='<div class="ir3d-nav-grid"><button type="button" data-act="tilt-up" title="Inclinar hacia el horizonte" aria-label="Inclinar hacia el horizonte">▲</button><button type="button" data-act="north" title="Restablecer orientación norte" aria-label="Restablecer orientación norte">N</button><button type="button" data-act="tilt-down" title="Ver desde arriba" aria-label="Ver desde arriba">▼</button><button type="button" data-act="left" title="Girar a la izquierda" aria-label="Girar a la izquierda">↶</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar">＋</button><button type="button" data-act="right" title="Girar a la derecha" aria-label="Girar a la derecha">↷</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar">－</button></div><div class="ir3d-nav-caption">Mover · girar · inclinar</div>';
+          el.setAttribute("aria-label","Controles de navegación del relieve 3D");
+          el.innerHTML='<div class="ir3d-nav-grid"><button type="button" data-act="up" title="Desplazar al norte" aria-label="Desplazar al norte">▲</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar">＋</button><button type="button" data-act="left" title="Desplazar al oeste" aria-label="Desplazar al oeste">◀</button><button type="button" data-act="down" title="Desplazar al sur" aria-label="Desplazar al sur">▼</button><button type="button" data-act="right" title="Desplazar al este" aria-label="Desplazar al este">▶</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar">－</button></div><div class="ir3d-nav-caption">Desplazar · acercar · alejar</div>';
           L.DomEvent.disableClickPropagation(el);
           L.DomEvent.disableScrollPropagation(el);
           el.addEventListener("click",ev=>{
             const b=ev.target.closest("button[data-act]");
             if(!b)return;
-            const act=b.dataset.act, pitch=gl.getPitch(), bearing=gl.getBearing(), zoom=gl.getZoom();
-            if(act==="tilt-up")gl.easeTo({pitch:Math.min(85,pitch+10),duration:250});
-            if(act==="tilt-down")gl.easeTo({pitch:Math.max(0,pitch-10),duration:250});
-            if(act==="left")gl.easeTo({bearing:bearing-15,duration:250});
-            if(act==="right")gl.easeTo({bearing:bearing+15,duration:250});
-            if(act==="north")gl.easeTo({bearing:0,pitch:0,duration:350});
-            if(act==="zoom-in")gl.easeTo({zoom:Math.min(gl.getMaxZoom(),zoom+1),duration:250});
-            if(act==="zoom-out")gl.easeTo({zoom:Math.max(gl.getMinZoom(),zoom-1),duration:250});
+            const act=b.dataset.act, size= Math.max(100,Math.round(map.getSize().x*0.22));
+            if(act==="up")map.panBy([0,-size],{animate:true,duration:0.25});
+            if(act==="down")map.panBy([0,size],{animate:true,duration:0.25});
+            if(act==="left")map.panBy([-size,0],{animate:true,duration:0.25});
+            if(act==="right")map.panBy([size,0],{animate:true,duration:0.25});
+            if(act==="zoom-in")map.zoomIn(1,{animate:true});
+            if(act==="zoom-out")map.zoomOut(1,{animate:true});
           });
           return el;
         };
         nav.addTo(lidarRelief3D._map);
         lidarRelief3D._ir3dControl=nav;
       }
-    }catch(err){console.warn("Controles de navegación 3D:",err);}
+    }catch(err){console.warn("Controles de navegación del relieve 3D:",err);}
     gl.on("error",e=>console.warn("MapLibre 3D:",e&&e.error?e.error:e));
     // Tras mover la cámara, fuerza a MapLibre a recalcular el tamaño y repintar.
     // Es especialmente importante para el canvas WebGL embebido en el overlay Leaflet.
