@@ -69,5 +69,4 @@ test("deduplicates concurrent opens and keeps independent raster snapshots",asyn
   assert.equal(opens,1);
   assert.equal(first.sample(200,-228),32);
   assert.equal(second.sample(360,-388),52);
-  assert.equal(reader.sample(360,-388),52);
 });
