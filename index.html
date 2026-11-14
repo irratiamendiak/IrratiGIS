@@ -996,7 +996,7 @@ try{
           const el=L.DomUtil.create("div","leaflet-bar ir3d-nav-control");
           el.setAttribute("role","group");
           el.setAttribute("aria-label","Controles de navegación del relieve 3D");
-          el.innerHTML='<div class="ir3d-nav-grid"><button type="button" data-act="up" title="Desplazar al norte" aria-label="Desplazar al norte">▲</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar">＋</button><button type="button" data-act="left" title="Desplazar al oeste" aria-label="Desplazar al oeste">◀</button><button type="button" data-act="down" title="Desplazar al sur" aria-label="Desplazar al sur">▼</button><button type="button" data-act="right" title="Desplazar al este" aria-label="Desplazar al este">▶</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar">－</button></div><div class="ir3d-nav-caption">Desplazar · acercar · alejar · inclinar · girar</div>';
+          el.innerHTML='<div class="ir3d-nav-grid"><button type="button" data-act="up" title="Desplazar al norte" aria-label="Desplazar al norte">▲</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar">＋</button><button type="button" data-act="pitch-up" title="Inclinar la vista" aria-label="Inclinar la vista">⤒</button><button type="button" data-act="left" title="Desplazar al oeste" aria-label="Desplazar al oeste">◀</button><button type="button" data-act="down" title="Desplazar al sur" aria-label="Desplazar al sur">▼</button><button type="button" data-act="right" title="Desplazar al este" aria-label="Desplazar al este">▶</button><button type="button" data-act="rotate-left" title="Girar a la izquierda" aria-label="Girar a la izquierda">↶</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar">－</button><button type="button" data-act="pitch-down" title="Reducir inclinación" aria-label="Reducir inclinación">⤓</button><button type="button" data-act="rotate-right" title="Girar a la derecha" aria-label="Girar a la derecha">↷</button></div><div class="ir3d-nav-caption">Desplazar · zoom · inclinar · girar</div>';
           L.DomEvent.disableClickPropagation(el);
           L.DomEvent.disableScrollPropagation(el);
           el.addEventListener("click",ev=>{
@@ -1009,6 +1009,12 @@ try{
             if(act==="right")map.panBy([size,0],{animate:true,duration:0.25});
             if(act==="zoom-in")map.zoomIn(1,{animate:true});
             if(act==="zoom-out")map.zoomOut(1,{animate:true});
+            const gl=lidarRelief3D.getMaplibreMap();
+            if(gl&&["pitch-up","pitch-down","rotate-left","rotate-right"].includes(act)){
+              const pitch=Math.max(0,Math.min(75,gl.getPitch()+(act==="pitch-up"?10:act==="pitch-down"?-10:0)));
+              const bearing=gl.getBearing()+(act==="rotate-left"?-15:act==="rotate-right"?15:0);
+              gl.easeTo({pitch,bearing,duration:250});
+            }
           });
           return el;
         };
@@ -3471,38 +3477,51 @@ function fsFuelFromInventoryProperties(p){
    Carga el PMTiles del Inventario 2024 en un MapLibre auxiliar centrado en el incendio,
    de modo que las consultas no dependan de que la capa esté activada ni del encuadre del usuario. */
 const fsInventoryFuelCache=new Map();
+let fsInventoryMap=null,fsInventoryContainer=null,fsInventoryMapReady=null;
 async function fsCreateInventoryFuelSampler(ignition){
   const fallback=FS_FUELS[fsCfg.fuel], cache=fsInventoryFuelCache;
   const result={map:null,container:null,cache,fallback,stats:{classified:0,unknown:0,transitions:0}};
-  const div=document.createElement("div");
-  div.style.cssText="position:fixed;left:-2000px;top:0;width:1024px;height:1024px;opacity:.01;pointer-events:none;z-index:-1";
-  document.body.appendChild(div);
-  result.container=div;
-  const style={
-    version:8,
-    sources:{forestal:{type:"vector",url:"pmtiles://https://pub-997427d08539450780c6722ce7d23750.r2.dev/neatogeo_forestal_gipuzkoa%281%29.pmtiles"}},
-    layers:[{id:"forestal-poligonos",type:"fill",source:"forestal","source-layer":"forestal_gipuzkoa_2024",
-      paint:{"fill-color":"#75a982","fill-opacity":0.01,"fill-outline-color":"#39734b"}}]
-  };
-  const gl=new maplibregl.Map({container:div,style,center:[ignition.lng,ignition.lat],zoom:11,interactive:false,attributionControl:false,logoPosition:"bottom-right"});
-  result.map=gl;
-  try{
-    await new Promise((resolve,reject)=>{
+  if(!fsInventoryMap){
+    const div=document.createElement("div");
+    div.style.cssText="position:fixed;left:-2000px;top:0;width:1024px;height:1024px;opacity:.01;pointer-events:none;z-index:-1";
+    document.body.appendChild(div);
+    fsInventoryContainer=div;
+    const style={
+      version:8,
+      sources:{forestal:{type:"vector",url:"pmtiles://https://pub-997427d08539450780c6722ce7d23750.r2.dev/neatogeo_forestal_gipuzkoa%281%29.pmtiles"}},
+      layers:[{id:"forestal-poligonos",type:"fill",source:"forestal","source-layer":"forestal_gipuzkoa_2024",
+        paint:{"fill-color":"#75a982","fill-opacity":0.01,"fill-outline-color":"#39734b"}}]
+    };
+    fsInventoryMap=new maplibregl.Map({container:div,style,center:[ignition.lng,ignition.lat],zoom:11,interactive:false,attributionControl:false,logoPosition:"bottom-right"});
+    fsInventoryMapReady=new Promise((resolve,reject)=>{
       let done=false;
-      const finish=(err)=>{if(done)return;done=true;clearTimeout(timer);err?reject(err):resolve();};
+      const finish=err=>{if(done)return;done=true;clearTimeout(timer);err?reject(err):resolve();};
       const timer=setTimeout(()=>finish(new Error("Tiempo agotado cargando el Inventario Forestal 2024.")),20000);
-      gl.once("load",()=>{gl.resize();gl.once("idle",()=>finish());});
-      gl.on("error",e=>{if(!gl.isStyleLoaded()) finish(e.error||new Error("No se pudo cargar el inventario PMTiles."));});
+      fsInventoryMap.once("load",()=>{fsInventoryMap.resize();fsInventoryMap.once("idle",()=>finish());});
+      fsInventoryMap.on("error",e=>{if(!fsInventoryMap.isStyleLoaded())finish(e.error||new Error("No se pudo cargar el inventario PMTiles."));});
+    }).catch(err=>{
+      try{fsInventoryMap.remove();}catch(_){}
+      try{fsInventoryContainer.remove();}catch(_){}
+      fsInventoryMap=null;fsInventoryContainer=null;fsInventoryMapReady=null;
+      throw err;
     });
-    if(!gl.getLayer("forestal-poligonos")) throw new Error("No se ha cargado la capa vectorial del inventario.");
-  }catch(err){
-    try{gl.remove();}catch(_){}
-    try{div.remove();}catch(_){}
-    throw err;
   }
+  const gl=fsInventoryMap;
+  await fsInventoryMapReady;
+  if(!gl.getLayer("forestal-poligonos")) throw new Error("No se ha cargado la capa vectorial del inventario.");
+  const center=gl.getCenter();
+  if(Math.abs(center.lng-ignition.lng)>0.001||Math.abs(center.lat-ignition.lat)>0.001){
+    await new Promise(resolve=>{
+      let done=false;
+      const finish=()=>{if(done)return;done=true;clearTimeout(timer);resolve();};
+      const timer=setTimeout(finish,10000);
+      gl.once("idle",finish);
+      gl.setCenter([ignition.lng,ignition.lat]);
+    });
+  }
+  result.map=gl;result.container=fsInventoryContainer;
   const counted=new Set();
   const fuelAt=(lat,lon)=>{
-    // Cuadrícula de caché de ~80-100 m: evita repetir consultas en cada paso temporal.
     const key=lat.toFixed(3)+","+lon.toFixed(3);
     let value=cache.get(key);
     if(!value){
@@ -3511,19 +3530,15 @@ async function fsCreateInventoryFuelSampler(ignition){
       if(px.x>=0&&px.y>=0&&px.x<1024&&px.y<1024)
         features=gl.queryRenderedFeatures(px,{layers:["forestal-poligonos"]})||[];
       let mapped=null;
-      for(const f of features){
-        const k=fsFuelFromInventoryProperties(f.properties||{});
-        if(k){mapped=k;break;}
-      }
-      value=mapped?{key:mapped,fuel:FS_FUELS[mapped],source:"inventory"}:
-        {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback"};
+      for(const f of features){const k=fsFuelFromInventoryProperties(f.properties||{});if(k){mapped=k;break;}}
+      value=mapped?{key:mapped,source:"inventory"}:{key:null,source:"fallback"};
       cache.set(key,value);
     }
-    if(!counted.has(key)){
-      counted.add(key);
-      if(value.source==="inventory") result.stats.classified++; else result.stats.unknown++;
-    }
-    return value;
+    const selected=value.source==="inventory"?value.key:("respaldo:"+fsCfg.fuel);
+    if(!counted.has(key)){counted.add(key);if(value.source==="inventory")result.stats.classified++;else result.stats.unknown++;}
+    return value.source==="inventory"
+      ?{key:value.key,fuel:FS_FUELS[value.key],source:"inventory"}
+      :{key:selected,fuel:FS_FUELS[fsCfg.fuel],source:"fallback"};
   };
   result.fuelAt=fuelAt;
   return result;
