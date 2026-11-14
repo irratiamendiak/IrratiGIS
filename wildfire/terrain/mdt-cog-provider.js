@@ -92,9 +92,22 @@
         );
       }
       if(x1<=x0||y1<=y0) throw new Error("La ventana solicitada queda fuera de la cobertura del MDT.");
-      raster=await image.readRasters({window:[x0,y0,x1,y1],samples:[0],interleave:true});
-      windowInfo={x0,y0,x1,y1,width:x1-x0,height:y1-y0};
-      return {resolutionM:sourceResolution,width:windowInfo.width,height:windowInfo.height,cells:windowInfo.width*windowInfo.height};
+      const nextRaster=await image.readRasters({window:[x0,y0,x1,y1],samples:[0],interleave:true});
+      const nextWindow={x0,y0,x1,y1,width:x1-x0,height:y1-y0};
+      // Each load returns an immutable sampling snapshot. Concurrent users (3D tiles
+      // and fire simulation) no longer overwrite one another's active raster window.
+      raster=nextRaster;
+      windowInfo=nextWindow;
+      const sampleWindow=(x,y)=>{
+        const p=pixelOf(x,y), fx=p[0]-.5-nextWindow.x0, fy=p[1]-.5-nextWindow.y0;
+        const ix=Math.floor(fx),iy=Math.floor(fy),ax=fx-ix,ay=fy-iy;
+        if(ix<0||iy<0||ix+1>=nextWindow.width||iy+1>=nextWindow.height) return NaN;
+        const at=(col,row)=>{const v=Number(nextRaster[row*nextWindow.width+col]);return Number.isFinite(v)&&(noData===null||v!==noData)?v:NaN;};
+        const a=at(ix,iy),b=at(ix+1,iy),c=at(ix,iy+1),d=at(ix+1,iy+1);
+        if(![a,b,c,d].every(Number.isFinite)) return NaN;
+        return a*(1-ax)*(1-ay)+b*ax*(1-ay)+c*(1-ax)*ay+d*ax*ay;
+      };
+      return {resolutionM:sourceResolution,width:nextWindow.width,height:nextWindow.height,cells:nextWindow.width*nextWindow.height,sample:sampleWindow};
     }
     function sample(x,y) {
       if(!image||!raster||!windowInfo) return NaN;
