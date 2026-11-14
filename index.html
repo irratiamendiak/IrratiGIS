@@ -785,7 +785,7 @@ function ir3dRegisterProtocol(){
     const pending=ir3dTileQueue.then(task,task);
     ir3dTileQueue=pending.then(()=>undefined,()=>undefined);
     const entry={promise:null,settled:false};
-    entry.promise=pending.then(data=>{entry.settled=true;return data;},error=>{
+    entry.promise=pending.then(data=>{entry.settled=true;if(params.signal&&params.signal.aborted)ir3dTileCache.delete(key);return data;},error=>{
       entry.settled=true;ir3dTileCache.delete(key);throw error;
     });
     ir3dTileCache.set(key,entry);
@@ -3735,6 +3735,7 @@ map.on("overlayadd",e=>{
   if(e.layer!==fsGroup) return;
   fsSync3D();
   fsPanel.style.display="block";
+  if(fsFuelSource==="inventory") fsCreateInventoryFuelSampler(map.getCenter()).catch(err=>console.warn("Precarga del Inventario Forestal 2024:",err));
   if(fsIgn) fsRun(); else{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Sute-simulazioa: egin klik mapan hasiera-puntua markatzeko."; }
 });
 map.on("overlayremove",e=>{ if(e.layer===fsGroup){ fsPanel.style.display="none"; fsArmed=false; fsBusy++; map.getContainer().style.cursor=""; } });
