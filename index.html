@@ -1006,7 +1006,7 @@ try{
           const el=L.DomUtil.create("div","leaflet-bar ir3d-nav-control");
           el.setAttribute("role","group");
           el.setAttribute("aria-label","Controles de navegación del relieve 3D");
-          el.innerHTML='<div class="ir3d-nav-grid"><button type="button" data-act="up" title="Desplazar al norte" aria-label="Desplazar al norte">▲</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar">＋</button><button type="button" data-act="pitch-up" title="Inclinar la vista" aria-label="Inclinar la vista">⤒</button><button type="button" data-act="left" title="Desplazar al oeste" aria-label="Desplazar al oeste">◀</button><button type="button" data-act="down" title="Desplazar al sur" aria-label="Desplazar al sur">▼</button><button type="button" data-act="right" title="Desplazar al este" aria-label="Desplazar al este">▶</button><button type="button" data-act="rotate-left" title="Girar a la izquierda" aria-label="Girar a la izquierda">↶</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar">－</button><button type="button" data-act="pitch-down" title="Reducir inclinación" aria-label="Reducir inclinación">⤓</button><button type="button" data-act="rotate-right" title="Girar a la derecha" aria-label="Girar a la derecha">↷</button></div><div class="ir3d-nav-caption">Desplazar · zoom · inclinar · girar</div>';
+          el.innerHTML='<div class="ir3d-nav-grid"><button type="button" data-act="up" title="Desplazar al norte" aria-label="Desplazar al norte">▲</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar">＋</button><span aria-hidden="true"></span><button type="button" data-act="left" title="Desplazar al oeste" aria-label="Desplazar al oeste">◀</button><button type="button" data-act="down" title="Desplazar al sur" aria-label="Desplazar al sur">▼</button><button type="button" data-act="right" title="Desplazar al este" aria-label="Desplazar al este">▶</button><span aria-hidden="true"></span><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar">－</button><span aria-hidden="true"></span></div><div class="ir3d-nav-caption">Desplazar · zoom · cámara fija (adaptador actual)</div>';
           L.DomEvent.disableClickPropagation(el);
           L.DomEvent.disableScrollPropagation(el);
           el.addEventListener("click",ev=>{
@@ -1019,12 +1019,6 @@ try{
             if(act==="right")map.panBy([size,0],{animate:true,duration:0.25});
             if(act==="zoom-in")map.zoomIn(1,{animate:true});
             if(act==="zoom-out")map.zoomOut(1,{animate:true});
-            const gl=lidarRelief3D.getMaplibreMap();
-            if(gl&&["pitch-up","pitch-down","rotate-left","rotate-right"].includes(act)){
-              const pitch=Math.max(0,Math.min(75,gl.getPitch()+(act==="pitch-up"?10:act==="pitch-down"?-10:0)));
-              const bearing=gl.getBearing()+(act==="rotate-left"?-15:act==="rotate-right"?15:0);
-              gl.easeTo({pitch,bearing,duration:250});
-            }
           });
           return el;
         };
