@@ -54,3 +54,19 @@ test("explains network/Range failures when opening the COG",async()=>{
   const reader=sandbox.window.IrratiMdtProvider.create({url:"https://example.test/dem.tif"});
   await assert.rejects(reader.open(),/HTTP Range.*Failed to fetch.*CORS/);
 });
+
+test("deduplicates concurrent opens and keeps independent raster snapshots",async()=>{
+  let opens=0;
+  const sandbox={window:{GeoTIFF:{fromUrl:async()=>{opens++;await Promise.resolve();return {
+    getImageCount:async()=>1,getImage:async()=>fakeImage(16)
+  };}}}};
+  vm.runInNewContext(fs.readFileSync("wildfire/terrain/mdt-cog-provider.js","utf8"),sandbox);
+  const reader=sandbox.window.IrratiMdtProvider.create({url:"https://example.test/dem.tif",targetResolutionM:16});
+  const [first,second]=await Promise.all([
+    reader.loadBounds([160,-320,320,-160]),
+    reader.loadBounds([320,-480,480,-320])
+  ]);
+  assert.equal(opens,1);
+  assert.equal(first.sample(200,-228),32);
+  assert.equal(second.sample(360,-388),52);
+});

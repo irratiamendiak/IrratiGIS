@@ -7,7 +7,7 @@
   function create(options) {
     const url = options && options.url;
     const targetResolution = (options && options.targetResolutionM) || 14;
-    let image = null, raster = null, windowInfo = null, noData = null, sourceResolution = null;
+    let image = null, raster = null, windowInfo = null, noData = null, sourceResolution = null, opening = null;
     function pixelOf(x, y) {
       const origin = image.getOrigin(), resolution = image.getResolution();
       return [(x-origin[0])/resolution[0], (y-origin[1])/resolution[1]];
@@ -66,6 +66,11 @@
       noData = rawNoData === undefined ? null : Number(String(rawNoData).replace(/\\0/g, ""));
       return {width:image.getWidth(),height:image.getHeight(),resolutionM:sourceResolution,noData};
     }
+    async function ensureOpen() {
+      if (image) return;
+      if (!opening) opening = open();
+      try { await opening; } catch (error) { opening = null; throw error; }
+    }
     function windowForBounds(bounds25830) {
       const xs=[bounds25830[0],bounds25830[2]], ys=[bounds25830[1],bounds25830[3]];
       const corners=[[xs[0],ys[0]],[xs[0],ys[1]],[xs[1],ys[0]],[xs[1],ys[1]]].map(([x,y])=>pixelOf(x,y));
@@ -75,12 +80,12 @@
       return {x0,y0,x1,y1};
     }
     async function canLoadBounds(bounds25830) {
-      if (!image) await open();
+      await ensureOpen();
       const w=windowForBounds(bounds25830);
       return w.x0>=0&&w.y0>=0&&w.x1<=image.getWidth()&&w.y1<=image.getHeight()&&w.x1>w.x0&&w.y1>w.y0;
     }
     async function loadBounds(bounds25830) {
-      if (!image) await open();
+      await ensureOpen();
       const {x0,y0,x1,y1}=windowForBounds(bounds25830);
       // No recortar silenciosamente la ventana: el simulador necesita conocer
       // si el MDT cubre toda el área solicitada.
@@ -92,9 +97,22 @@
         );
       }
       if(x1<=x0||y1<=y0) throw new Error("La ventana solicitada queda fuera de la cobertura del MDT.");
-      raster=await image.readRasters({window:[x0,y0,x1,y1],samples:[0],interleave:true});
-      windowInfo={x0,y0,x1,y1,width:x1-x0,height:y1-y0};
-      return {resolutionM:sourceResolution,width:windowInfo.width,height:windowInfo.height,cells:windowInfo.width*windowInfo.height};
+      const nextRaster=await image.readRasters({window:[x0,y0,x1,y1],samples:[0],interleave:true});
+      const nextWindow={x0,y0,x1,y1,width:x1-x0,height:y1-y0};
+      // Each load returns an immutable sampling snapshot. Concurrent users (3D tiles
+      // and fire simulation) no longer overwrite one another's active raster window.
+      raster=nextRaster;
+      windowInfo=nextWindow;
+      const sampleWindow=(x,y)=>{
+        const p=pixelOf(x,y), fx=p[0]-.5-nextWindow.x0, fy=p[1]-.5-nextWindow.y0;
+        const ix=Math.floor(fx),iy=Math.floor(fy),ax=fx-ix,ay=fy-iy;
+        if(ix<0||iy<0||ix+1>=nextWindow.width||iy+1>=nextWindow.height) return NaN;
+        const at=(col,row)=>{const v=Number(nextRaster[row*nextWindow.width+col]);return Number.isFinite(v)&&(noData===null||v!==noData)?v:NaN;};
+        const a=at(ix,iy),b=at(ix+1,iy),c=at(ix,iy+1),d=at(ix+1,iy+1);
+        if(![a,b,c,d].every(Number.isFinite)) return NaN;
+        return a*(1-ax)*(1-ay)+b*ax*(1-ay)+c*(1-ax)*ay+d*ax*ay;
+      };
+      return {resolutionM:sourceResolution,width:nextWindow.width,height:nextWindow.height,cells:nextWindow.width*nextWindow.height,sample:sampleWindow};
     }
     function sample(x,y) {
       if(!image||!raster||!windowInfo) return NaN;

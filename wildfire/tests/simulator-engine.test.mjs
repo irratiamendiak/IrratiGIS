@@ -63,7 +63,8 @@ test("simulation is deterministic and receives terrain, weather and moisture as 
   };
   const first = engine.simulate(options);
   const second = engine.simulate(options);
-  assert.equal(first.length, 72);
+  // El motor usa un rayo cada 3 grados: 360 / 3 = 120 direcciones.
+  assert.equal(first.length, 120);
   assert.equal(first[0].pts.length, 4);
   assert.equal(JSON.stringify(first), JSON.stringify(second));
   assert.ok(terrainCalls > 0 && weatherCalls > 0 && moistureCalls > 0);
