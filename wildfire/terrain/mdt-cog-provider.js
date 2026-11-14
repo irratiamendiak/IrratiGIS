@@ -85,7 +85,7 @@
       return w.x0>=0&&w.y0>=0&&w.x1<=image.getWidth()&&w.y1<=image.getHeight()&&w.x1>w.x0&&w.y1>w.y0;
     }
     async function loadBounds(bounds25830) {
-      if (!image) await open();
+      await ensureOpen();
       const {x0,y0,x1,y1}=windowForBounds(bounds25830);
       // No recortar silenciosamente la ventana: el simulador necesita conocer
       // si el MDT cubre toda el área solicitada.
