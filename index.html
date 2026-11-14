@@ -753,7 +753,11 @@ function ir3dRegisterProtocol(){
     if(!match)return Promise.reject(new Error("Coordenadas de tesela DEM no válidas."));
     const z=Number(match[1]),x=Number(match[2]),y=Number(match[3]),key=z+"/"+x+"/"+y;
     const cached=ir3dTileCache.get(key);
-    if(cached)return cached.promise.then(data=>({data}));
+    // Una petición nueva para la misma tesela no debe heredar el resultado
+    // transparente de otra petición cuyo AbortSignal ya se canceló.
+    if(cached&&cached.signal&&cached.signal.aborted){
+      if(ir3dTileCache.get(key)===cached)ir3dTileCache.delete(key);
+    }else if(cached)return cached.promise.then(data=>({data}));
     const task=async()=>{
       if(params.signal&&params.signal.aborted) return await ir3dTransparentTile();
       const west=ir3dLon(x,z),east=ir3dLon(x+1,z),north=ir3dLat(y,z),south=ir3dLat(y+1,z);
@@ -784,9 +788,15 @@ function ir3dRegisterProtocol(){
     };
     const pending=ir3dTileQueue.then(task,task);
     ir3dTileQueue=pending.then(()=>undefined,()=>undefined);
-    const entry={promise:null,settled:false};
-    entry.promise=pending.then(data=>{entry.settled=true;if(params.signal&&params.signal.aborted)ir3dTileCache.delete(key);return data;},error=>{
-      entry.settled=true;ir3dTileCache.delete(key);throw error;
+    const entry={promise:null,settled:false,signal:params.signal||null};
+    entry.promise=pending.then(data=>{
+      entry.settled=true;
+      if(params.signal&&params.signal.aborted&&ir3dTileCache.get(key)===entry)ir3dTileCache.delete(key);
+      return data;
+    },error=>{
+      entry.settled=true;
+      if(ir3dTileCache.get(key)===entry)ir3dTileCache.delete(key);
+      throw error;
     });
     ir3dTileCache.set(key,entry);
     // No expulsar teselas aún en cola: al desplazarse rápidamente, borrarlas
