@@ -7,7 +7,7 @@
   function create(options) {
     const url = options && options.url;
     const targetResolution = (options && options.targetResolutionM) || 14;
-    let image = null, raster = null, windowInfo = null, noData = null, sourceResolution = null;
+    let image = null, raster = null, windowInfo = null, noData = null, sourceResolution = null, opening = null;
     function pixelOf(x, y) {
       const origin = image.getOrigin(), resolution = image.getResolution();
       return [(x-origin[0])/resolution[0], (y-origin[1])/resolution[1]];
@@ -66,6 +66,11 @@
       noData = rawNoData === undefined ? null : Number(String(rawNoData).replace(/\\0/g, ""));
       return {width:image.getWidth(),height:image.getHeight(),resolutionM:sourceResolution,noData};
     }
+    async function ensureOpen() {
+      if (image) return;
+      if (!opening) opening = open();
+      try { await opening; } catch (error) { opening = null; throw error; }
+    }
     function windowForBounds(bounds25830) {
       const xs=[bounds25830[0],bounds25830[2]], ys=[bounds25830[1],bounds25830[3]];
       const corners=[[xs[0],ys[0]],[xs[0],ys[1]],[xs[1],ys[0]],[xs[1],ys[1]]].map(([x,y])=>pixelOf(x,y));
@@ -75,7 +80,7 @@
       return {x0,y0,x1,y1};
     }
     async function canLoadBounds(bounds25830) {
-      if (!image) await open();
+      await ensureOpen();
       const w=windowForBounds(bounds25830);
       return w.x0>=0&&w.y0>=0&&w.x1<=image.getWidth()&&w.y1<=image.getHeight()&&w.x1>w.x0&&w.y1>w.y0;
     }
