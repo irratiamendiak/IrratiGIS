@@ -753,12 +753,17 @@ function ir3dRegisterProtocol(){
     const cached=ir3dTileCache.get(key);
     if(cached)return cached.promise.then(data=>({data}));
     const task=async()=>{
+      // MapLibre aborta las peticiones de teselas que dejan de ser visibles al desplazar.
+      // No gastar tiempo de la cola serial en teselas obsoletas: las nuevas tienen prioridad.
+      if(params.signal&&params.signal.aborted)return await ir3dTransparentTile();
       const west=ir3dLon(x,z),east=ir3dLon(x+1,z),north=ir3dLat(y,z),south=ir3dLat(y+1,z);
       const toUtm=(lon,lat)=>proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[lon,lat]);
       const corners=[[west,north],[east,north],[west,south],[east,south]].map(p=>toUtm(p[0],p[1]));
       const xs=corners.map(p=>p[0]),ys=corners.map(p=>p[1]);
       try{await provider.loadBounds([Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]);}
       catch(e){return await ir3dTransparentTile();}
+      // La vista puede haber cambiado mientras se leía el COG; descartar el resultado antiguo.
+      if(params.signal&&params.signal.aborted)return await ir3dTransparentTile();
       const canvas=document.createElement("canvas");canvas.width=canvas.height=256;
       const ctx=canvas.getContext("2d"),img=ctx.createImageData(256,256),d=img.data;
       for(let py=0;py<256;py++){
