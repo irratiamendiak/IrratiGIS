@@ -2316,11 +2316,20 @@ function fsSync3D(){
       if(!gl.hasImage("irrati-fire-emoji")){
         const fireCanvas=document.createElement("canvas");
         fireCanvas.width=fireCanvas.height=72;
-        const fireCtx=fireCanvas.getContext("2d");
-        fireCtx.textAlign="center";fireCtx.textBaseline="middle";
-        fireCtx.font='60px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-        fireCtx.fillText("🔥",36,38);
-        gl.addImage("irrati-fire-emoji",fireCanvas,{pixelRatio:2});
+        const fireCtx=fireCanvas.getContext("2d",{willReadFrequently:true});
+        if(fireCtx){
+          fireCtx.clearRect(0,0,fireCanvas.width,fireCanvas.height);
+          fireCtx.textAlign="center";fireCtx.textBaseline="middle";
+          fireCtx.font='60px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+          fireCtx.fillText("🔥",36,38);
+          // MapLibre addImage acepta ImageData, ImageBitmap o HTMLImageElement,
+          // pero no un HTMLCanvasElement en todas las versiones. Convertimos
+          // explícitamente el canvas a ImageData para evitar "mismatched image size".
+          const fireImage=fireCtx.getImageData(0,0,fireCanvas.width,fireCanvas.height);
+          gl.addImage("irrati-fire-emoji",fireImage,{pixelRatio:2});
+        }else{
+          console.warn("No se pudo crear el contexto 2D del icono de ignición; se omite el icono 3D.");
+        }
       }
       gl.addLayer({id:"irrati-fs-3d-ignition",type:"symbol",source:"irrati-fs-3d",filter:["==",["get","kind"],"ignition"],layout:{"icon-image":"irrati-fire-emoji","icon-size":0.8,"icon-allow-overlap":true,"icon-ignore-placement":true}});
     }else gl.getSource("irrati-fs-3d").setData(data);
