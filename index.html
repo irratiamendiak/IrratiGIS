@@ -2313,25 +2313,31 @@ function fsSync3D(){
       gl.addLayer({id:"irrati-fs-3d-line",type:"line",source:"irrati-fs-3d",filter:["==",["get","kind"],"perimeter"],paint:{"line-color":["get","color"],"line-width":["get","weight"],"line-dasharray":[2,2]}});
       // Dibujar el emoji como imagen propia: las fuentes glyph remotas de MapLibre
       // no siempre incluyen pictogramas emoji y por eso la ignición podía desaparecer.
-      if(!gl.hasImage("irrati-fire-emoji")){
-        const fireCanvas=document.createElement("canvas");
-        fireCanvas.width=fireCanvas.height=72;
-        const fireCtx=fireCanvas.getContext("2d",{willReadFrequently:true});
-        if(fireCtx){
+      let fireIconReady=gl.hasImage("irrati-fire-emoji");
+      if(!fireIconReady){
+        try{
+          const fireCanvas=document.createElement("canvas");
+          fireCanvas.width=fireCanvas.height=72;
+          const fireCtx=fireCanvas.getContext("2d",{willReadFrequently:true});
+          if(!fireCtx) throw new Error("No hay contexto Canvas 2D disponible.");
           fireCtx.clearRect(0,0,fireCanvas.width,fireCanvas.height);
           fireCtx.textAlign="center";fireCtx.textBaseline="middle";
           fireCtx.font='60px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
           fireCtx.fillText("🔥",36,38);
-          // MapLibre addImage acepta ImageData, ImageBitmap o HTMLImageElement,
-          // pero no un HTMLCanvasElement en todas las versiones. Convertimos
-          // explícitamente el canvas a ImageData para evitar "mismatched image size".
+          // MapLibre espera un tipo de imagen compatible (ImageData), no Canvas.
           const fireImage=fireCtx.getImageData(0,0,fireCanvas.width,fireCanvas.height);
           gl.addImage("irrati-fire-emoji",fireImage,{pixelRatio:2});
-        }else{
-          console.warn("No se pudo crear el contexto 2D del icono de ignición; se omite el icono 3D.");
+          fireIconReady=true;
+        }catch(iconErr){
+          // Un icono opcional nunca debe interrumpir el terreno ni los perímetros.
+          console.warn("No se pudo registrar el icono de ignición 3D; se usará un marcador circular.",iconErr);
         }
       }
-      gl.addLayer({id:"irrati-fs-3d-ignition",type:"symbol",source:"irrati-fs-3d",filter:["==",["get","kind"],"ignition"],layout:{"icon-image":"irrati-fire-emoji","icon-size":0.8,"icon-allow-overlap":true,"icon-ignore-placement":true}});
+      if(fireIconReady){
+        gl.addLayer({id:"irrati-fs-3d-ignition",type:"symbol",source:"irrati-fs-3d",filter:["==",["get","kind"],"ignition"],layout:{"icon-image":"irrati-fire-emoji","icon-size":0.8,"icon-allow-overlap":true,"icon-ignore-placement":true}});
+      }else{
+        gl.addLayer({id:"irrati-fs-3d-ignition-fallback",type:"circle",source:"irrati-fs-3d",filter:["==",["get","kind"],"ignition"],paint:{"circle-radius":7,"circle-color":"#ff6b00","circle-stroke-color":"#fff","circle-stroke-width":2}});
+      }
     }else gl.getSource("irrati-fs-3d").setData(data);
     fsGroup.eachLayer(layer=>{
       if(layer instanceof L.Polygon){
