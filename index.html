@@ -734,6 +734,7 @@ window.IrratiGISMap=map;
 /* LiDAR DEM: protocolo de teselas Terrarium para mapa base Leaflet. */
 let ir3dProtocolReady=false;
 let ir3dTileQueue=Promise.resolve();
+let ir3dMdtProvider=null;
 const ir3dTileCache=new Map();
 function ir3dLon(x,z){return x/Math.pow(2,z)*360-180;}
 function ir3dLat(y,z){const n=Math.PI-2*Math.PI*y/Math.pow(2,z);return Math.atan(Math.sinh(n))*180/Math.PI;}
@@ -745,7 +746,8 @@ function ir3dRegisterProtocol(){
   if(ir3dProtocolReady)return;
   if(!window.IrratiMdtProvider||!window.IRRATIGIS_MDT_COG_URL||typeof GeoTIFF==="undefined")
     throw new Error("No está disponible el COG LiDAR de Gipuzkoa para construir el relieve 3D.");
-  const provider=window.IrratiMdtProvider.create({url:window.IRRATIGIS_MDT_COG_URL,targetResolutionM:16});
+  ir3dMdtProvider=ir3dMdtProvider||window.IrratiMdtProvider.create({url:window.IRRATIGIS_MDT_COG_URL,targetResolutionM:Number(window.IRRATIGIS_MDT_TARGET_RESOLUTION_M)||16});
+  const provider=ir3dMdtProvider;
   maplibregl.addProtocol("irratiadem",params=>{
     const match=params.url.match(/^irratiadem:\/\/(\d+)\/(\d+)\/(\d+)$/);
     if(!match)return Promise.reject(new Error("Coordenadas de tesela DEM no válidas."));
@@ -753,19 +755,22 @@ function ir3dRegisterProtocol(){
     const cached=ir3dTileCache.get(key);
     if(cached)return cached.promise.then(data=>({data}));
     const task=async()=>{
+      if(params.signal&&params.signal.aborted) return await ir3dTransparentTile();
       const west=ir3dLon(x,z),east=ir3dLon(x+1,z),north=ir3dLat(y,z),south=ir3dLat(y+1,z);
       const toUtm=(lon,lat)=>proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[lon,lat]);
       const corners=[[west,north],[east,north],[west,south],[east,south]].map(p=>toUtm(p[0],p[1]));
       const xs=corners.map(p=>p[0]),ys=corners.map(p=>p[1]);
-      try{await provider.loadBounds([Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]);}
+      let windowSnapshot;
+      try{windowSnapshot=await provider.loadBounds([Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]);}
       catch(e){return await ir3dTransparentTile();}
+      if(params.signal&&params.signal.aborted) return await ir3dTransparentTile();
       const canvas=document.createElement("canvas");canvas.width=canvas.height=256;
       const ctx=canvas.getContext("2d"),img=ctx.createImageData(256,256),d=img.data;
       for(let py=0;py<256;py++){
         const lat=ir3dLat(y+(py+.5)/256,z);
         for(let px=0;px<256;px++){
           const lon=ir3dLon(x+(px+.5)/256,z),p=toUtm(lon,lat);
-          const h=provider.sample(p[0],p[1]),i=(py*256+px)*4;
+          const h=windowSnapshot.sample(p[0],p[1]),i=(py*256+px)*4;
           if(!Number.isFinite(h)){d[i+3]=0;continue;}
           const v=Math.max(0,Math.min(16777215,Math.round((h+32768)*256)));
           d[i]=(v>>16)&255;d[i+1]=(v>>8)&255;d[i+2]=v&255;d[i+3]=255;
@@ -991,7 +996,7 @@ try{
           const el=L.DomUtil.create("div","leaflet-bar ir3d-nav-control");
           el.setAttribute("role","group");
           el.setAttribute("aria-label","Controles de navegación del relieve 3D");
-          el.innerHTML='<div class="ir3d-nav-grid"><button type="button" data-act="up" title="Desplazar al norte" aria-label="Desplazar al norte">▲</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar">＋</button><button type="button" data-act="left" title="Desplazar al oeste" aria-label="Desplazar al oeste">◀</button><button type="button" data-act="down" title="Desplazar al sur" aria-label="Desplazar al sur">▼</button><button type="button" data-act="right" title="Desplazar al este" aria-label="Desplazar al este">▶</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar">－</button></div><div class="ir3d-nav-caption">Desplazar · acercar · alejar</div>';
+          el.innerHTML='<div class="ir3d-nav-grid"><button type="button" data-act="up" title="Desplazar al norte" aria-label="Desplazar al norte">▲</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar">＋</button><button type="button" data-act="left" title="Desplazar al oeste" aria-label="Desplazar al oeste">◀</button><button type="button" data-act="down" title="Desplazar al sur" aria-label="Desplazar al sur">▼</button><button type="button" data-act="right" title="Desplazar al este" aria-label="Desplazar al este">▶</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar">－</button></div><div class="ir3d-nav-caption">Desplazar · acercar · alejar · inclinar · girar</div>';
           L.DomEvent.disableClickPropagation(el);
           L.DomEvent.disableScrollPropagation(el);
           el.addEventListener("click",ev=>{
@@ -2368,8 +2373,9 @@ function fsMaxSpreadExtent(durationMinutes){
 function fsPix(lat,lon){ const n=256*Math.pow(2,FS_Z), s=Math.sin(lat*fsRad); return [(lon+180)/360*n,(0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n]; }
 const fsMdtUrl=String(window.IRRATIGIS_MDT_COG_URL||"").trim();
 const fsMdt=fsMdtUrl&&window.IrratiMdtProvider
-  ?window.IrratiMdtProvider.create({url:fsMdtUrl,targetResolutionM:Number(window.IRRATIGIS_MDT_TARGET_RESOLUTION_M)||14})
+  ?(ir3dMdtProvider||(ir3dMdtProvider=window.IrratiMdtProvider.create({url:fsMdtUrl,targetResolutionM:Number(window.IRRATIGIS_MDT_TARGET_RESOLUTION_M)||16})))
   :null;
+let fsMdtSample=null;
 let fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};
 function fsMdtLabel(){if(fsTerrainSource==="terrarium")return "Terrarium · fuente seleccionada";return fsMdtStatus.loaded?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m${Number.isFinite(fsMdtStatus.radiusM)?` · cobertura ${ (fsMdtStatus.radiusM/1000).toFixed(1)} km`:``}`:(fsMdtStatus.error?`MDT LiDAR · error: ${fsMdtStatus.error}`:"MDT LiDAR · pendiente de consultar");}
 function fsUpdateTerrainStatus(){const el=fsPanel&&fsPanel.querySelector(".fs-terrain-status");if(el)el.textContent="Lurzoruaren iturria: "+fsMdtLabel();}
@@ -2414,6 +2420,7 @@ async function fsLoadDem(lat,lng,maxExtent){
       }
       if(radius<250) throw new Error("La cobertura LiDAR alrededor de la ignición es demasiado pequeña para simular con fiabilidad (menos de 250 m).");
       const info=await fsMdt.loadBounds(fsDemBounds(lat,lng,radius));
+      fsMdtSample=info.sample;
       fsMdtStatus={active:true,loaded:true,resolutionM:info.resolutionM,error:null,radiusM:radius,limited:radius<maxExtent-1};
       fsUpdateTerrainStatus();
       return {radiusM:radius,maxExtentM:maxExtent,limited:radius<maxExtent-1};
@@ -2442,7 +2449,7 @@ function fsElev(lat,lon){
   if(fsTerrainSource==="mdt"){
     if(!fsMdt||!fsMdtStatus.loaded) return NaN;
     const xy=fsMdtXY(lat,lon); if(!xy) return NaN;
-    const z=fsMdt.sample(xy[0],xy[1]); if(Number.isFinite(z)) fsTerrainSamples.mdt++;
+    const z=(fsMdtSample||fsMdt.sample)(xy[0],xy[1]); if(Number.isFinite(z)) fsTerrainSamples.mdt++;
     return z;
   }
   const [px,py]=fsPix(lat,lon), tx=Math.floor(px/256), ty=Math.floor(py/256), t=fsDem.get(tx+"/"+ty);
