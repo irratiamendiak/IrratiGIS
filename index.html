@@ -755,15 +755,14 @@ function ir3dRegisterProtocol(){
     const cached=ir3dTileCache.get(key);
     if(cached){
       if(params.signal)cached.signals.add(params.signal);
-      return cached.promise.then(data=>({data:params.signal&&params.signal.aborted?cached.transparent:data}));
+      return cached.promise.then(async data=>({data:params.signal&&params.signal.aborted?await ir3dTransparentTile():data}));
     }
-    const entry={promise:null,settled:false,signals:new Set(params.signal?[params.signal]:[]),transparent:null};
+    const entry={promise:null,settled:false,signals:new Set(params.signal?[params.signal]:[]),discarded:false};
     const task=async()=>{
       // Solo se descarta el trabajo si todas las solicitudes que comparten
       // esta tesela han sido canceladas; una cancelación individual no debe
       // convertir en transparente la respuesta de otra vista todavía activa.
       const allAborted=()=>entry.signals.size>0&&Array.from(entry.signals).every(signal=>signal.aborted);
-      if(allAborted()) return await ir3dTransparentTile();
       const west=ir3dLon(x,z),east=ir3dLon(x+1,z),north=ir3dLat(y,z),south=ir3dLat(y+1,z);
       const toUtm=(lon,lat)=>proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[lon,lat]);
       const corners=[[west,north],[east,north],[west,south],[east,south]].map(p=>toUtm(p[0],p[1]));
@@ -771,7 +770,7 @@ function ir3dRegisterProtocol(){
       let windowSnapshot;
       try{windowSnapshot=await provider.loadBounds([Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]);}
       catch(e){return await ir3dTransparentTile();}
-      if(allAborted()) return await ir3dTransparentTile();
+      if(allAborted()){entry.discarded=true;return await ir3dTransparentTile();}
       const canvas=document.createElement("canvas");canvas.width=canvas.height=256;
       const ctx=canvas.getContext("2d"),img=ctx.createImageData(256,256),d=img.data;
       for(let py=0;py<256;py++){
@@ -792,10 +791,9 @@ function ir3dRegisterProtocol(){
     };
     const pending=ir3dTileQueue.then(task,task);
     ir3dTileQueue=pending.then(()=>undefined,()=>undefined);
-    entry.transparent=await ir3dTransparentTile();
     entry.promise=pending.then(data=>{
       entry.settled=true;
-      if(data===entry.transparent&&ir3dTileCache.get(key)===entry)ir3dTileCache.delete(key);
+      if(entry.discarded&&ir3dTileCache.get(key)===entry)ir3dTileCache.delete(key);
       return data;
     },error=>{
       entry.settled=true;
@@ -812,7 +810,7 @@ function ir3dRegisterProtocol(){
       }
       if(!removed)break;
     }
-    return entry.promise.then(data=>({data}));
+    return entry.promise.then(async data=>({data:params.signal&&params.signal.aborted?await ir3dTransparentTile():data}));
   });
   ir3dProtocolReady=true;
 }
