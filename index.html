@@ -752,7 +752,11 @@ function ir3dRegisterProtocol(){
     const match=params.url.match(/^irratiadem:\/\/(\d+)\/(\d+)\/(\d+)$/);
     if(!match)return Promise.reject(new Error("Coordenadas de tesela DEM no válidas."));
     const z=Number(match[1]),x=Number(match[2]),y=Number(match[3]),key=z+"/"+x+"/"+y;
-    const cached=ir3dTileCache.get(key);
+    let cached=ir3dTileCache.get(key);
+    if(cached&&cached.discarded){
+      if(ir3dTileCache.get(key)===cached)ir3dTileCache.delete(key);
+      cached=null;
+    }
     if(cached){
       if(params.signal)cached.signals.add(params.signal);
       return cached.promise.then(async data=>({data:params.signal&&params.signal.aborted?await ir3dTransparentTile():data}));
@@ -763,13 +767,14 @@ function ir3dRegisterProtocol(){
       // esta tesela han sido canceladas; una cancelación individual no debe
       // convertir en transparente la respuesta de otra vista todavía activa.
       const allAborted=()=>entry.signals.size>0&&Array.from(entry.signals).every(signal=>signal.aborted);
+      if(allAborted()){entry.discarded=true;return await ir3dTransparentTile();}
       const west=ir3dLon(x,z),east=ir3dLon(x+1,z),north=ir3dLat(y,z),south=ir3dLat(y+1,z);
       const toUtm=(lon,lat)=>proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[lon,lat]);
       const corners=[[west,north],[east,north],[west,south],[east,south]].map(p=>toUtm(p[0],p[1]));
       const xs=corners.map(p=>p[0]),ys=corners.map(p=>p[1]);
       let windowSnapshot;
       try{windowSnapshot=await provider.loadBounds([Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]);}
-      catch(e){return await ir3dTransparentTile();}
+      catch(e){entry.discarded=true;return await ir3dTransparentTile();}
       if(allAborted()){entry.discarded=true;return await ir3dTransparentTile();}
       const canvas=document.createElement("canvas");canvas.width=canvas.height=256;
       const ctx=canvas.getContext("2d"),img=ctx.createImageData(256,256),d=img.data;
