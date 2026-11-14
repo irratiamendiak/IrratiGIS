@@ -3822,8 +3822,6 @@ async function fsRun(){
   try{
     rays=fsSimulate(fu,met,null,inventorySampler&&inventorySampler.fuelAt);
     if(inventorySampler){
-      try{inventorySampler.map.remove();}catch(_){}
-      try{inventorySampler.container.remove();}catch(_){}
     }
     if(my!==fsBusy) return;
     for(const t of times){
@@ -3837,8 +3835,6 @@ async function fsRun(){
     }
   }catch(err){
     if(inventorySampler){
-      try{inventorySampler.map.remove();}catch(_){}
-      try{inventorySampler.container.remove();}catch(_){}
     }
     if(my===fsBusy) out.innerHTML=`<div style="color:#8b2f2f">⚠️ ${escapeHtml(err.message||String(err))}</div>`;
     return;
