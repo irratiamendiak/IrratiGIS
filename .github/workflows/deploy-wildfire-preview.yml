@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'feature/wildfire-mdt-provider'
+    if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["feature/wildfire-mdt-provider","opt/wildfire-weather-cache"]'), github.event.pull_request.head.ref)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR branch
