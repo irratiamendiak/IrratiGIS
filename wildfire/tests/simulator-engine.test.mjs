@@ -35,6 +35,16 @@ test("midflame wind adjustment varies with Anderson fuel-bed structure", () => {
   assert.notEqual(engine.windAdjustmentFactor({id:1,depth:1}), engine.windAdjustmentFactor({id:8,depth:1}));
 });
 
+test("site forest structure can override the default midflame wind adjustment", () => {
+  const fuelBed = {loads:[.034,0,0,0],sav:[3500,109,30,1500],depth:1,Mx:.12};
+  const open = engine.behavior(fuelBed,0,0,270,20,5);
+  const partiallySheltered = engine.behavior(fuelBed,0,0,270,20,5,{waf:.3,source:"gipuzkoa-partial-shelter"});
+  assert.equal(open.windAdjustment,0.4);
+  assert.equal(partiallySheltered.windAdjustment,0.3);
+  assert.ok(partiallySheltered.Rh < open.Rh);
+  assert.equal(engine.windAdjustmentFactor(fuelBed,{waf:0.05}),0.4);
+});
+
 test("wind and slope influence rate and the resulting head direction", () => {
   const flat = engine.behavior(fuel, 0, 0, 270, 0, 8);
   const sloped = engine.behavior(fuel, 0.5, 180, 270, 0, 8);
@@ -129,6 +139,15 @@ test("Anderson models 1, 4 and 13 run through Rothermel and produce different sp
 
 test("simulation rejects incomplete inputs instead of silently returning empty output", () => {
   assert.throws(() => engine.simulate({}), /Parámetros incompletos/);
+});
+
+test("Gipuzkoa forest structure and LiDAR layers feed the spatial wind adjustment", () => {
+  assert.match(html, /fsCreateForestWindSampler/);
+  assert.match(html, /MapServer\/259\/query/);
+  assert.match(html, /MapServer\/14\/query/);
+  assert.match(html, /fsMaxSpreadExtent\(FS_T\)/);
+  assert.match(html, /windAt, ignition:fsIgn/);
+  assert.match(html, /no se aplica abrigo completo/i);
 });
 
 test("the map page loads and delegates its spread calculations to the engine module", () => {
