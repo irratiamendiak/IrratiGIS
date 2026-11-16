@@ -23,7 +23,7 @@ test("selects overview closest to target and samples projected coordinates",asyn
   const reader=loadProvider([fakeImage(1),fakeImage(8),fakeImage(16),fakeImage(32)]).create({url:"https://example.test/dem.tif",targetResolutionM:14});
   const info=await reader.open();assert.equal(info.resolutionM,16);
   await reader.loadBounds([160,-320,320,-160]);
-  assert.equal(reader.sample(175,-187),32);
+  assert.equal(reader.sample(200,-228),32);
 });
 test("returns NaN outside loaded window",async()=>{
   const reader=loadProvider([fakeImage(14)]).create({url:"https://example.test/dem.tif"});
@@ -66,7 +66,7 @@ test("reuses an already loaded raster window for a contained request",async()=>{
   assert.equal(reads,1);
   assert.equal(first.reused,false);
   assert.equal(second.reused,true);
-  assert.equal(reader.sample(200,-228),32);
+  assert.equal(reader.sample(175,-187),32);
 });
 
 test("rejects malformed projected bounds instead of issuing a raster read",async()=>{
