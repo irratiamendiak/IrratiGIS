@@ -2274,13 +2274,36 @@ map.on("overlayremove",e=>{
    Lur-iturria hautagarria da (MDT LiDAR edo Terrarium); kalkulu numerikoa wildfire/simulator/engine.js moduluan dago. */
 const FS_Z=13, FS_H=18600, FS_DT=2, FS_T=120;
 const FS_FUELS={
-  belarra:{n:"Belardia / larrea (1-2 ereduak)",R0:1.7,sig:3500,beta:.002,waf:.45,w:.17,Mx:.15,Rmax:60,cls:[1,0,0],sun:1},
-  garoa:{n:"Atlantikoko sastrakadia: oteak, txilardiak (4-6 ereduak)",R0:.5,sig:1800,beta:.006,waf:.4,w:.9,Mx:.20,Rmax:40,cls:[.5,.3,.2],sun:.9},
-  iratzea:{n:"Iratze-saila (5-6 ereduak)",R0:.6,sig:2200,beta:.004,waf:.35,w:.5,Mx:.20,Rmax:30,cls:[.5,.3,.2],sun:.8},
-  pinudia:{n:"Pinudia / orratz-hostoen landaketa (9-10 ereduak)",R0:.25,sig:2000,beta:.02,waf:.2,w:.6,Mx:.25,Rmax:15,cls:[.45,.35,.2],sun:.5},
-  hostozabala:{n:"Pagadia / hariztia, hojarasca (modelos 8-9)",R0:.2,sig:2200,beta:.03,waf:.15,w:.35,Mx:.30,Rmax:8,cls:[.5,.3,.2],sun:.4}
+  // Anderson (1982) / Albini (1976). Loads: lb/ft²; SAVR: ft⁻¹; depth: ft.
+  // Fuel-bed constants shared by the original 13 models: particle density 32 lb/ft³,
+  // heat content 8,000 BTU/lb and mineral fractions are applied by the engine.
+  fm1:{id:1,n:"1 · Hierba corta",loads:[.034,0,0,0],sav:[3500,109,30,1500],depth:1,Mx:.12},
+  fm2:{id:2,n:"2 · Arbolado con hierba y sotobosque",loads:[.092,.046,.023,.023],sav:[3000,109,30,1500],depth:1,Mx:.15},
+  fm3:{id:3,n:"3 · Hierba alta",loads:[.138,0,0,0],sav:[1500,109,30,1500],depth:2.5,Mx:.25},
+  fm4:{id:4,n:"4 · Chaparral / matorral alto",loads:[.23,.184,.092,.23],sav:[2000,109,30,1500],depth:6,Mx:.20},
+  fm5:{id:5,n:"5 · Matorral bajo",loads:[.046,.023,0,.092],sav:[2000,109,30,1500],depth:2,Mx:.20},
+  fm6:{id:6,n:"6 · Matorral seco / restos de frondosas",loads:[.069,.115,.092,0],sav:[1750,109,30,1550],depth:2.5,Mx:.25},
+  fm7:{id:7,n:"7 · Matorral denso",loads:[.052,.086,.069,.017],sav:[1750,109,30,1550],depth:2.5,Mx:.40},
+  fm8:{id:8,n:"8 · Hojarasca de bosque cerrado",loads:[.069,.046,.115,0],sav:[2000,109,30,1500],depth:.2,Mx:.30},
+  fm9:{id:9,n:"9 · Hojarasca de frondosas",loads:[.134,.019,.007,0],sav:[2500,109,30,1500],depth:.2,Mx:.25},
+  fm10:{id:10,n:"10 · Hojarasca pesada y sotobosque",loads:[.138,.092,.23,.092],sav:[2000,109,30,1500],depth:1,Mx:.25},
+  fm11:{id:11,n:"11 · Restos de corta ligeros",loads:[.069,.207,.253,0],sav:[1500,109,30,1500],depth:1,Mx:.15},
+  fm12:{id:12,n:"12 · Restos de corta medios",loads:[.184,.644,.759,0],sav:[1500,109,30,1500],depth:2.3,Mx:.20},
+  fm13:{id:13,n:"13 · Restos de corta pesados",loads:[.322,1.058,1.288,0],sav:[1500,109,30,1500],depth:3,Mx:.25}
 };
-const fsCfg={fuel:"garoa",moistMode:"calc",startH:0,ffmc:85,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
+Object.values(FS_FUELS).forEach(f=>{
+  const total=f.loads.reduce((s,x)=>s+x,0);
+  f.w=total*4.882427636; // kg/m² for Byram intensity
+  f.cls=total?f.loads.slice(0,3).map(x=>x/total):[1,0,0];
+  f.sig=total?f.loads.reduce((s,x,i)=>s+x*f.sav[i],0)/total*3.28084:1500*3.28084;
+  f.beta=(total/f.depth)/32;
+  f.depthM=f.depth*.3048;
+  f.Rmax=100;
+  f.waf=.4;
+  f.sun=1;
+});
+
+const fsCfg={fuel:"fm5",moistMode:"calc",startH:0,ffmc:85,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
 let fsIgn=null, fsBusy=0, fsLast=null, fsFlat=false;
 let fsTerrainSource="mdt", fsTerrainSamples={mdt:0,terrarium:0};
 let fsFuelSource="";
