@@ -110,7 +110,8 @@
     const sigma = Number(fuel.sig)||1800;
     const C = 7.47 * Math.exp(-0.133 * Math.pow(sigma, 0.55));
     const B = 0.02526 * Math.pow(sigma, 0.54);
-    const phiW = windSpeed > 0.5 ? C * Math.pow(windSpeed * 54.68 * (Number(fuel.waf)||0.4), B) : 0;
+    const legacyWaf = windAdjustmentFactor(fuel);
+    const phiW = windSpeed > 0.5 ? C * Math.pow(windSpeed * 54.68 * legacyWaf, B) : 0;
     const slope = Math.min(Math.max(0,tangentSlope),1.73);
     const phiS = 5.275 * Math.pow(Number(fuel.beta)||0.01, -0.3) * slope*slope;
     const upslope = (aspect + 180) % 360, delta=(downwind-upslope)*RAD;
