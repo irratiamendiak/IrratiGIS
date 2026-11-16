@@ -59,6 +59,18 @@
     const rate = heatSink > 0 ? reaction * xi / heatSink : 0; // ft/min, no wind/slope
     return { rate, sigma, beta, rhoBulk, gamma, xi, reaction, heatSink, etaM };
   }
+  // Conservative Gipuzkoa structural screen; thresholds are provisional proxies,
+  // not a substitute for a direct canopy-cover measurement or local calibration.
+  function forestWindSite(metrics) {
+    const height=Number(metrics&&metrics.height);
+    const density=Number(metrics&&metrics.density);
+    const basalArea=Number(metrics&&metrics.basalArea);
+    const crownRatio=Number(metrics&&metrics.crownRatio);
+    if(height>=8&&density>=600&&basalArea>=15&&crownRatio>=0.30&&crownRatio<=1) {
+      return {waf:0.3,source:"gipuzkoa-partial-shelter",height,density,basalArea,crownRatio};
+    }
+    return null;
+  }
   function windAdjustmentFactor(fuel, windSite) {
     const siteWaf = Number(windSite && windSite.waf);
     if (Number.isFinite(siteWaf) && siteWaf >= 0.1 && siteWaf <= 0.5) return siteWaf;
@@ -198,5 +210,5 @@
     return Infinity;
   }
   function angleDifference(a,b){return ((a-b+540)%360)-180;}
-  root.IrratiWildfireEngine=Object.freeze({fuelMoisture,windAdjustmentFactor,behavior,ellipseRate,intensity,flameLength,simulate,arrivalTime});
+  root.IrratiWildfireEngine=Object.freeze({fuelMoisture,forestWindSite,windAdjustmentFactor,behavior,ellipseRate,intensity,flameLength,simulate,arrivalTime});
 })(window);
