@@ -25,94 +25,42 @@ function extractFunction(name) {
   throw new Error(`Unclosed function ${name}`);
 }
 
-const classifier = vm.runInNewContext([
-  extractFunction("fsFuelFromInventoryProperties"),
-  extractFunction("fsFuelFromCover")
-].join("\n") + "\n({ fsFuelFromInventoryProperties, fsFuelFromCover })");
+const classifier = vm.runInNewContext(
+  extractFunction("fsFuelFromInventoryProperties") + "\nfsFuelFromInventoryProperties"
+);
 
-test("inventory use classes map only the explicit herbaceous and shrub classes", () => {
-  const map = classifier.fsFuelFromInventoryProperties;
-  assert.equal(map({ TIPES_es: "Herbazal" }), "belarra");
-  assert.equal(map({ TIPES_es: "", TIPES: "Herbazal" }), "belarra");
-  assert.equal(map({ TIPES_es: "Prado" }), "belarra");
-  assert.equal(map({ TIPES_es: "Matorral" }), "garoa");
-  assert.equal(map({ TIPES_es: "Pastizal-matorral" }), null);
-  assert.equal(map({ TIPES_es: "Bosque" }), null);
-  assert.equal(map({ TIPES_es: "Bosque de plantación" }), null);
+test("explicit herbaceous and shrub inventory classes map to Anderson model proxies", () => {
+  assert.equal(classifier({ TIPES_es: "Herbazal" }), "fm1");
+  assert.equal(classifier({ TIPES_es: "Prado" }), "fm1");
+  assert.equal(classifier({ TIPES_es: "Matorral" }), "fm5");
+  assert.equal(classifier({ TIPES_es: "Helechal" }), "fm5");
+  assert.equal(classifier({ TIPES_es: "Pastizal-matorral" }), null);
 });
 
-test("known conifer and broadleaf species suggest only their broad cover group", () => {
-  const map = classifier.fsFuelFromInventoryProperties;
-  assert.equal(map({ SP1_es: "Pinus radiata" }), "pinudia");
-  assert.equal(map({ SP1_es: "Pseudotsuga menziesii" }), "pinudia");
-  assert.equal(map({ SP1_es: "Fagus sylvatica" }), "hostozabala");
-  assert.equal(map({ SP1_es: "Quercus robur" }), "hostozabala");
-  assert.equal(map({ SP1_es: "Pino radiata" }), "pinudia");
-  assert.equal(map({ SP1_es: "Haya" }), "hostozabala");
-  assert.equal(map({ SP1_es: "Eucalyptus globulus" }), null);
-  assert.equal(map({ SP1_es: "Especie no catalogada" }), null);
+test("single dominant tree species maps to a litter proxy, not a definitive fuel survey", () => {
+  assert.equal(classifier({ SP1_es: "Pinus radiata" }), "fm8");
+  assert.equal(classifier({ SP1_es: "Pseudotsuga menziesii" }), "fm8");
+  assert.equal(classifier({ SP1_es: "Fagus sylvatica" }), "fm9");
+  assert.equal(classifier({ SP1_es: "Quercus robur" }), "fm9");
+  assert.equal(classifier({ SP1_es: "Eucalyptus globulus" }), null);
+  assert.equal(classifier({ SP1_es: "Especie no catalogada" }), null);
 });
 
-test("mixed species and ambiguous or incomplete map features remain unresolved", () => {
-  const map = classifier.fsFuelFromInventoryProperties;
-  assert.equal(map({ SP1_es: "Pinus radiata", SP2_es: "Fagus sylvatica" }), null);
-  assert.equal(map({ TIPES_es: "Bosque", SP1_es: "" }), null);
-  assert.equal(map({ TIPES_es: "Pastizal-matorral", SP1_es: "Pinus radiata" }), null);
+test("mixed, ambiguous and incomplete inventory features remain unresolved", () => {
+  assert.equal(classifier({ SP1_es: "Pinus radiata", SP2_es: "Fagus sylvatica" }), null);
+  assert.equal(classifier({ TIPES_es: "Bosque", SP1_es: "" }), null);
+  assert.equal(classifier({ TIPES_es: "Pastizal-matorral", SP1_es: "Pinus radiata" }), null);
 });
 
-test("cover aggregation refuses disagreement and unresolved inventory features", () => {
-  const aggregate = classifier.fsFuelFromCover;
-  const feature = properties => ({ source: "inventory", properties });
-  assert.equal(aggregate([feature({ SP1_es: "Pinus radiata" }), feature({ SP1_es: "Pinus sylvestris" })]), "pinudia");
-  assert.equal(aggregate([feature({ SP1_es: "Pinus radiata" }), feature({ SP1_es: "Fagus sylvatica" })]), null);
-  assert.equal(aggregate([feature({ SP1_es: "Pinus radiata" }), feature({ TIPES_es: "Bosque" })]), null);
-  assert.equal(aggregate([]), null);
+test("the 13-model catalog includes every inventory proxy returned by the classifier", () => {
+  const models = new Set([...html.matchAll(/fm(1[0-3]|[1-9]):\{id:\1,n:/g)].map(m => `fm${m[1]}`));
+  for (const key of ["fm1", "fm5", "fm8", "fm9"]) assert.ok(models.has(key));
+  assert.equal(models.size, 13);
 });
 
-test("inventory classification is structurally separate from textual WMS fallback", () => {
-  const inventory = vm.runInNewContext(extractFunction("fsFuelFromInventoryProperties") + "\nfsFuelFromInventoryProperties");
-  const fallback = vm.runInNewContext(extractFunction("fsFuelFromText") + "\nfsFuelFromText");
-  assert.equal(fallback("bosque"), null);
-  assert.equal(fallback("arbolado"), null);
-  assert.equal(fallback("Eucalyptus globulus"), null);
-  assert.equal(inventory({ SP1_es: "Pinus radiata" }), "pinudia");
-  assert.equal(inventory({ SP1_es: "Eucalyptus globulus" }), null);
-});
-test("cover source selection matches the current inventory and WMS interface", () => {
-  const cover = extractFunction("fsCover");
-  assert.match(html, /class="[^"]*fs-fuel-source/);
-  assert.match(html, /fsFuelSource==="inventory"/);
-  assert.match(html, /fsFuelSource==="rothermel"/);
-  assert.match(cover, /source==="inventory"/);
-  assert.ok(cover.includes("fsCoverFromInventory(ll)"));
-  assert.match(html, /source:"inventory"/);
-  assert.match(cover, /source:"wms"/);
-  assert.match(html, /data-fs-inventory-enable/);
-  assert.ok(html.includes("map.addLayer(inventarioForestalLayer)"));
-});
-test("inventory spatial query reports why the local layer did not provide features", async () => {
-  const run = ({ enabled = true, gl = null } = {}) => {
-    const context = {
-      map: { hasLayer: () => enabled },
-      inventarioForestalLayer: { getMaplibreMap: () => gl },
-      escapeHtml: value => String(value)
-    };
-    const source = extractFunction("fsCoverFromInventory").replace(/^(?!async\s)function\s/, "async function ");
-    return vm.runInNewContext(source + "\nfsCoverFromInventory", context);
-  };
-  assert.equal((await run({ enabled: false })({ lat: 43, lng: -2 })).status, "layer-disabled");
-  assert.equal((await run()({ lat: 43, lng: -2 })).status, "maplibre-unavailable");
-  const base = {
-    isStyleLoaded: () => true,
-    getLayer: () => ({}),
-    project: () => ({ x: 10, y: 10 }),
-    queryRenderedFeatures: () => []
-  };
-  assert.equal((await run({ gl: { ...base, isStyleLoaded: () => false } })({ lat: 43, lng: -2 })).status, "style-not-loaded");
-  assert.equal((await run({ gl: { ...base, getLayer: () => null } })({ lat: 43, lng: -2 })).status, "style-layer-missing");
-  assert.equal((await run({ gl: base })({ lat: 43, lng: -2 })).status, "query-empty");
-  const found = await run({ gl: { ...base, queryRenderedFeatures: () => [{ properties: { TIPES_es: "Herbazal" } }] } })({ lat: 43, lng: -2 });
-  assert.equal(found.status, "features-found");
-  assert.equal(found.rows.length, 1);
-  assert.equal(found.rows[0].source, "inventory");
+test("the fuel source selector keeps inventory and manual Rothermel, with no WMS source", () => {
+  assert.match(html, /value="inventory"/);
+  assert.match(html, /value="rothermel"/);
+  assert.doesNotMatch(html, /value="wms"|FS_FOREST_WMS|Kanpoko baso-WMSa/);
+  assert.doesNotMatch(html, /function fsCover\(/);
 });

@@ -16,7 +16,7 @@ const fuel = {
 
 test("engine exports a small numerical API without browser UI dependencies", () => {
   assert.deepEqual(Object.keys(engine).sort(), [
-    "arrivalTime", "behavior", "ellipseRate", "flameLength", "fuelMoisture", "intensity", "simulate"
+    "arrivalTime", "behavior", "ellipseRate", "flameLength", "forestWindSite", "fuelMoisture", "intensity", "simulate", "windAdjustmentFactor"
   ]);
 });
 
@@ -26,6 +26,32 @@ test("fuel moisture response is bounded and reduces spread as moisture rises", (
   assert.ok(dry > wet);
   assert.equal(engine.fuelMoisture(fuel, 25), 0);
   assert.ok(Number.isFinite(dry) && dry >= 0);
+});
+
+test("midflame wind adjustment varies with Anderson fuel-bed structure", () => {
+  assert.equal(engine.windAdjustmentFactor({id:1,depth:1}), 0.4);
+  assert.equal(engine.windAdjustmentFactor({id:8,depth:1}), 0.3);
+  assert.equal(engine.windAdjustmentFactor({id:4,depth:3}), 0.5);
+  assert.notEqual(engine.windAdjustmentFactor({id:1,depth:1}), engine.windAdjustmentFactor({id:8,depth:1}));
+});
+
+test("Gipuzkoa forest structure only grants conservative partial shelter when all indicators agree", () => {
+  const sheltered = engine.forestWindSite({height:14,density:850,basalArea:22,crownRatio:.55});
+  assert.equal(sheltered.waf,.3);
+  assert.equal(sheltered.source,"gipuzkoa-partial-shelter");
+  assert.equal(engine.forestWindSite({height:14,density:300,basalArea:22,crownRatio:.55}),null);
+  assert.equal(engine.forestWindSite({height:14,density:850,basalArea:22,crownRatio:.15}),null);
+  assert.equal(engine.forestWindSite({height:6,density:850,basalArea:22,crownRatio:.55}),null);
+});
+
+test("site forest structure can override the default midflame wind adjustment", () => {
+  const fuelBed = {loads:[.034,0,0,0],sav:[3500,109,30,1500],depth:1,Mx:.12};
+  const open = engine.behavior(fuelBed,0,0,270,20,5);
+  const partiallySheltered = engine.behavior(fuelBed,0,0,270,20,5,{waf:.3,source:"gipuzkoa-partial-shelter"});
+  assert.equal(open.windAdjustment,0.4);
+  assert.equal(partiallySheltered.windAdjustment,0.3);
+  assert.ok(partiallySheltered.Rh < open.Rh);
+  assert.equal(engine.windAdjustmentFactor(fuelBed,{waf:0.05}),0.4);
 });
 
 test("wind and slope influence rate and the resulting head direction", () => {
@@ -99,8 +125,40 @@ test("arrival interpolation also supports a 5-degree ray grid", () => {
   assert.ok(Math.abs(engine.arrivalTime(rays, ignition, 43, lng) - 15) < 1e-6);
 });
 
+test("the Anderson 1982 catalog exposes all 13 models with fuel-bed parameters", () => {
+  const models = [...html.matchAll(/fm(1[0-3]|[1-9]):\{id:\1,n:/g)].map(m => Number(m[1]));
+  assert.deepEqual(models, Array.from({length:13}, (_,i)=>i+1));
+  assert.match(html, /loads:\[\.034,0,0,0\],sav:\[3500,109,30,1500\],depth:1,Mx:\.12/);
+  assert.match(html, /loads:\[\.322,1\.058,1\.288,0\],sav:\[1500,109,30,1500\],depth:3,Mx:\.25/);
+  assert.match(html, /f\.w=total\*4\.882427636/);
+  assert.match(html, /f\.cls=deadTotal\?/);
+});
+
+test("Anderson models 1, 4 and 13 run through Rothermel and produce different spread rates", () => {
+  const makeFuel = (loads, sav, depth, Mx) => ({loads,sav,depth,Mx});
+  const model1 = makeFuel([.034,0,0,0],[3500,109,30,1500],1,.12);
+  const model4 = makeFuel([.23,.184,.092,.23],[2000,109,30,1500],6,.20);
+  const model13 = makeFuel([.322,1.058,1.288,0],[1500,109,30,1500],3,.25);
+  const rates = [model1,model4,model13].map(f => engine.behavior(f,0,0,270,0,5));
+  assert.ok(rates.every(r => r.model === "rothermel" && Number.isFinite(r.Rh) && r.Rh > 0));
+  assert.equal(new Set(rates.map(r=>r.Rh.toFixed(5))).size, 3);
+  const wet = engine.behavior(model1,0,0,270,0,13);
+  assert.equal(wet.Rh, 0);
+});
+
 test("simulation rejects incomplete inputs instead of silently returning empty output", () => {
   assert.throws(() => engine.simulate({}), /Parámetros incompletos/);
+});
+
+test("Gipuzkoa forest structure and LiDAR layers feed the spatial wind adjustment", () => {
+  assert.match(html, /fsCreateForestWindSampler/);
+  assert.match(html, /fsQueryForestPolygons\(259/);
+  assert.match(html, /fsQueryForestPolygons\(14/);
+  assert.match(html, /fsMaxSpreadExtent\(FS_T\)/);
+  assert.match(html, /windAt, ignition:fsIgn/);
+  assert.match(html, /fsEngine\.forestWindSite/);
+  assert.match(html, /s==="3"\|\|/);
+  assert.match(html, /no se aplica abrigo completo/i);
 });
 
 test("the map page loads and delegates its spread calculations to the engine module", () => {
