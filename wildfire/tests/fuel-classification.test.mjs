@@ -14,7 +14,7 @@ function extractFunction(name) {
     const ch = html[i];
     if (quote) {
       if (escaped) escaped = false;
-      else if (ch === "\\\\") escaped = true;
+      else if (ch === "\\") escaped = true;
       else if (ch === quote) quote = null;
       continue;
     }
@@ -26,7 +26,7 @@ function extractFunction(name) {
 }
 
 const classifier = vm.runInNewContext(
-  extractFunction("fsFuelFromInventoryProperties") + "\\nfsFuelFromInventoryProperties"
+  extractFunction("fsFuelFromInventoryProperties") + "\nfsFuelFromInventoryProperties"
 );
 
 test("explicit herbaceous and shrub inventory classes map to Anderson model proxies", () => {
@@ -53,7 +53,7 @@ test("mixed, ambiguous and incomplete inventory features remain unresolved", () 
 });
 
 test("the 13-model catalog includes every inventory proxy returned by the classifier", () => {
-  const models = new Set([...html.matchAll(/fm(1[0-3]|[1-9]):\\{id:\\1,n:/g)].map(m => `fm${m[1]}`));
+  const models = new Set([...html.matchAll(/fm(1[0-3]|[1-9]):\{id:\1,n:/g)].map(m => `fm${m[1]}`));
   for (const key of ["fm1", "fm5", "fm8", "fm9"]) assert.ok(models.has(key));
   assert.equal(models.size, 13);
 });
@@ -62,5 +62,5 @@ test("the fuel source selector keeps inventory and manual Rothermel, with no WMS
   assert.match(html, /value="inventory"/);
   assert.match(html, /value="rothermel"/);
   assert.doesNotMatch(html, /value="wms"|FS_FOREST_WMS|Kanpoko baso-WMSa/);
-  assert.doesNotMatch(html, /function fsCover\\(/);
+  assert.doesNotMatch(html, /function fsCover\(/);
 });
