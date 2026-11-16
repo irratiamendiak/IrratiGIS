@@ -63,6 +63,23 @@
         !(stepMinutes > 0) || !(durationMinutes >= stepMinutes)) {
       throw new TypeError("Parámetros incompletos para ejecutar la simulación.");
     }
+
+    // Weather is a function of simulation time, not of the ray's position.
+    // Sample it once per substep and reuse it for every bearing. This avoids
+    // repeating identical interpolation work (and guarantees one shared
+    // weather snapshot for all rays at a given simulation instant).
+    const substeps = Math.max(1, Math.ceil(stepMinutes / Math.max(0.1, terrainStepMinutes)));
+    const dt = stepMinutes / substeps;
+    const weatherByStep = [];
+    for (let time = stepMinutes; time <= durationMinutes; time += stepMinutes) {
+      const samples = [];
+      for (let sub = 0; sub < substeps; sub++) {
+        const sampleTime = time - stepMinutes + (sub + 1) * dt;
+        samples.push(weatherAt(sampleTime));
+      }
+      weatherByStep.push(samples);
+    }
+
     const rays = [];
     const metersPerLongitudeDegree = 111320 * Math.cos(ignition.lat * RAD);
     for (let bearing = 0; bearing < 360; bearing += bearingStepDegrees) {
@@ -72,14 +89,14 @@
       let activeFuel = initialFuel.fuel || fuel;
       let activeFuelKey = initialFuel.key || "default";
       const points = [[0, 0, lat, lon, activeFuelKey]];
-      const substeps = Math.max(1, Math.ceil(stepMinutes / Math.max(0.1, terrainStepMinutes)));
-      const dt = stepMinutes / substeps;
       let limited = false;
-      for (let time = stepMinutes; time <= durationMinutes; time += stepMinutes) {
+      let stepIndex = 0;
+      for (let time = stepMinutes; time <= durationMinutes; time += stepMinutes, stepIndex++) {
         if (!limited) {
+          const weatherSamples = weatherByStep[stepIndex];
           for (let sub = 0; sub < substeps; sub++) {
             const sampleTime = time - stepMinutes + (sub + 1) * dt;
-            const weather = weatherAt(sampleTime);
+            const weather = weatherSamples[sub];
             const terrain = terrainAt(lat, lon);
             // null/undefined o una muestra incompleta significa que no hay
             // terreno válido: se detiene este rayo, sin extrapolar ni rellenar.
