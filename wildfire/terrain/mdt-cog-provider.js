@@ -63,10 +63,15 @@
           sourceResolution.toFixed(2) + " m (objetivo " + targetResolution + " m).");
       }
       const rawNoData = image.getFileDirectory()?.GDAL_NODATA;
-      noData = rawNoData === undefined ? null : Number(String(rawNoData).replace(/\\0/g, ""));
+      noData = rawNoData === undefined ? null : Number(String(rawNoData).replace(/\0/g, "").replace(/\\0/g, "").trim());
       return {width:image.getWidth(),height:image.getHeight(),resolutionM:sourceResolution,noData};
     }
     function windowForBounds(bounds25830) {
+      if (!Array.isArray(bounds25830) || bounds25830.length !== 4 ||
+          !bounds25830.every(Number.isFinite) ||
+          !(bounds25830[0] < bounds25830[2]) || !(bounds25830[1] < bounds25830[3])) {
+        throw new TypeError("Los límites del MDT deben ser [xmin, ymin, xmax, ymax] en EPSG:25830.");
+      }
       const xs=[bounds25830[0],bounds25830[2]], ys=[bounds25830[1],bounds25830[3]];
       const corners=[[xs[0],ys[0]],[xs[0],ys[1]],[xs[1],ys[0]],[xs[1],ys[1]]].map(([x,y])=>pixelOf(x,y));
       const pad=3, px=corners.map(p=>p[0]), py=corners.map(p=>p[1]);
@@ -92,9 +97,18 @@
         );
       }
       if(x1<=x0||y1<=y0) throw new Error("La ventana solicitada queda fuera de la cobertura del MDT.");
+      // Reuse the current raster when it already contains the requested window.
+      // This is common when the user reruns a scenario from the same ignition.
+      if (raster && windowInfo &&
+          x0>=windowInfo.x0 && y0>=windowInfo.y0 &&
+          x1<=windowInfo.x1 && y1<=windowInfo.y1) {
+        return {resolutionM:sourceResolution,width:windowInfo.width,height:windowInfo.height,
+          cells:windowInfo.width*windowInfo.height,reused:true};
+      }
       raster=await image.readRasters({window:[x0,y0,x1,y1],samples:[0],interleave:true});
       windowInfo={x0,y0,x1,y1,width:x1-x0,height:y1-y0};
-      return {resolutionM:sourceResolution,width:windowInfo.width,height:windowInfo.height,cells:windowInfo.width*windowInfo.height};
+      return {resolutionM:sourceResolution,width:windowInfo.width,height:windowInfo.height,
+        cells:windowInfo.width*windowInfo.height,reused:false};
     }
     function sample(x,y) {
       if(!image||!raster||!windowInfo) return NaN;

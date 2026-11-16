@@ -4,6 +4,8 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
+  push:
+    branches: [opt/wildfire-weather-cache]
   workflow_dispatch:
 
 permissions:
@@ -15,7 +17,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'feature/wildfire-mdt-provider'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(fromJSON('["feature/wildfire-mdt-provider","opt/wildfire-weather-cache"]'), github.event.pull_request.head.ref)) || (github.event_name == 'push' && github.ref_name == 'opt/wildfire-weather-cache')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR branch
@@ -67,7 +69,7 @@ jobs:
           grep -Fq 'wildfire/terrain-config.js' index.html
           grep -Fq 'wildfire/terrain/mdt-cog-provider.js' index.html
           grep -Fq 'window.IrratiMdtProvider.create' index.html
-          grep -Fq 'mdt-lidar-2017-1m.cog.tif' wildfire/terrain-config.js
+          grep -Fq 'mdt-lidar-2017-16m-deflate.cog.tif' wildfire/terrain-config.js
           node --check wildfire/terrain/mdt-cog-provider.js
           echo "MDT scripts, configuration and provider syntax are present."
 

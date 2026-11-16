@@ -2283,7 +2283,7 @@ const FS_FUELS={
 const fsCfg={fuel:"garoa",moistMode:"calc",startH:0,ffmc:85,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
 let fsIgn=null, fsBusy=0, fsLast=null, fsFlat=false;
 let fsTerrainSource="mdt", fsTerrainSamples={mdt:0,terrarium:0};
-let fsFuelSource="inventory";
+let fsFuelSource="";
 
 const fsGroup=L.layerGroup(), fsDem=new Map();
 /* Suteen simulazioaren geometria MapLibre 3D mapan marraztu, kamerarekin batera mugitzeko. */
@@ -2495,12 +2495,8 @@ function fsIn(p,poly){ let c=false; for(let i=0,j=poly.length-1;i<poly.length;j=
   if((a[0]>p[0])!==(b[0]>p[0])&&p[1]<(b[1]-a[1])*(p[0]-a[0])/(b[0]-a[0])+a[1]) c=!c; } return c; }
 const fsM=(a,b)=>[(b.lon-a.lon)*111320*Math.cos(a.lat*fsRad),(b.lat-a.lat)*111320];
 function fsBear(a,b){ const [e,n]=fsM(a,b); const x=Math.atan2(e,n)/fsRad; return x<0?x+360:x; }
-function fsArrival(rays,lat,lon){   // minutuak, edo Infinity
-  const o={lat:fsIgn.lat,lon:fsIgn.lng}, [e,n]=fsM(o,{lat,lon}), d=Math.hypot(e,n);
-  let bg=Math.atan2(e,n)/fsRad; if(bg<0) bg+=360;
-  const r=rays[Math.round(bg/5)%72].pts;
-  for(let i=1;i<r.length;i++) if(r[i][1]>=d){ const f=(d-r[i-1][1])/Math.max(1e-6,r[i][1]-r[i-1][1]); return r[i-1][0]+f*(r[i][0]-r[i-1][0]); }
-  return Infinity;
+function fsArrival(rays,lat,lon){
+  return fsEngine.arrivalTime(rays,fsIgn,lat,lon);
 }
 
 /* --- Campbell lerrokadura (haizea simulazioko berbera) eta ibilbide-profila --- */
@@ -3466,7 +3462,7 @@ function fsFuelFromInventoryProperties(p){
 const fsInventoryFuelCache=new Map();
 async function fsCreateInventoryFuelSampler(ignition){
   const fallback=FS_FUELS[fsCfg.fuel], cache=fsInventoryFuelCache;
-  const result={map:null,container:null,cache,fallback,stats:{classified:0,unknown:0,transitions:0}};
+  const result={map:null,container:null,cache,fallback,stats:{classified:0,unknown:0,noFeature:0,unmapped:0,outsideViewport:0,featureHits:0,transitions:0}};
   const div=document.createElement("div");
   div.style.cssText="position:fixed;left:-2000px;top:0;width:1024px;height:1024px;opacity:.01;pointer-events:none;z-index:-1";
   document.body.appendChild(div);
@@ -3500,21 +3496,30 @@ async function fsCreateInventoryFuelSampler(ignition){
     let value=cache.get(key);
     if(!value){
       const px=gl.project([lon,lat]);
-      let features=[];
-      if(px.x>=0&&px.y>=0&&px.x<1024&&px.y<1024)
-        features=gl.queryRenderedFeatures(px,{layers:["forestal-poligonos"]})||[];
+      let features=[],reason="no-feature";
+      const inside=px.x>=0&&px.y>=0&&px.x<1024&&px.y<1024;
+      if(inside) features=gl.queryRenderedFeatures(px,{layers:["forestal-poligonos"]})||[];
+      else reason="outside-viewport";
       let mapped=null;
       for(const f of features){
         const k=fsFuelFromInventoryProperties(f.properties||{});
         if(k){mapped=k;break;}
       }
-      value=mapped?{key:mapped,fuel:FS_FUELS[mapped],source:"inventory"}:
-        {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback"};
+      if(features.length&&!mapped) reason="unmapped";
+      value=mapped?{key:mapped,fuel:FS_FUELS[mapped],source:"inventory",featureCount:features.length}:
+        {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback",reason,featureCount:features.length};
       cache.set(key,value);
     }
     if(!counted.has(key)){
       counted.add(key);
-      if(value.source==="inventory") result.stats.classified++; else result.stats.unknown++;
+      if(value.source==="inventory") result.stats.classified++;
+      else {
+        result.stats.unknown++;
+        if(value.reason==="outside-viewport") result.stats.outsideViewport++;
+        else if(value.reason==="unmapped") result.stats.unmapped++;
+        else result.stats.noFeature++;
+      }
+      result.stats.featureHits+=value.featureCount||0;
     }
     return value;
   };
@@ -3574,7 +3579,7 @@ async function fsCoverFromInventory(ll){
   }
 }
 async function fsCover(ll,source=fsFuelSource){
-  if(source==="rothermel") return [];
+  if(!source||source==="rothermel") return [];
   if(source==="inventory"){
     const local=await fsCoverFromInventory(ll);
     return local.rows;
@@ -3664,8 +3669,8 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div style="display:flex;gap:6px;margin:6px 0"><button type="button" class="fs-set" style="${bs}background:#d9480f">📍 Markatu hasiera</button><button type="button" class="fs-clr" style="${bs}background:#65736b">Garbitu</button></div>`+
    `<div style="font-weight:800;margin:8px 0 5px;padding-bottom:4px;border-bottom:1px solid #dce5df">1. Sutea konfiguratzea</div>`+
    `<div style="${row}"><b>Hasiera-ordua</b> <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap"><input type="datetime-local" class="fs-start-at" value="${(()=>{const d=new Date(Date.now()-new Date().getTimezoneOffset()*60000);return d.toISOString().slice(0,16);})()}" style="max-width:190px"><button type="button" class="fs-now" style="${bs}background:#65736b">Orain</button></div><div style="font-size:10px;color:#65736b">Aukeratu hasiera-data eta -ordua (72 ordura arte) edo sakatu «Orain».</div></div>`+
-   `<div style="${row}"><b>Erregai mota</b> <select class="fs-fuel-source" style="max-width:100%"><option value="inventory"${fsFuelSource==="inventory"?" selected":""}>Baso-inbentarioa aktibatu (Gipuzkoa 2024)</option><option value="wms"${fsFuelSource==="wms"?" selected":""}>Kanpoko baso-WMSa</option><option value="rothermel"${fsFuelSource==="rothermel"?" selected":""}>Rothermel eredua (eskuzko erregaia)</option></select></div>`+
-   `<div class="fs-fuel-help" style="font-size:10px;color:#65736b;margin:-2px 0 5px">${fsFuelSource==="inventory"?"Baso-inbentarioa izango da hautatutako iturria; mapako geruza bereizita aktiba edo desaktiba daiteke.":fsFuelSource==="wms"?"Kanpoko baso-WMSa kontsultatuko da landaredi-estalduraren iturri gisa.":"Hautatu erregai bat Rothermel-en katalogo sinplifikatutik."}</div>`+
+   `<div style="${row}"><b>Erregai mota</b> <select class="fs-fuel-source" style="max-width:100%"><option value=""${!fsFuelSource?" selected":""}>Aukeratu erregaia</option><option value="inventory"${fsFuelSource==="inventory"?" selected":""}>Baso-inbentarioa (Gipuzkoa 2024)</option><option value="wms"${fsFuelSource==="wms"?" selected":""}>Kanpoko baso-WMSa</option><option value="rothermel"${fsFuelSource==="rothermel"?" selected":""}>Rothermel eredua (eskuzko erregaia)</option></select></div>`+
+   `<div class="fs-fuel-help" style="font-size:10px;color:#65736b;margin:-2px 0 5px">${!fsFuelSource?"Aukeratu erregai-iturri bat simulazioa kalkulatu aurretik.":fsFuelSource==="inventory"?"Baso-inbentarioa izango da erregai-iturri aldakorra; sailkatu gabeko eremuetan beheko erregai osagarria erabiliko da.":fsFuelSource==="wms"?"Kanpoko baso-WMSa kontsultatuko da landaredi-estalduraren iturri gisa.":"Hautatu erregai bat Rothermel-en katalogo sinplifikatutik."}</div>`+
    `<div class="fs-fuel-manual" style="${fsFuelSource==="rothermel"||fsFuelSource==="inventory"?"":"display:none;"}${row}"><b>${fsFuelSource==="inventory"?"Erregai osagarria (sailkatu gabeko eremuetarako)":"Ereduaren erregaia"}</b> <select class="fs-fuel" style="max-width:100%">${Object.keys(FS_FUELS).map(k=>`<option value="${k}"${k===fsCfg.fuel?" selected":""}>${FS_FUELS[k].n}</option>`).join("")}</select></div>`+
    `<div style="${row}"><b>Topografia</b> <select class="fs-terrain-source"><option value="mdt"${fsTerrainSource==="mdt"?" selected":""}>MDT LiDAR Gipuzkoa 2017 (16 m)</option><option value="terrarium"${fsTerrainSource==="terrarium"?" selected":""}>Terrarium (ordezkoa)</option></select></div>`+
    `<div class="fs-terrain-status" style="padding:6px 8px;margin:5px 0 8px;background:#edf4ef;border-left:3px solid #527c63;border-radius:5px;font-size:11px;font-weight:700">Lurzoruaren iturria: ${escapeHtml(fsMdtLabel())}</div>`+
@@ -3679,7 +3684,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
   fsPanelWindow(fsPanel);
   q(".fs-terrain-source").onchange=e=>{fsTerrainSource=e.target.value==="terrarium"?"terrarium":"mdt";fsTerrainSamples={mdt:0,terrarium:0};fsDem.clear();fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};fsUpdateTerrainStatus();rerun();};
-  q(".fs-fuel-source").onchange=e=>{ fsFuelSource=e.target.value; q(".fs-fuel-manual").style.display=(fsFuelSource==="rothermel"||fsFuelSource==="inventory")?"block":"none"; const fb=q(".fs-fuel-manual b"); if(fb)fb.textContent=fsFuelSource==="inventory"?"Erregai osagarria (sailkatu gabeko eremuetarako)":"Ereduaren erregaia"; q(".fs-fuel-help").textContent=fsFuelSource==="inventory"?"Baso-inbentarioa izango da erregai-iturri aldakorra; sailkatu gabeko eremuetan beheko erregai osagarria erabiliko da.":fsFuelSource==="wms"?"Kanpoko baso-WMSa kontsultatuko da landaredi-estalduraren iturri gisa.":"Hautatu erregai bat Rothermel-en katalogo sinplifikatutik."; if(fsFuelSource==="inventory"&&!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer); rerun(); };
+  q(".fs-fuel-source").onchange=e=>{ fsFuelSource=e.target.value; q(".fs-fuel-manual").style.display=(fsFuelSource==="rothermel"||fsFuelSource==="inventory")?"block":"none"; const fb=q(".fs-fuel-manual b"); if(fb)fb.textContent=fsFuelSource==="inventory"?"Erregai osagarria (sailkatu gabeko eremuetarako)":"Ereduaren erregaia"; q(".fs-fuel-help").textContent=!fsFuelSource?"Aukeratu erregai-iturri bat simulazioa kalkulatu aurretik.":fsFuelSource==="inventory"?"Baso-inbentarioa izango da erregai-iturri aldakorra; sailkatu gabeko eremuetan beheko erregai osagarria erabiliko da.":fsFuelSource==="wms"?"Kanpoko baso-WMSa kontsultatuko da landaredi-estalduraren iturri gisa.":"Hautatu erregai bat Rothermel-en katalogo sinplifikatutik."; if(fsFuelSource==="inventory"){ if(!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer); }else if(map.hasLayer(inventarioForestalLayer)){ map.removeLayer(inventarioForestalLayer); } rerun(); };
   q(".fs-fuel").onchange=e=>{ fsCfg.fuel=e.target.value; rerun(); };
   q(".fs-ws").onchange=e=>{ fsCfg.wind=e.target.value; q(".fs-man").style.display=fsCfg.wind==="man"?"block":"none"; rerun(); };
   q(".fs-dir").onchange=e=>{ fsCfg.dir=((Number(e.target.value)||0)%360+360)%360; rerun(); };
@@ -3843,7 +3848,7 @@ async function fsRun(){
     ? `<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px"><b>⚠️ Cobertura LiDAR limitada</b><br>Cobertura LiDAR disponible: hasta ${Math.round(demCoverage.radiusM/100)/10} km desde la ignición. Los sectores que alcanzan el límite de datos se han detenido en la última muestra válida; los demás continúan hasta completar los 120 minutos. No se ha extrapolado el relieve ni usado Terrarium.</div>`
     : "";
   const fuelNote=inventorySampler
-    ? `<div style="margin-top:9px;padding:8px;background:#f1f6f2;border-left:3px solid #527c63;border-radius:5px;font-size:11px"><b>Combustible variable · Inventario Forestal 2024</b><br>Clases identificadas en consultas espaciales: ${inventorySampler.stats.classified} · Muestras sin clase: ${inventorySampler.stats.unknown} (combustible de respaldo: ${escapeHtml(fu.n)}).<br>Transiciones detectadas: ${fuelCounts.size?[...fuelCounts.entries()].map(([k,n])=>escapeHtml(k.replace(/belarra|garoa|iratzea|pinudia|hostozabala/g,x=>fuelNames[x]||x))+" ("+n+")").join("; "):"ninguna en las rutas muestreadas"}.</div>`
+    ? `<div style="margin-top:9px;padding:8px;background:#f1f6f2;border-left:3px solid #527c63;border-radius:5px;font-size:11px"><b>Combustible variable · Inventario Forestal 2024</b><br>Clases identificadas en consultas espaciales: ${inventorySampler.stats.classified} · Muestras sin clase: ${inventorySampler.stats.unknown} (combustible de respaldo: ${escapeHtml(fu.n)}).<br>Diagnóstico de muestras sin clase: sin polígono ${inventorySampler.stats.noFeature} · polígono sin atributos reconocidos ${inventorySampler.stats.unmapped} · fuera del área consultable ${inventorySampler.stats.outsideViewport}. Polígonos encontrados en total: ${inventorySampler.stats.featureHits}.<br>Transiciones detectadas: \${fuelCounts.size?[...fuelCounts.entries()].map(([k,n])=>escapeHtml(k.replace(/belarra|garoa|iratzea|pinudia|hostozabala/g,x=>fuelNames[x]||x))+" ("+n+")").join("; "):"ninguna en las rutas muestreadas"}.</div>`
     : (inventoryNote?`<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px">${escapeHtml(inventoryNote)}</div>`:"");
   const wxTable=manual?"":`<div style="margin-top:10px;overflow-x:auto"><b style="font-size:12px">Meteorología prevista por horizonte</b><table style="width:100%;min-width:430px;border-collapse:collapse;font-size:11px;margin-top:5px"><thead><tr><th style="text-align:left;padding:4px;border-bottom:1px solid #d8dfda">Variable</th>${times.map(t=>`<th style="padding:4px;border-bottom:1px solid #d8dfda">${t} min</th>`).join("")}</tr></thead><tbody>${[
     ["Viento",w=>`${Math.round(w.spd)} km/h ${fsCard(w.dir)}`],
@@ -4393,6 +4398,7 @@ const B5mCatalogControl=L.Control.extend({
         <strong>B5M GERUZAK</strong>
         <button type="button" class="b5m-close">✕</button>
       </div>
+      <input id="b5mLayerSearch" type="search" placeholder="Bilatu B5M geruzak eta ortoargazkiak…" autocomplete="off" aria-label="B5M geruzak bilatu" style="width:100%;padding:9px;border:1px solid #cfdad3;border-radius:8px;font:inherit;margin:2px 0 8px">
       <details class="b5m-group" open>
         <summary>B5M · KARTOGRAFIA-GERUZAK · overlay</summary>
         <div id="b5mMapList" class="b5m-list"><div class="b5m-loading">Geruzak kargatzen…</div></div>
@@ -4407,6 +4413,8 @@ const B5mCatalogControl=L.Control.extend({
 
     toggle.addEventListener("click",()=>root.classList.toggle("open"));
     panel.querySelector(".b5m-close").addEventListener("click",()=>root.classList.remove("open"));
+    const search=panel.querySelector("#b5mLayerSearch");
+    search.addEventListener("input",()=>filterB5mCatalog(root,search.value));
 
     setTimeout(()=>loadB5mCatalog(root),0);
     return root;
@@ -4431,6 +4439,27 @@ map.on("click",()=>{
   const ctl=document.querySelector(".b5m-control");
   if(ctl)ctl.classList.remove("open");
 });
+
+function filterB5mCatalog(root,query){
+  const q=String(query||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("eu");
+  root.querySelectorAll(".b5m-list").forEach(list=>{
+    let visible=0;
+    list.querySelectorAll(".b5m-item").forEach(item=>{
+      const value=item.textContent.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("eu");
+      const show=!q||value.includes(q);
+      item.style.display=show?"":"none";
+      if(show)visible++;
+    });
+    let empty=list.querySelector(".b5m-no-results");
+    if(!empty){
+      empty=document.createElement("div");
+      empty.className="b5m-no-results b5m-loading";
+      empty.textContent="Ez da B5M geruzarik aurkitu.";
+      list.appendChild(empty);
+    }
+    empty.style.display=q&&visible===0?"":"none";
+  });
+}
 
 async function loadB5mCatalog(root){
   const mapList=root.querySelector("#b5mMapList");
@@ -4470,6 +4499,8 @@ async function loadB5mCatalog(root){
     console.error("B5M ortho WMS:",err);
     orthoList.innerHTML='<div class="b5m-error">Ezin izan dira ortoargazkiak irakurri. WMS/CORS konexioa egiaztatu.</div>';
   }
+  const search=root.querySelector("#b5mLayerSearch");
+  if(search)filterB5mCatalog(root,search.value);
 }
 
 L.control.scale({metric:true,imperial:false}).addTo(map);

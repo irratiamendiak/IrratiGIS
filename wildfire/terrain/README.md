@@ -44,3 +44,7 @@ The stack uses the conventional landscape encodings documented for FlamMap (incl
 - Fuel code taxonomy, vegetation classification, canopy data, fuel moisture and meteorological observations require domain review and provenance.
 - This tool does not create a validated LCP, does not launch FlamMap/FARSITE and does not predict fire spread.
 - No synthetic fuel or canopy data are generated for missing cells.
+
+## Browser COG provider
+
+`mdt-cog-provider.js` reads only the requested EPSG:25830 window from the configured COG. It selects the overview nearest the configured target resolution, validates projected bounds, rejects windows outside raster coverage, and reuses the in-memory raster when a later request is fully contained in the loaded window. Bilinear samples touching GDAL no-data cells are returned as missing; callers must not replace them with invented elevations or silently fall back to another terrain source.

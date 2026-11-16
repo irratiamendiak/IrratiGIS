@@ -16,7 +16,7 @@ const fuel = {
 
 test("engine exports a small numerical API without browser UI dependencies", () => {
   assert.deepEqual(Object.keys(engine).sort(), [
-    "behavior", "ellipseRate", "flameLength", "fuelMoisture", "intensity", "simulate"
+    "arrivalTime", "behavior", "ellipseRate", "flameLength", "fuelMoisture", "intensity", "simulate"
   ]);
 });
 
@@ -49,7 +49,7 @@ test("ellipse rate, Byram intensity and flame length remain finite and ordered",
   assert.ok(engine.flameLength(intensity) > 0);
 });
 
-test("simulation is deterministic and receives terrain, weather and moisture as injected inputs", () => {
+test("simulation is deterministic and caches time-only weather samples across bearings", () => {
   let terrainCalls = 0, weatherCalls = 0, moistureCalls = 0;
   const options = {
     fuel,
@@ -62,12 +62,41 @@ test("simulation is deterministic and receives terrain, weather and moisture as 
     moistureAt: () => { moistureCalls++; return 8; }
   };
   const first = engine.simulate(options);
+  assert.equal(weatherCalls, 6); // 3 time steps × 2 terrain substeps, not × 120 rays.
   const second = engine.simulate(options);
-  assert.equal(first.length, 72);
+  assert.equal(weatherCalls, 12);
+  assert.equal(first.length, 120);
   assert.equal(first[0].pts.length, 4);
   assert.equal(JSON.stringify(first), JSON.stringify(second));
-  assert.ok(terrainCalls > 0 && weatherCalls > 0 && moistureCalls > 0);
+  assert.ok(terrainCalls > 0 && moistureCalls > 0);
   assert.ok(first[0].pts[3][1] > 0);
+});
+
+
+test("arrival time interpolates between actual 3-degree rays, including north wraparound", () => {
+  const ignition = { lat: 43, lng: -2 };
+  const makeRay = (bg, distance) => ({
+    bg,
+    pts: [[0, 0, ignition.lat, ignition.lng], [10, distance, 0, 0], [20, distance * 2, 0, 0]]
+  });
+  const rays = [];
+  for (let bg = 0; bg < 360; bg += 3) rays.push(makeRay(bg, bg === 357 ? 100 : 200));
+  const atEast = engine.arrivalTime(rays, ignition, ignition.lat, ignition.lng + 100 / (111320 * Math.cos(43 * Math.PI / 180)));
+  assert.ok(Number.isFinite(atEast));
+  assert.ok(atEast >= 0 && atEast <= 10);
+  const atIgnition = engine.arrivalTime(rays, ignition, ignition.lat, ignition.lng);
+  assert.equal(atIgnition, 0);
+  assert.equal(engine.arrivalTime(rays, ignition, 43.1, -2), Infinity);
+});
+
+test("arrival interpolation also supports a 5-degree ray grid", () => {
+  const ignition = { lat: 43, lng: -2 };
+  const rays = [];
+  for (let bg = 0; bg < 360; bg += 5) {
+    rays.push({ bg, pts: [[0, 0], [10, 100], [20, 200]] });
+  }
+  const lng = ignition.lng + 150 / (111320 * Math.cos(43 * Math.PI / 180));
+  assert.ok(Math.abs(engine.arrivalTime(rays, ignition, 43, lng) - 15) < 1e-6);
 });
 
 test("simulation rejects incomplete inputs instead of silently returning empty output", () => {

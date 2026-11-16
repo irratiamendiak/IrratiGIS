@@ -63,6 +63,23 @@
         !(stepMinutes > 0) || !(durationMinutes >= stepMinutes)) {
       throw new TypeError("Parámetros incompletos para ejecutar la simulación.");
     }
+
+    // Weather is a function of simulation time, not of the ray's position.
+    // Sample it once per substep and reuse it for every bearing. This avoids
+    // repeating identical interpolation work (and guarantees one shared
+    // weather snapshot for all rays at a given simulation instant).
+    const substeps = Math.max(1, Math.ceil(stepMinutes / Math.max(0.1, terrainStepMinutes)));
+    const dt = stepMinutes / substeps;
+    const weatherByStep = [];
+    for (let time = stepMinutes; time <= durationMinutes; time += stepMinutes) {
+      const samples = [];
+      for (let sub = 0; sub < substeps; sub++) {
+        const sampleTime = time - stepMinutes + (sub + 1) * dt;
+        samples.push(weatherAt(sampleTime));
+      }
+      weatherByStep.push(samples);
+    }
+
     const rays = [];
     const metersPerLongitudeDegree = 111320 * Math.cos(ignition.lat * RAD);
     for (let bearing = 0; bearing < 360; bearing += bearingStepDegrees) {
@@ -72,14 +89,14 @@
       let activeFuel = initialFuel.fuel || fuel;
       let activeFuelKey = initialFuel.key || "default";
       const points = [[0, 0, lat, lon, activeFuelKey]];
-      const substeps = Math.max(1, Math.ceil(stepMinutes / Math.max(0.1, terrainStepMinutes)));
-      const dt = stepMinutes / substeps;
       let limited = false;
-      for (let time = stepMinutes; time <= durationMinutes; time += stepMinutes) {
+      let stepIndex = 0;
+      for (let time = stepMinutes; time <= durationMinutes; time += stepMinutes, stepIndex++) {
         if (!limited) {
+          const weatherSamples = weatherByStep[stepIndex];
           for (let sub = 0; sub < substeps; sub++) {
             const sampleTime = time - stepMinutes + (sub + 1) * dt;
-            const weather = weatherAt(sampleTime);
+            const weather = weatherSamples[sub];
             const terrain = terrainAt(lat, lon);
             // null/undefined o una muestra incompleta significa que no hay
             // terreno válido: se detiene este rayo, sin extrapolar ni rellenar.
@@ -108,11 +125,47 @@
     return rays;
   }
 
+
+  // Estimate arrival time by interpolating between the two rays that bracket
+  // the target bearing. This works for any ray spacing (3°, 5°, etc.) and
+  // avoids the discontinuities caused by selecting a hard-coded ray index.
+  function arrivalTime(rays, ignition, lat, lng) {
+    if (!Array.isArray(rays) || rays.length < 2 || !ignition ||
+        !Number.isFinite(lat) || !Number.isFinite(lng)) return Infinity;
+    const east = (lng - ignition.lng) * 111320 * Math.cos(ignition.lat * RAD);
+    const north = (lat - ignition.lat) * 111320;
+    const targetDistance = Math.hypot(east, north);
+    if (targetDistance <= 0.01) return 0;
+    const bearing = (Math.atan2(east, north) / RAD + 360) % 360;
+    const sorted = rays.slice().sort((a, b) => a.bg - b.bg);
+    let lower = sorted[sorted.length - 1], upper = sorted[0];
+    for (let i = 0; i < sorted.length; i++) {
+      if (sorted[i].bg <= bearing) lower = sorted[i];
+      if (sorted[i].bg >= bearing) { upper = sorted[i]; break; }
+    }
+    let lowerBearing = lower.bg, upperBearing = upper.bg;
+    let targetBearing = bearing;
+    if (upperBearing <= lowerBearing) upperBearing += 360;
+    if (targetBearing < lowerBearing) targetBearing += 360;
+    const span = upperBearing - lowerBearing;
+    const fraction = span > 0 ? (targetBearing - lowerBearing) / span : 0;
+    const count = Math.min(lower.pts.length, upper.pts.length);
+    for (let i = 1; i < count; i++) {
+      const d0 = lower.pts[i - 1][1] * (1 - fraction) + upper.pts[i - 1][1] * fraction;
+      const d1 = lower.pts[i][1] * (1 - fraction) + upper.pts[i][1] * fraction;
+      if (d1 >= targetDistance && d1 > d0) {
+        const f = Math.max(0, Math.min(1, (targetDistance - d0) / (d1 - d0)));
+        return lower.pts[i - 1][0] + f * (lower.pts[i][0] - lower.pts[i - 1][0]);
+      }
+    }
+    return Infinity;
+  }
+
   function angleDifference(a, b) {
     return ((a - b + 540) % 360) - 180;
   }
 
   root.IrratiWildfireEngine = Object.freeze({
-    fuelMoisture, behavior, ellipseRate, intensity, flameLength, simulate
+    fuelMoisture, behavior, ellipseRate, intensity, flameLength, simulate, arrivalTime
   });
 })(window);
