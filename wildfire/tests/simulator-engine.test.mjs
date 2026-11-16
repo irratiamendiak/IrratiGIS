@@ -16,7 +16,7 @@ const fuel = {
 
 test("engine exports a small numerical API without browser UI dependencies", () => {
   assert.deepEqual(Object.keys(engine).sort(), [
-    "arrivalTime", "behavior", "ellipseRate", "flameLength", "fuelMoisture", "intensity", "simulate"
+    "arrivalTime", "behavior", "ellipseRate", "flameLength", "fuelMoisture", "intensity", "simulate", "windAdjustmentFactor"
   ]);
 });
 
@@ -26,6 +26,13 @@ test("fuel moisture response is bounded and reduces spread as moisture rises", (
   assert.ok(dry > wet);
   assert.equal(engine.fuelMoisture(fuel, 25), 0);
   assert.ok(Number.isFinite(dry) && dry >= 0);
+});
+
+test("midflame wind adjustment varies with Anderson fuel-bed structure", () => {
+  assert.equal(engine.windAdjustmentFactor({id:1,depth:1}), 0.4);
+  assert.equal(engine.windAdjustmentFactor({id:8,depth:1}), 0.3);
+  assert.equal(engine.windAdjustmentFactor({id:4,depth:3}), 0.5);
+  assert.notEqual(engine.windAdjustmentFactor({id:1,depth:1}), engine.windAdjustmentFactor({id:8,depth:1}));
 });
 
 test("wind and slope influence rate and the resulting head direction", () => {
