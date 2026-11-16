@@ -75,3 +75,17 @@ test("rejects malformed projected bounds instead of issuing a raster read",async
   await assert.rejects(reader.loadBounds([10,20,10,40]),/xmin, ymin, xmax, ymax/);
   await assert.rejects(reader.canLoadBounds([0,1,2,NaN]),/xmin, ymin, xmax, ymax/);
 });
+
+test("treats GDAL no-data sentinel values as missing elevations",async()=>{
+  const image=fakeImage(14);
+  image.getFileDirectory=()=>({GDAL_NODATA:"-9999\\0"});
+  image.readRasters=async({window:w})=>{
+    const [x0,y0,x1,y1]=w,out=new Float32Array((x1-x0)*(y1-y0)).fill(100);
+    out[(20-y0)*(x1-x0)+(12-x0)]=-9999;
+    return out;
+  };
+  const reader=loadProvider([image]).create({url:"https://example.test/dem.tif"});
+  await reader.open();
+  await reader.loadBounds([160,-320,320,-160]);
+  assert.ok(Number.isNaN(reader.sample(200,-228)));
+});
