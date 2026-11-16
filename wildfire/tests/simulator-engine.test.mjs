@@ -16,7 +16,7 @@ const fuel = {
 
 test("engine exports a small numerical API without browser UI dependencies", () => {
   assert.deepEqual(Object.keys(engine).sort(), [
-    "arrivalTime", "behavior", "ellipseRate", "flameLength", "fuelMoisture", "intensity", "simulate", "windAdjustmentFactor"
+    "arrivalTime", "behavior", "ellipseRate", "flameLength", "forestWindSite", "fuelMoisture", "intensity", "simulate", "windAdjustmentFactor"
   ]);
 });
 
@@ -33,6 +33,15 @@ test("midflame wind adjustment varies with Anderson fuel-bed structure", () => {
   assert.equal(engine.windAdjustmentFactor({id:8,depth:1}), 0.3);
   assert.equal(engine.windAdjustmentFactor({id:4,depth:3}), 0.5);
   assert.notEqual(engine.windAdjustmentFactor({id:1,depth:1}), engine.windAdjustmentFactor({id:8,depth:1}));
+});
+
+test("Gipuzkoa forest structure only grants conservative partial shelter when all indicators agree", () => {
+  const sheltered = engine.forestWindSite({height:14,density:850,basalArea:22,crownRatio:.55});
+  assert.equal(sheltered.waf,.3);
+  assert.equal(sheltered.source,"gipuzkoa-partial-shelter");
+  assert.equal(engine.forestWindSite({height:14,density:300,basalArea:22,crownRatio:.55}),null);
+  assert.equal(engine.forestWindSite({height:14,density:850,basalArea:22,crownRatio:.15}),null);
+  assert.equal(engine.forestWindSite({height:6,density:850,basalArea:22,crownRatio:.55}),null);
 });
 
 test("site forest structure can override the default midflame wind adjustment", () => {
@@ -147,6 +156,7 @@ test("Gipuzkoa forest structure and LiDAR layers feed the spatial wind adjustmen
   assert.match(html, /MapServer\/14\/query/);
   assert.match(html, /fsMaxSpreadExtent\(FS_T\)/);
   assert.match(html, /windAt, ignition:fsIgn/);
+  assert.match(html, /fsEngine\.forestWindSite/);
   assert.match(html, /no se aplica abrigo completo/i);
 });
 
