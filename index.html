@@ -2291,6 +2291,18 @@ const FS_FUELS={
   fm12:{id:12,n:"12 · Restos de corta medios",loads:[.184,.644,.759,0],sav:[1500,109,30,1500],depth:2.3,Mx:.20},
   fm13:{id:13,n:"13 · Restos de corta pesados",loads:[.322,1.058,1.288,0],sav:[1500,109,30,1500],depth:3,Mx:.25}
 };
+Object.values(FS_FUELS).forEach(f=>{
+  const total=f.loads.reduce((s,x)=>s+x,0);
+  f.w=total*4.882427636; // kg/m² para la intensidad de Byram
+  const deadTotal=f.loads.slice(0,3).reduce((s,x)=>s+x,0);
+  f.cls=deadTotal?f.loads.slice(0,3).map(x=>x/deadTotal):[1,0,0];
+  f.sig=total?f.loads.reduce((s,x,i)=>s+x*f.sav[i],0)/total*3.28084:1500*3.28084;
+  f.beta=(total/f.depth)/32;
+  f.depthM=f.depth*.3048;
+  f.Rmax=100;
+  f.waf=.4;
+  f.sun=1;
+});
 const fsCfg={fuel:"fm5",moistMode:"calc",startH:0,ffmc:85,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
 let fsIgn=null, fsBusy=0, fsLast=null, fsFlat=false;
 let fsTerrainSource="mdt", fsTerrainSamples={mdt:0,terrarium:0};
