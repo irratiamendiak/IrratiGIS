@@ -181,5 +181,5 @@
     return Infinity;
   }
   function angleDifference(a,b){return ((a-b+540)%360)-180;}
-  root.IrratiWildfireEngine=Object.freeze({fuelMoisture,behavior,ellipseRate,intensity,flameLength,simulate,arrivalTime,rothermelBase});
+  root.IrratiWildfireEngine=Object.freeze({fuelMoisture,behavior,ellipseRate,intensity,flameLength,simulate,arrivalTime});
 })(window);
