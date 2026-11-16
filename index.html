@@ -3684,7 +3684,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
   fsPanelWindow(fsPanel);
   q(".fs-terrain-source").onchange=e=>{fsTerrainSource=e.target.value==="terrarium"?"terrarium":"mdt";fsTerrainSamples={mdt:0,terrarium:0};fsDem.clear();fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};fsUpdateTerrainStatus();rerun();};
-  q(".fs-fuel-source").onchange=e=>{ fsFuelSource=e.target.value; q(".fs-fuel-manual").style.display=(fsFuelSource==="rothermel"||fsFuelSource==="inventory")?"block":"none"; const fb=q(".fs-fuel-manual b"); if(fb)fb.textContent=fsFuelSource==="inventory"?"Erregai osagarria (sailkatu gabeko eremuetarako)":"Ereduaren erregaia"; q(".fs-fuel-help").textContent=fsFuelSource==="inventory"?"Baso-inbentarioa izango da erregai-iturri aldakorra; sailkatu gabeko eremuetan beheko erregai osagarria erabiliko da.":fsFuelSource==="wms"?"Kanpoko baso-WMSa kontsultatuko da landaredi-estalduraren iturri gisa.":"Hautatu erregai bat Rothermel-en katalogo sinplifikatutik."; if(fsFuelSource==="inventory"&&!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer); rerun(); };
+  q(".fs-fuel-source").onchange=e=>{ fsFuelSource=e.target.value; q(".fs-fuel-manual").style.display=(fsFuelSource==="rothermel"||fsFuelSource==="inventory")?"block":"none"; const fb=q(".fs-fuel-manual b"); if(fb)fb.textContent=fsFuelSource==="inventory"?"Erregai osagarria (sailkatu gabeko eremuetarako)":"Ereduaren erregaia"; q(".fs-fuel-help").textContent=fsFuelSource==="inventory"?"Baso-inbentarioa izango da erregai-iturri aldakorra; sailkatu gabeko eremuetan beheko erregai osagarria erabiliko da.":fsFuelSource==="wms"?"Kanpoko baso-WMSa kontsultatuko da landaredi-estalduraren iturri gisa.":"Hautatu erregai bat Rothermel-en katalogo sinplifikatutik."; if(fsFuelSource==="inventory"){ if(!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer); }else if(map.hasLayer(inventarioForestalLayer)){ map.removeLayer(inventarioForestalLayer); } rerun(); };
   q(".fs-fuel").onchange=e=>{ fsCfg.fuel=e.target.value; rerun(); };
   q(".fs-ws").onchange=e=>{ fsCfg.wind=e.target.value; q(".fs-man").style.display=fsCfg.wind==="man"?"block":"none"; rerun(); };
   q(".fs-dir").onchange=e=>{ fsCfg.dir=((Number(e.target.value)||0)%360+360)%360; rerun(); };
@@ -3717,6 +3717,8 @@ layersControl.addOverlay(fsGroup,"🔥 Suteen bilakaera (simulazioa)");
 map.on("overlayadd",e=>{
   if(e.layer!==fsGroup) return;
   fsSync3D();
+  /* Inventario forestal activo por defecto al abrir Suteen Bilakaera. */
+  if(fsFuelSource==="inventory"&&!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer);
   fsPanel.style.display="block";
   if(fsIgn) fsRun(); else{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Sute-simulazioa: egin klik mapan hasiera-puntua markatzeko."; }
 });
