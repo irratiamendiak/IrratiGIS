@@ -4441,11 +4441,11 @@ map.on("click",()=>{
 });
 
 function filterB5mCatalog(root,query){
-  const q=String(query||"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLocaleLowerCase("eu");
+  const q=String(query||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("eu");
   root.querySelectorAll(".b5m-list").forEach(list=>{
     let visible=0;
     list.querySelectorAll(".b5m-item").forEach(item=>{
-      const value=item.textContent.normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLocaleLowerCase("eu");
+      const value=item.textContent.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("eu");
       const show=!q||value.includes(q);
       item.style.display=show?"":"none";
       if(show)visible++;
