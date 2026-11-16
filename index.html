@@ -2495,12 +2495,8 @@ function fsIn(p,poly){ let c=false; for(let i=0,j=poly.length-1;i<poly.length;j=
   if((a[0]>p[0])!==(b[0]>p[0])&&p[1]<(b[1]-a[1])*(p[0]-a[0])/(b[0]-a[0])+a[1]) c=!c; } return c; }
 const fsM=(a,b)=>[(b.lon-a.lon)*111320*Math.cos(a.lat*fsRad),(b.lat-a.lat)*111320];
 function fsBear(a,b){ const [e,n]=fsM(a,b); const x=Math.atan2(e,n)/fsRad; return x<0?x+360:x; }
-function fsArrival(rays,lat,lon){   // minutuak, edo Infinity
-  const o={lat:fsIgn.lat,lon:fsIgn.lng}, [e,n]=fsM(o,{lat,lon}), d=Math.hypot(e,n);
-  let bg=Math.atan2(e,n)/fsRad; if(bg<0) bg+=360;
-  const r=rays[Math.round(bg/5)%72].pts;
-  for(let i=1;i<r.length;i++) if(r[i][1]>=d){ const f=(d-r[i-1][1])/Math.max(1e-6,r[i][1]-r[i-1][1]); return r[i-1][0]+f*(r[i][0]-r[i-1][0]); }
-  return Infinity;
+function fsArrival(rays,lat,lon){
+  return fsEngine.arrivalTime(rays,fsIgn,lat,lon);
 }
 
 /* --- Campbell lerrokadura (haizea simulazioko berbera) eta ibilbide-profila --- */
