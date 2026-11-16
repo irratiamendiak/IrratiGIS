@@ -101,10 +101,10 @@ test("arrival interpolation also supports a 5-degree ray grid", () => {
 
 
 test("the Anderson 1982 catalog exposes all 13 models with fuel-bed parameters", () => {
-  const models = [...html.matchAll(/fm(1[0-3]|[1-9]):\\{id:\\1,n:/g)].map(m => Number(m[1]));
+  const models = [...html.matchAll(/fm(1[0-3]|[1-9]):\{id:\1,n:/g)].map(m => Number(m[1]));
   assert.deepEqual(models, Array.from({length:13}, (_,i)=>i+1));
-  assert.match(html, /loads:\\[\\.034,0,0,0\\],sav:\\[3500,109,30,1500\\],depth:1,Mx:\\.12/);
-  assert.match(html, /loads:\\[\\.322,1\\.058,1\\.288,0\\],sav:\\[1500,109,30,1500\\],depth:3,Mx:\\.25/);
+  assert.match(html, /loads:\[\.034,0,0,0\],sav:\[3500,109,30,1500\],depth:1,Mx:\.12/);
+  assert.match(html, /loads:\[\.322,1\.058,1\.288,0\],sav:\[1500,109,30,1500\],depth:3,Mx:\.25/);
 });
 
 test("Anderson models 1, 4 and 13 run through Rothermel and produce different spread rates", () => {
@@ -118,7 +118,8 @@ test("Anderson models 1, 4 and 13 run through Rothermel and produce different sp
   const wet = engine.behavior(model1,0,0,270,0,13);
   assert.equal(wet.Rh, 0);
 });
-\ntest("simulation rejects incomplete inputs instead of silently returning empty output", () => {
+
+test("simulation rejects incomplete inputs instead of silently returning empty output", () => {
   assert.throws(() => engine.simulate({}), /Parámetros incompletos/);
 });
 
