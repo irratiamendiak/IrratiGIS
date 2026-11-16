@@ -3536,6 +3536,119 @@ async function fsCreateInventoryFuelSampler(ignition){
   result.fuelAt=fuelAt;
   return result;
 }
+/* --- Viento a altura de llama: estructura forestal oficial de Gipuzkoa --- */
+/* Fotogrametría forestal 2024: altura dominante, densidad y área basimétrica.
+   LiDAR 2012: altura a la primera rama. No existe aquí una medición directa de
+   cobertura de copas; por eso solo identificamos abrigo PARCIAL conservador (WAF 0,3).
+   Nunca inferimos abrigo completo (0,1–0,2) a partir de densidad de pies. */
+async function fsQueryForestPolygons(layerId, ignition, radiusM, outFields){
+  const dLat=radiusM/111320, dLon=radiusM/(111320*Math.max(.2,Math.cos(ignition.lat*fsRad)));
+  const geometry={xmin:ignition.lng-dLon,ymin:ignition.lat-dLat,
+    xmax:ignition.lng+dLon,ymax:ignition.lat+dLat,spatialReference:{wkid:4326}};
+  const base="https://www.geo.euskadi.eus/geoeuskadi/rest/services/W26GIS/AGRICULTURA_CAS/MapServer/"+layerId+"/query";
+  const features=[]; let offset=0, pages=0;
+  while(pages<8){
+    const params=new URLSearchParams({
+      where:"1=1",geometry:JSON.stringify(geometry),geometryType:"esriGeometryEnvelope",
+      inSR:"4326",spatialRel:"esriSpatialRelIntersects",outFields,
+      returnGeometry:"true",outSR:"4326",geometryPrecision:"5",
+      maxAllowableOffset:"0.00005",resultRecordCount:"1000",
+      resultOffset:String(offset),f:"json"
+    });
+    const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),25000);
+    let response,json;
+    try{
+      response=await fetch(base+"?"+params.toString(),{mode:"cors",credentials:"omit",signal:controller.signal});
+      if(!response.ok) throw new Error("GeoEuskadi forest layer "+layerId+" HTTP "+response.status);
+      json=await response.json();
+    }finally{clearTimeout(timer);}
+    if(json.error) throw new Error(json.error.message||("GeoEuskadi forest layer "+layerId+" error"));
+    const batch=Array.isArray(json.features)?json.features:[];
+    features.push(...batch); pages++;
+    if(!json.exceededTransferLimit||!batch.length) return features;
+    offset+=batch.length;
+  }
+  throw new Error("La consulta forestal supera el límite de páginas permitido.");
+}
+function fsForestPolygonIndex(features){
+  const cell=.02, buckets=new Map(), polygons=[];
+  for(const feature of features||[]){
+    const rings=feature.geometry&&feature.geometry.rings;
+    if(!Array.isArray(rings)||!rings.length) continue;
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    for(const ring of rings) for(const p of ring){
+      minX=Math.min(minX,p[0]);maxX=Math.max(maxX,p[0]);
+      minY=Math.min(minY,p[1]);maxY=Math.max(maxY,p[1]);
+    }
+    if(!Number.isFinite(minX)) continue;
+    const item={rings,minX,minY,maxX,maxY,attributes:feature.attributes||{}};
+    const index=polygons.length;polygons.push(item);
+    for(let x=Math.floor(minX/cell);x<=Math.floor(maxX/cell);x++)
+      for(let y=Math.floor(minY/cell);y<=Math.floor(maxY/cell);y++){
+        const key=x+","+y;let list=buckets.get(key);
+        if(!list){list=[];buckets.set(key,list);}list.push(index);
+      }
+  }
+  return {polygons,buckets,cell};
+}
+function fsForestContains(rings,lon,lat){
+  let inside=false;
+  for(const ring of rings){
+    for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+      const a=ring[i],b=ring[j];
+      if((a[1]>lat)!==(b[1]>lat)&&lon<(b[0]-a[0])*(lat-a[1])/(b[1]-a[1])+a[0]) inside=!inside;
+    }
+  }
+  return inside;
+}
+function fsForestFind(index,lat,lon){
+  const candidates=index.buckets.get(Math.floor(lon/index.cell)+","+Math.floor(lat/index.cell))||[];
+  for(const id of candidates){
+    const p=index.polygons[id];
+    if(lon<p.minX||lon>p.maxX||lat<p.minY||lat>p.maxY) continue;
+    if(fsForestContains(p.rings,lon,lat)) return p.attributes;
+  }
+  return null;
+}
+function fsFirstBranchHeight(value){
+  const s=String(value||"").trim().replace(",",".");
+  if(/^<\s*3/.test(s)) return 1.5;
+  if(/^3\s*[-–]\s*6/.test(s)) return 4.5;
+  if(/^6\s*[-–]\s*9/.test(s)) return 7.5;
+  if(/^9\s*[-–]\s*12/.test(s)) return 10.5;
+  if(/^>\s*12/.test(s)) return 13.5;
+  return NaN;
+}
+async function fsCreateForestWindSampler(ignition,radiusM){
+  const [forestFeatures,lidarFeatures]=await Promise.all([
+    fsQueryForestPolygons(259,ignition,radiusM,"HD,NREG,ABREG"),
+    fsQueryForestPolygons(14,ignition,radiusM,"LEYENDA")
+  ]);
+  const forest=fsForestPolygonIndex(forestFeatures), lidar=fsForestPolygonIndex(lidarFeatures);
+  const cache=new Map(), stats={forestPolygons:forest.polygons.length,lidarPolygons:lidar.polygons.length,
+    sheltered:0,notSheltered:0,missing:0};
+  const windAt=(lat,lon)=>{
+    const key=lat.toFixed(3)+","+lon.toFixed(3);
+    if(cache.has(key)) return cache.get(key);
+    const f=fsForestFind(forest,lat,lon), l=fsForestFind(lidar,lat,lon);
+    let site=null;
+    if(f&&l){
+      const height=Number(f.HD),density=Number(f.NREG),basal=Number(f.ABREG);
+      const branch=fsFirstBranchHeight(l.LEYENDA);
+      const crownRatio=height>0&&Number.isFinite(branch)?Math.max(0,Math.min(1,(height-branch)/height)):NaN;
+      // Conservative stand-structure screen: enough trees/basal area, a developed
+      // canopy and a substantial crown. This is a partial-shelter proxy, not canopy cover.
+      if(height>=8&&density>=600&&basal>=15&&Number.isFinite(crownRatio)&&crownRatio>=.30){
+        site={waf:.3,source:"gipuzkoa-partial-shelter",height,density,basal,crownRatio};
+        stats.sheltered++;
+      }else stats.notSheltered++;
+    }else stats.missing++;
+    cache.set(key,site);
+    return site;
+  };
+  return {windAt,stats};
+}
+
 /* --- estrategia --- */
 function fsStrategy(L){
   if(L<1.2) return ["#1b8a3a","ATAQUE DIRECTO","Llama < 1,2 m: personal a pie con herramienta manual y mangueras, trabajando sobre el borde del fuego."];
