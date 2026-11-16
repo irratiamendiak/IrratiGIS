@@ -4,6 +4,8 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
+  push:
+    branches: [opt/wildfire-weather-cache]
   workflow_dispatch:
 
 permissions:
@@ -15,7 +17,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["feature/wildfire-mdt-provider","opt/wildfire-weather-cache"]'), github.event.pull_request.head.ref)
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(fromJSON('["feature/wildfire-mdt-provider","opt/wildfire-weather-cache"]'), github.event.pull_request.head.ref)) || (github.event_name == 'push' && github.ref_name == 'opt/wildfire-weather-cache')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR branch
