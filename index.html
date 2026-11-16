@@ -2283,7 +2283,7 @@ const FS_FUELS={
 const fsCfg={fuel:"garoa",moistMode:"calc",startH:0,ffmc:85,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
 let fsIgn=null, fsBusy=0, fsLast=null, fsFlat=false;
 let fsTerrainSource="mdt", fsTerrainSamples={mdt:0,terrarium:0};
-let fsFuelSource="inventory";
+let fsFuelSource="";
 
 const fsGroup=L.layerGroup(), fsDem=new Map();
 /* Suteen simulazioaren geometria MapLibre 3D mapan marraztu, kamerarekin batera mugitzeko. */
@@ -3579,7 +3579,7 @@ async function fsCoverFromInventory(ll){
   }
 }
 async function fsCover(ll,source=fsFuelSource){
-  if(source==="rothermel") return [];
+  if(!source||source==="rothermel") return [];
   if(source==="inventory"){
     const local=await fsCoverFromInventory(ll);
     return local.rows;
@@ -3669,8 +3669,8 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div style="display:flex;gap:6px;margin:6px 0"><button type="button" class="fs-set" style="${bs}background:#d9480f">📍 Markatu hasiera</button><button type="button" class="fs-clr" style="${bs}background:#65736b">Garbitu</button></div>`+
    `<div style="font-weight:800;margin:8px 0 5px;padding-bottom:4px;border-bottom:1px solid #dce5df">1. Sutea konfiguratzea</div>`+
    `<div style="${row}"><b>Hasiera-ordua</b> <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap"><input type="datetime-local" class="fs-start-at" value="${(()=>{const d=new Date(Date.now()-new Date().getTimezoneOffset()*60000);return d.toISOString().slice(0,16);})()}" style="max-width:190px"><button type="button" class="fs-now" style="${bs}background:#65736b">Orain</button></div><div style="font-size:10px;color:#65736b">Aukeratu hasiera-data eta -ordua (72 ordura arte) edo sakatu «Orain».</div></div>`+
-   `<div style="${row}"><b>Erregai mota</b> <select class="fs-fuel-source" style="max-width:100%"><option value="inventory"${fsFuelSource==="inventory"?" selected":""}>Baso-inbentarioa aktibatu (Gipuzkoa 2024)</option><option value="wms"${fsFuelSource==="wms"?" selected":""}>Kanpoko baso-WMSa</option><option value="rothermel"${fsFuelSource==="rothermel"?" selected":""}>Rothermel eredua (eskuzko erregaia)</option></select></div>`+
-   `<div class="fs-fuel-help" style="font-size:10px;color:#65736b;margin:-2px 0 5px">${fsFuelSource==="inventory"?"Baso-inbentarioa izango da hautatutako iturria; mapako geruza bereizita aktiba edo desaktiba daiteke.":fsFuelSource==="wms"?"Kanpoko baso-WMSa kontsultatuko da landaredi-estalduraren iturri gisa.":"Hautatu erregai bat Rothermel-en katalogo sinplifikatutik."}</div>`+
+   `<div style="${row}"><b>Erregai mota</b> <select class="fs-fuel-source" style="max-width:100%"><option value=""${!fsFuelSource?" selected":""}>Aukeratu erregaia</option><option value="inventory"${fsFuelSource==="inventory"?" selected":""}>Baso-inbentarioa (Gipuzkoa 2024)</option><option value="wms"${fsFuelSource==="wms"?" selected":""}>Kanpoko baso-WMSa</option><option value="rothermel"${fsFuelSource==="rothermel"?" selected":""}>Rothermel eredua (eskuzko erregaia)</option></select></div>`+
+   `<div class="fs-fuel-help" style="font-size:10px;color:#65736b;margin:-2px 0 5px">${!fsFuelSource?"Aukeratu erregai-iturri bat simulazioa kalkulatu aurretik.":fsFuelSource==="inventory"?"Baso-inbentarioa izango da erregai-iturri aldakorra; sailkatu gabeko eremuetan beheko erregai osagarria erabiliko da.":fsFuelSource==="wms"?"Kanpoko baso-WMSa kontsultatuko da landaredi-estalduraren iturri gisa.":"Hautatu erregai bat Rothermel-en katalogo sinplifikatutik."}</div>`+
    `<div class="fs-fuel-manual" style="${fsFuelSource==="rothermel"||fsFuelSource==="inventory"?"":"display:none;"}${row}"><b>${fsFuelSource==="inventory"?"Erregai osagarria (sailkatu gabeko eremuetarako)":"Ereduaren erregaia"}</b> <select class="fs-fuel" style="max-width:100%">${Object.keys(FS_FUELS).map(k=>`<option value="${k}"${k===fsCfg.fuel?" selected":""}>${FS_FUELS[k].n}</option>`).join("")}</select></div>`+
    `<div style="${row}"><b>Topografia</b> <select class="fs-terrain-source"><option value="mdt"${fsTerrainSource==="mdt"?" selected":""}>MDT LiDAR Gipuzkoa 2017 (16 m)</option><option value="terrarium"${fsTerrainSource==="terrarium"?" selected":""}>Terrarium (ordezkoa)</option></select></div>`+
    `<div class="fs-terrain-status" style="padding:6px 8px;margin:5px 0 8px;background:#edf4ef;border-left:3px solid #527c63;border-radius:5px;font-size:11px;font-weight:700">Lurzoruaren iturria: ${escapeHtml(fsMdtLabel())}</div>`+
@@ -3684,7 +3684,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
   fsPanelWindow(fsPanel);
   q(".fs-terrain-source").onchange=e=>{fsTerrainSource=e.target.value==="terrarium"?"terrarium":"mdt";fsTerrainSamples={mdt:0,terrarium:0};fsDem.clear();fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};fsUpdateTerrainStatus();rerun();};
-  q(".fs-fuel-source").onchange=e=>{ fsFuelSource=e.target.value; q(".fs-fuel-manual").style.display=(fsFuelSource==="rothermel"||fsFuelSource==="inventory")?"block":"none"; const fb=q(".fs-fuel-manual b"); if(fb)fb.textContent=fsFuelSource==="inventory"?"Erregai osagarria (sailkatu gabeko eremuetarako)":"Ereduaren erregaia"; q(".fs-fuel-help").textContent=fsFuelSource==="inventory"?"Baso-inbentarioa izango da erregai-iturri aldakorra; sailkatu gabeko eremuetan beheko erregai osagarria erabiliko da.":fsFuelSource==="wms"?"Kanpoko baso-WMSa kontsultatuko da landaredi-estalduraren iturri gisa.":"Hautatu erregai bat Rothermel-en katalogo sinplifikatutik."; if(fsFuelSource==="inventory"){ if(!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer); }else if(map.hasLayer(inventarioForestalLayer)){ map.removeLayer(inventarioForestalLayer); } rerun(); };
+  q(".fs-fuel-source").onchange=e=>{ fsFuelSource=e.target.value; q(".fs-fuel-manual").style.display=(fsFuelSource==="rothermel"||fsFuelSource==="inventory")?"block":"none"; const fb=q(".fs-fuel-manual b"); if(fb)fb.textContent=fsFuelSource==="inventory"?"Erregai osagarria (sailkatu gabeko eremuetarako)":"Ereduaren erregaia"; q(".fs-fuel-help").textContent=!fsFuelSource?"Aukeratu erregai-iturri bat simulazioa kalkulatu aurretik.":fsFuelSource==="inventory"?"Baso-inbentarioa izango da erregai-iturri aldakorra; sailkatu gabeko eremuetan beheko erregai osagarria erabiliko da.":fsFuelSource==="wms"?"Kanpoko baso-WMSa kontsultatuko da landaredi-estalduraren iturri gisa.":"Hautatu erregai bat Rothermel-en katalogo sinplifikatutik."; if(fsFuelSource==="inventory"){ if(!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer); }else if(map.hasLayer(inventarioForestalLayer)){ map.removeLayer(inventarioForestalLayer); } rerun(); };
   q(".fs-fuel").onchange=e=>{ fsCfg.fuel=e.target.value; rerun(); };
   q(".fs-ws").onchange=e=>{ fsCfg.wind=e.target.value; q(".fs-man").style.display=fsCfg.wind==="man"?"block":"none"; rerun(); };
   q(".fs-dir").onchange=e=>{ fsCfg.dir=((Number(e.target.value)||0)%360+360)%360; rerun(); };
@@ -3717,8 +3717,6 @@ layersControl.addOverlay(fsGroup,"🔥 Suteen bilakaera (simulazioa)");
 map.on("overlayadd",e=>{
   if(e.layer!==fsGroup) return;
   fsSync3D();
-  /* Inventario forestal activo por defecto al abrir Suteen Bilakaera. */
-  if(fsFuelSource==="inventory"&&!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer);
   fsPanel.style.display="block";
   if(fsIgn) fsRun(); else{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Sute-simulazioa: egin klik mapan hasiera-puntua markatzeko."; }
 });
