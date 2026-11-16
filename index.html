@@ -3636,12 +3636,10 @@ async function fsCreateForestWindSampler(ignition,radiusM){
       const height=Number(f.HD),density=Number(f.NREG),basal=Number(f.ABREG);
       const branch=fsFirstBranchHeight(l.LEYENDA);
       const crownRatio=height>0&&Number.isFinite(branch)?Math.max(0,Math.min(1,(height-branch)/height)):NaN;
-      // Conservative stand-structure screen: enough trees/basal area, a developed
-      // canopy and a substantial crown. This is a partial-shelter proxy, not canopy cover.
-      if(height>=8&&density>=600&&basal>=15&&Number.isFinite(crownRatio)&&crownRatio>=.30){
-        site={waf:.3,source:"gipuzkoa-partial-shelter",height,density,basal,crownRatio};
-        stats.sheltered++;
-      }else stats.notSheltered++;
+      // The engine owns the documented provisional thresholds and returns only
+      // a partial-shelter proxy; no direct canopy-cover percentage is available.
+      site=fsEngine.forestWindSite({height,density,basalArea:basal,crownRatio});
+      if(site) stats.sheltered++; else stats.notSheltered++;
     }else stats.missing++;
     cache.set(key,site);
     return site;
