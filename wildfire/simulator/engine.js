@@ -64,8 +64,8 @@
     if (Number.isFinite(siteWaf) && siteWaf >= 0.1 && siteWaf <= 0.5) return siteWaf;
     const id = Number(fuel && fuel.id);
     const depth = Number(fuel && fuel.depth);
-    // Anderson 8–10 are timber-understory/litter models: assume partial shelter
-    // unless a future local canopy layer supplies measured cover/height.
+    // Anderson 8–10 are timber-litter models; use their standard unsheltered-bed default
+    // unless the caller supplies a site-level forest-structure shelter estimate.
     if (id >= 8 && id <= 10) return 0.3;
     // Exposed fuels: NWCG unsheltered classes by fuel-bed depth.
     if (depth > 2.7) return 0.5;
