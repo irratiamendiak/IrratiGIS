@@ -3425,19 +3425,6 @@ async function fsMeteo(){
   return {at,now,hours,m0,sh,sun:sunAt(sh),rain:{h24:sum(24),d3:sum(72),d7:sum(168),d14:sum(336),src:rainSrc,err:netErr},src:"Open-Meteo, historial de 14 días y previsión horaria"};
 }
 
-/* --- estaldura / erregaia: geoEuskadi baso-mapa (WMS GetFeatureInfo). Iradokizuna bakarrik. --- */
-const FS_FOREST_WMS="https://www.geo.euskadi.eus/WMS_NEKAZARITZA";
-let fsCapP=null;
-function fsFuelFromText(t){
-  t=(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
-  // Fallback textual WMS only. Avoid classifying generic "bosque" or eucalyptus as pine.
-  const r=[["pinudia",/pinus|pino|pinar|conifer|picea|larix|alerce|abeto|cryptomeria|pseudotsuga|douglas|chamaecyparis/],
-           ["hostozabala",/haya|fagus|hayedo|roble|quercus|robledal|frondos|castan|fresno|fraxinus|aliso|alnus|abedul|betula|salix|populus|platanus|robinia/],
-           ["iratzea",/helech|pteridium|iratz/],["garoa",/matorral|brezal|argoma|ulex|erica|landa|zuhaixka|arbust/],
-           ["belarra",/pasto|prado|herbaz|pradera|belard|larre|cultivo|agrari/]];
-  for(const [k,re] of r) if(re.test(t)) return k;
-  return null;
-}
 function fsFuelFromInventoryProperties(p){
   p=p||{};
   const norm=v=>String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[_-]+/g," ").replace(/\s+/g," ").trim();
@@ -3526,79 +3513,6 @@ async function fsCreateInventoryFuelSampler(ignition){
   result.fuelAt=fuelAt;
   return result;
 }
-function fsFuelFromCover(rows){
-  if(!Array.isArray(rows)||!rows.length) return null;
-  if(rows.some(r=>r.source==="inventory")){
-    const mapped=rows.map(r=>fsFuelFromInventoryProperties(r.properties));
-    return mapped.every(Boolean)&&new Set(mapped).size===1?mapped[0]:null;
-  }
-  return fsFuelFromText(rows.map(r=>r.text||"").join(" "));
-}
-async function fsCoverFromInventory(ll){
-  // Espera a que el mapa de MapLibre termine de cargar el estilo y los tiles PMTiles.
-  // Evita consultar en mitad del primer render del overlay Leaflet/MapLibre.
-  const result=(status,rows=[])=>({status,rows});
-  if(!map.hasLayer(inventarioForestalLayer)) return result("layer-disabled");
-  const gl=inventarioForestalLayer.getMaplibreMap();
-  if(!gl) return result("maplibre-unavailable");
-  try{
-    const waitForIdle=()=>new Promise(resolve=>{
-      if(typeof gl.once!=="function"){resolve();return;}
-      let done=false;
-      const finish=()=>{if(done)return;done=true;resolve();};
-      gl.once("idle",finish);
-      setTimeout(finish,8000);
-    });
-    if(!gl.isStyleLoaded()) await waitForIdle();
-    else if(typeof gl.isSourceLoaded==="function"&&!gl.isSourceLoaded("forestal")) await waitForIdle();
-    if(!gl.isStyleLoaded()) return result("style-not-loaded");
-    if(!gl.getLayer("forestal-poligonos")) return result("style-layer-missing");
-    const point=gl.project([ll.lng,ll.lat]);
-    const features=gl.queryRenderedFeatures(point,{layers:["forestal-poligonos"]})||[];
-    const rows=features.slice(0,3).map(feature=>{
-      const p=feature.properties||{};
-      const preferred=["TIPES_es","TIPES","tipo","TYPE","SP1_es","SP2_es","SP3_es"];
-      const values=preferred.filter(k=>p[k]!==undefined&&p[k]!==null&&String(p[k]).trim()!=="")
-        .map(k=>[k,String(p[k])]);
-      const extras=Object.keys(p).filter(k=>!preferred.includes(k)&&p[k]!==undefined&&p[k]!==null&&String(p[k]).trim()!=="")
-        .slice(0,12).map(k=>[k,String(p[k])]);
-      const all=values.concat(extras);
-      const labels={TIPES_es:"Tipo de vegetación",TIPES:"TIPES",tipo:"Tipo",TYPE:"TYPE",SP1_es:"Especie 1",SP2_es:"Especie 2",SP3_es:"Especie 3"};
-      return {
-        title:"Inventario Forestal de Gipuzkoa 2024 · PMTiles",
-        source:"inventory",
-        properties:p,
-        text:all.map(([k,v])=>(labels[k]||k)+" "+v).join(" "),
-        html:all.map(([k,v])=>"<div><b>"+escapeHtml(labels[k]||k)+":</b> "+escapeHtml(v)+"</div>").join("")
-      };
-    }).filter(x=>x.text);
-    return result(rows.length?"features-found":"query-empty",rows);
-  }catch(err){
-    console.warn("Consulta del Inventario Forestal 2024:",err);
-    return result("query-error");
-  }
-}
-async function fsCover(ll,source=fsFuelSource){
-  if(!source||source==="rothermel") return [];
-  if(source==="inventory"){
-    const local=await fsCoverFromInventory(ll);
-    return local.rows;
-  }
-  fsCapP=fsCapP||getWmsCapabilities(FS_FOREST_WMS); const info=await fsCapP.catch(e=>{ fsCapP=null; throw e; });
-  const cand=info.layers.filter(l=>/forest|uso|especie|conifer|frondos|cubiert|vegeta|mfe|arbol/i.test(l.name+" "+l.title)).slice(0,3);
-  if(!cand.length) throw new Error("sin capas de usos/especies");
-  const [E,N]=proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",[ll.lng,ll.lat]);
-  const fmt=pickInfoFormat(info.infoFormats), v=info.version||"1.3.0", is13=v.startsWith("1.3"), out=[];
-  for(const l of cand){
-    const p=new URLSearchParams({SERVICE:"WMS",VERSION:v,REQUEST:"GetFeatureInfo",LAYERS:l.name,QUERY_LAYERS:l.name,STYLES:"",FORMAT:info.format||"image/png",
-      INFO_FORMAT:fmt,FEATURE_COUNT:"3",WIDTH:"101",HEIGHT:"101",BBOX:[E-50,N-50,E+50,N+50].join(",")});
-    p.set(is13?"CRS":"SRS","EPSG:25830"); p.set(is13?"I":"X","50"); p.set(is13?"J":"Y","50");
-    try{ const r=await fetch(FS_FOREST_WMS+"?"+p.toString()); if(!r.ok) continue;
-      const txt=await r.text(), html=featureInfoToHtml(txt,fmt); if(html) out.push({title:l.title||l.name,source:"wms",html,text:txt.replace(/<[^>]+>/g," ")}); }catch(_){ }
-  }
-  return out;
-}
-
 /* --- estrategia --- */
 function fsStrategy(L){
   if(L<1.2) return ["#1b8a3a","ATAQUE DIRECTO","Llama < 1,2 m: personal a pie con herramienta manual y mangueras, trabajando sobre el borde del fuego."];
@@ -3669,8 +3583,8 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div style="display:flex;gap:6px;margin:6px 0"><button type="button" class="fs-set" style="${bs}background:#d9480f">📍 Markatu hasiera</button><button type="button" class="fs-clr" style="${bs}background:#65736b">Garbitu</button></div>`+
    `<div style="font-weight:800;margin:8px 0 5px;padding-bottom:4px;border-bottom:1px solid #dce5df">1. Sutea konfiguratzea</div>`+
    `<div style="${row}"><b>Hasiera-ordua</b> <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap"><input type="datetime-local" class="fs-start-at" value="${(()=>{const d=new Date(Date.now()-new Date().getTimezoneOffset()*60000);return d.toISOString().slice(0,16);})()}" style="max-width:190px"><button type="button" class="fs-now" style="${bs}background:#65736b">Orain</button></div><div style="font-size:10px;color:#65736b">Aukeratu hasiera-data eta -ordua (72 ordura arte) edo sakatu «Orain».</div></div>`+
-   `<div style="${row}"><b>Erregai mota</b> <select class="fs-fuel-source" style="max-width:100%"><option value=""${!fsFuelSource?" selected":""}>Aukeratu erregaia</option><option value="inventory"${fsFuelSource==="inventory"?" selected":""}>Baso-inbentarioa (Gipuzkoa 2024)</option><option value="wms"${fsFuelSource==="wms"?" selected":""}>Kanpoko baso-WMSa</option><option value="rothermel"${fsFuelSource==="rothermel"?" selected":""}>Rothermel eredua (eskuzko erregaia)</option></select></div>`+
-   `<div class="fs-fuel-help" style="font-size:10px;color:#65736b;margin:-2px 0 5px">${!fsFuelSource?"Aukeratu erregai-iturri bat simulazioa kalkulatu aurretik.":fsFuelSource==="inventory"?"Baso-inbentarioa izango da erregai-iturri aldakorra; sailkatu gabeko eremuetan beheko erregai osagarria erabiliko da.":fsFuelSource==="wms"?"Kanpoko baso-WMSa kontsultatuko da landaredi-estalduraren iturri gisa.":"Hautatu erregai bat Rothermel-en katalogo sinplifikatutik."}</div>`+
+   `<div style="${row}"><b>Erregai mota</b> <select class="fs-fuel-source" style="max-width:100%"><option value=""${!fsFuelSource?" selected":""}>Aukeratu erregaia</option><option value="inventory"${fsFuelSource==="inventory"?" selected":""}>Baso-inbentarioa (Gipuzkoa 2024 · estaldura)</option><option value="rothermel"${fsFuelSource==="rothermel"?" selected":""}>Rothermel eredua (eskuzko erregaia)</option></select></div>`+
+   `<div class="fs-fuel-help" style="font-size:10px;color:#65736b;margin:-2px 0 5px">${!fsFuelSource?"Aukeratu erregai-iturri bat simulazioa kalkulatu aurretik.":fsFuelSource==="inventory"?"Inventarioa estaldura-mota sinplifikatuen arabera erabiltzen da; sailkatu gabeko eremuetan beheko erregai osagarria erabiliko da. Ez dira Rothermel 1–13 eredu ofizialak.":"Hautatu Rothermel-en katalogo sinplifikatuko erregai uniformea."}</div>`+
    `<div class="fs-fuel-manual" style="${fsFuelSource==="rothermel"||fsFuelSource==="inventory"?"":"display:none;"}${row}"><b>${fsFuelSource==="inventory"?"Erregai osagarria (sailkatu gabeko eremuetarako)":"Ereduaren erregaia"}</b> <select class="fs-fuel" style="max-width:100%">${Object.keys(FS_FUELS).map(k=>`<option value="${k}"${k===fsCfg.fuel?" selected":""}>${FS_FUELS[k].n}</option>`).join("")}</select></div>`+
    `<div style="${row}"><b>Topografia</b> <select class="fs-terrain-source"><option value="mdt"${fsTerrainSource==="mdt"?" selected":""}>MDT LiDAR Gipuzkoa 2017 (16 m)</option><option value="terrarium"${fsTerrainSource==="terrarium"?" selected":""}>Terrarium (ordezkoa)</option></select></div>`+
    `<div class="fs-terrain-status" style="padding:6px 8px;margin:5px 0 8px;background:#edf4ef;border-left:3px solid #527c63;border-radius:5px;font-size:11px;font-weight:700">Lurzoruaren iturria: ${escapeHtml(fsMdtLabel())}</div>`+
@@ -3684,7 +3598,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
   fsPanelWindow(fsPanel);
   q(".fs-terrain-source").onchange=e=>{fsTerrainSource=e.target.value==="terrarium"?"terrarium":"mdt";fsTerrainSamples={mdt:0,terrarium:0};fsDem.clear();fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};fsUpdateTerrainStatus();rerun();};
-  q(".fs-fuel-source").onchange=e=>{ fsFuelSource=e.target.value; q(".fs-fuel-manual").style.display=(fsFuelSource==="rothermel"||fsFuelSource==="inventory")?"block":"none"; const fb=q(".fs-fuel-manual b"); if(fb)fb.textContent=fsFuelSource==="inventory"?"Erregai osagarria (sailkatu gabeko eremuetarako)":"Ereduaren erregaia"; q(".fs-fuel-help").textContent=!fsFuelSource?"Aukeratu erregai-iturri bat simulazioa kalkulatu aurretik.":fsFuelSource==="inventory"?"Baso-inbentarioa izango da erregai-iturri aldakorra; sailkatu gabeko eremuetan beheko erregai osagarria erabiliko da.":fsFuelSource==="wms"?"Kanpoko baso-WMSa kontsultatuko da landaredi-estalduraren iturri gisa.":"Hautatu erregai bat Rothermel-en katalogo sinplifikatutik."; if(fsFuelSource==="inventory"){ if(!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer); }else if(map.hasLayer(inventarioForestalLayer)){ map.removeLayer(inventarioForestalLayer); } rerun(); };
+  q(".fs-fuel-source").onchange=e=>{ fsFuelSource=e.target.value==="inventory"?"inventory":e.target.value==="rothermel"?"rothermel":""; q(".fs-fuel-manual").style.display=(fsFuelSource==="rothermel"||fsFuelSource==="inventory")?"block":"none"; const fb=q(".fs-fuel-manual b"); if(fb)fb.textContent=fsFuelSource==="inventory"?"Erregai osagarria (sailkatu gabeko eremuetarako)":"Ereduaren erregaia"; q(".fs-fuel-help").textContent=!fsFuelSource?"Aukeratu erregai-iturri bat simulazioa kalkulatu aurretik.":fsFuelSource==="inventory"?"Inventarioa estaldura-mota sinplifikatuen arabera erabiltzen da; sailkatu gabeko eremuetan beheko erregai osagarria erabiliko da. Ez dira Rothermel 1–13 eredu ofizialak.":"Hautatu Rothermel-en katalogo sinplifikatuko erregai uniformea."; if(fsFuelSource==="inventory"){ if(!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer); }else if(map.hasLayer(inventarioForestalLayer)){ map.removeLayer(inventarioForestalLayer); } rerun(); };
   q(".fs-fuel").onchange=e=>{ fsCfg.fuel=e.target.value; rerun(); };
   q(".fs-ws").onchange=e=>{ fsCfg.wind=e.target.value; q(".fs-man").style.display=fsCfg.wind==="man"?"block":"none"; rerun(); };
   q(".fs-dir").onchange=e=>{ fsCfg.dir=((Number(e.target.value)||0)%360+360)%360; rerun(); };
@@ -3778,7 +3692,7 @@ async function fsRun(){
     if(fsFuelSource==="inventory"){
       try{
         inventorySampler=await fsCreateInventoryFuelSampler(fsIgn);
-        inventoryNote="Combustible variable por Inventario Forestal 2024; las parcelas no clasificables usan el combustible de respaldo seleccionado.";
+        inventoryNote="Cobertura variable del Inventario Forestal 2024 mediante clases simplificadas; no equivale a los modelos Rothermel oficiales 1–13. Las parcelas no clasificables usan el combustible de respaldo seleccionado.";
       }catch(e){
         inventoryNote="No se pudo cargar el Inventario Forestal 2024 ("+(e.message||String(e))+"); se usa combustible uniforme de respaldo.";
         console.warn(inventoryNote);
@@ -3848,7 +3762,7 @@ async function fsRun(){
     ? `<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px"><b>⚠️ Cobertura LiDAR limitada</b><br>Cobertura LiDAR disponible: hasta ${Math.round(demCoverage.radiusM/100)/10} km desde la ignición. Los sectores que alcanzan el límite de datos se han detenido en la última muestra válida; los demás continúan hasta completar los 120 minutos. No se ha extrapolado el relieve ni usado Terrarium.</div>`
     : "";
   const fuelNote=inventorySampler
-    ? `<div style="margin-top:9px;padding:8px;background:#f1f6f2;border-left:3px solid #527c63;border-radius:5px;font-size:11px"><b>Combustible variable · Inventario Forestal 2024</b><br>Clases identificadas en consultas espaciales: ${inventorySampler.stats.classified} · Muestras sin clase: ${inventorySampler.stats.unknown} (combustible de respaldo: ${escapeHtml(fu.n)}).<br>Diagnóstico de muestras sin clase: sin polígono ${inventorySampler.stats.noFeature} · polígono sin atributos reconocidos ${inventorySampler.stats.unmapped} · fuera del área consultable ${inventorySampler.stats.outsideViewport}. Polígonos encontrados en total: ${inventorySampler.stats.featureHits}.<br>Transiciones detectadas: \${fuelCounts.size?[...fuelCounts.entries()].map(([k,n])=>escapeHtml(k.replace(/belarra|garoa|iratzea|pinudia|hostozabala/g,x=>fuelNames[x]||x))+" ("+n+")").join("; "):"ninguna en las rutas muestreadas"}.</div>`
+    ? `<div style="margin-top:9px;padding:8px;background:#f1f6f2;border-left:3px solid #527c63;border-radius:5px;font-size:11px"><b>Cobertura variable · Inventario Forestal 2024</b><br>Clases simplificadas de cobertura (no son modelos Rothermel 1–13). Muestras clasificadas: ${inventorySampler.stats.classified} · Muestras sin clase: ${inventorySampler.stats.unknown} (combustible de respaldo: ${escapeHtml(fu.n)}).<br>Diagnóstico de muestras sin clase: sin polígono ${inventorySampler.stats.noFeature} · polígono sin atributos reconocidos ${inventorySampler.stats.unmapped} · fuera del área consultable ${inventorySampler.stats.outsideViewport}. Polígonos encontrados en total: ${inventorySampler.stats.featureHits}.<br>Transiciones detectadas: \${fuelCounts.size?[...fuelCounts.entries()].map(([k,n])=>escapeHtml(k.replace(/belarra|garoa|iratzea|pinudia|hostozabala/g,x=>fuelNames[x]||x))+" ("+n+")").join("; "):"ninguna en las rutas muestreadas"}.</div>`
     : (inventoryNote?`<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px">${escapeHtml(inventoryNote)}</div>`:"");
   const wxTable=manual?"":`<div style="margin-top:10px;overflow-x:auto"><b style="font-size:12px">Meteorología prevista por horizonte</b><table style="width:100%;min-width:430px;border-collapse:collapse;font-size:11px;margin-top:5px"><thead><tr><th style="text-align:left;padding:4px;border-bottom:1px solid #d8dfda">Variable</th>${times.map(t=>`<th style="padding:4px;border-bottom:1px solid #d8dfda">${t} min</th>`).join("")}</tr></thead><tbody>${[
     ["Viento",w=>`${Math.round(w.spd)} km/h ${fsCard(w.dir)}`],
