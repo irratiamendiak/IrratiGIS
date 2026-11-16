@@ -63,7 +63,7 @@
           sourceResolution.toFixed(2) + " m (objetivo " + targetResolution + " m).");
       }
       const rawNoData = image.getFileDirectory()?.GDAL_NODATA;
-      noData = rawNoData === undefined ? null : Number(String(rawNoData).replace(/\0/g, "").trim());
+      noData = rawNoData === undefined ? null : Number(String(rawNoData).replace(/\0/g, "").replace(/\\0/g, "").trim());
       return {width:image.getWidth(),height:image.getHeight(),resolutionM:sourceResolution,noData};
     }
     function windowForBounds(bounds25830) {
