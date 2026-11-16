@@ -78,14 +78,17 @@ test("inventory classification is structurally separate from textual WMS fallbac
   assert.equal(inventory({ SP1_es: "Pinus radiata" }), "pinudia");
   assert.equal(inventory({ SP1_es: "Eucalyptus globulus" }), null);
 });
-test("cover diagnostics identify the effective source and expose classification decisions", () => {
-  assert.match(html, /source:"wms"/);
-  assert.match(html, /Origen efectivo:/);
-  assert.match(html, /Diagnóstico de clasificación/);
-  assert.match(html, /Resultado agregado:/);
-  assert.match(html, /row\.inventoryStatus=local\.status/);
+test("cover source selection matches the current inventory and WMS interface", () => {
+  const cover = extractFunction("fsCover");
+  assert.match(html, /class="[^"]*fs-fuel-source/);
+  assert.match(html, /fsFuelSource==="inventory"/);
+  assert.match(html, /fsFuelSource==="rothermel"/);
+  assert.match(cover, /source==="inventory"/);
+  assert.match(cover, /fsCoverFromInventory\\(ll\\)/);
+  assert.match(cover, /source:"inventory"/);
+  assert.match(cover, /source:"wms"/);
   assert.match(html, /data-fs-inventory-enable/);
-  assert.match(html, /map\.addLayer\(inventarioForestalLayer\)/);
+  assert.match(html, /map\\.addLayer\\(inventarioForestalLayer\\)/);
 });
 test("inventory spatial query reports why the local layer did not provide features", async () => {
   const run = ({ enabled = true, gl = null } = {}) => {
