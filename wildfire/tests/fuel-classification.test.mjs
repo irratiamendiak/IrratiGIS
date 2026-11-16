@@ -84,11 +84,11 @@ test("cover source selection matches the current inventory and WMS interface", (
   assert.match(html, /fsFuelSource==="inventory"/);
   assert.match(html, /fsFuelSource==="rothermel"/);
   assert.match(cover, /source==="inventory"/);
-  assert.match(cover, /fsCoverFromInventory\\(ll\\)/);
+  assert.ok(cover.includes("fsCoverFromInventory(ll)"));
   assert.match(cover, /source:"inventory"/);
   assert.match(cover, /source:"wms"/);
   assert.match(html, /data-fs-inventory-enable/);
-  assert.match(html, /map\\.addLayer\\(inventarioForestalLayer\\)/);
+  assert.ok(html.includes("map.addLayer(inventarioForestalLayer)"));
 });
 test("inventory spatial query reports why the local layer did not provide features", async () => {
   const run = ({ enabled = true, gl = null } = {}) => {
