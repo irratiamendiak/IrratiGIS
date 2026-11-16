@@ -2496,10 +2496,10 @@ const fsBehavior=(fu,tan,asp,windFrom,u10,mpct)=>fsEngine.behavior(fu,tan,asp,wi
 const fsR=(b,th)=>fsEngine.ellipseRate(b,th);
 const fsInt=(fu,r)=>fsEngine.intensity(fu,r,FS_H);
 const fsFlame=I=>fsEngine.flameLength(I);
-function fsSimulate(fu,met,sc,fuelAt,durationMinutes=FS_T){
+function fsSimulate(fu,met,sc,fuelAt,durationMinutes=FS_T,windAt){
   sc=sc||{wf:1,dm:0};
   return fsEngine.simulate({
-    fuel:fu, fuelAt, ignition:fsIgn, durationMinutes, stepMinutes:FS_DT,
+    fuel:fu, fuelAt, windAt, ignition:fsIgn, durationMinutes, stepMinutes:FS_DT,
     heatContent:FS_H, windFactor:sc.wf, moistureDelta:sc.dm,
     weatherAt:t=>met.at(t),
     terrainAt:(lat,lon)=>fsTerrain(lat,lon),
@@ -3832,7 +3832,7 @@ async function fsRun(){
   fsSync3D();
   const manual=fsCfg.wind==="man";
   out.innerHTML=`<div style="font-weight:700;color:#52645a">Consultando terreno y calculando la propagación ${manual?"manual":"prevista"}…</div>`;
-  let met, ffn=null, netNote="", inventorySampler=null, inventoryNote="", demCoverage=null;
+  let met, ffn=null, netNote="", inventorySampler=null, inventoryNote="", windSampler=null, windSamplerError="", demCoverage=null;
   try{
     met=await fsMeteo(); demCoverage=await fsLoadDem(fsIgn.lat,fsIgn.lng,fsMaxSpreadExtent(FS_T));
     if(fsFuelSource==="inventory"){
@@ -3843,6 +3843,12 @@ async function fsRun(){
         inventoryNote="No se pudo cargar el Inventario Forestal 2024 ("+(e.message||String(e))+"); se usa combustible uniforme de respaldo.";
         console.warn(inventoryNote);
       }
+    }
+    try{
+      windSampler=await fsCreateForestWindSampler(fsIgn,fsMaxSpreadExtent(FS_T));
+    }catch(e){
+      windSamplerError=e.message||String(e);
+      console.warn("No se pudo consultar la estructura forestal de Gipuzkoa para ajustar el viento:",windSamplerError);
     }
     fsCfg.modeEff=null;
     try{ const net=await fsNet(); ffn=fsFfmcNet(net,fsIgn); if(fsCfg.moistMode==="ffmcnet") fsCfg.ffmcEff=ffn.val; }
@@ -3863,7 +3869,7 @@ async function fsRun(){
   let rays;
   const areas={};
   try{
-    rays=fsSimulate(fu,met,null,inventorySampler&&inventorySampler.fuelAt);
+    rays=fsSimulate(fu,met,null,inventorySampler&&inventorySampler.fuelAt,FS_T,windSampler&&windSampler.windAt);
     if(inventorySampler){
       try{inventorySampler.map.remove();}catch(_){}
       try{inventorySampler.container.remove();}catch(_){}
@@ -3907,6 +3913,9 @@ async function fsRun(){
   const lidarNote=lidarLimited
     ? `<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px"><b>⚠️ Cobertura LiDAR limitada</b><br>Cobertura LiDAR disponible: hasta ${Math.round(demCoverage.radiusM/100)/10} km desde la ignición. Los sectores que alcanzan el límite de datos se han detenido en la última muestra válida; los demás continúan hasta completar los 120 minutos. No se ha extrapolado el relieve ni usado Terrarium.</div>`
     : "";
+  const windNoteHtml=windSampler
+    ? `<div style="margin-top:9px;padding:8px;background:#eef4f8;border-left:3px solid #527c9b;border-radius:5px;font-size:11px"><b>Ajuste de viento · estructura forestal de Gipuzkoa</b><br>Capas consultadas: productividad forestal 2024 (altura dominante, densidad y área basimétrica) + altura de primera rama LiDAR 2012. Polígonos cargados: ${windSampler.stats.forestPolygons} (2024) y ${windSampler.stats.lidarPolygons} (LiDAR). Muestras con indicios de abrigo parcial: ${windSampler.stats.sheltered}; sin indicios suficientes: ${windSampler.stats.notSheltered}; sin cobertura coincidente: ${windSampler.stats.missing}.<br>Cuando los indicadores de estructura cumplen el umbral, se aplica WAF 0,3 (abrigo parcial); en el resto se conserva el ajuste del modelo de combustible. No se aplica abrigo completo porque estas capas no miden directamente la cobertura de copas. La altura de primera rama es LiDAR 2012 y puede no reflejar cambios posteriores.</div>`
+    : `<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px"><b>Ajuste forestal no disponible</b><br>${escapeHtml(windSamplerError||"No se han podido consultar las capas forestales.")} Se ha mantenido el ajuste estándar por modelo de combustible; no se ha supuesto una densidad forestal.</div>`;
   const fuelNote=inventorySampler
     ? `<div style="margin-top:9px;padding:8px;background:#f1f6f2;border-left:3px solid #527c63;border-radius:5px;font-size:11px"><b>Cobertura variable · Inventario Forestal 2024</b><br>Clases simplificadas de cobertura (no son modelos Rothermel 1–13). Muestras clasificadas: ${inventorySampler.stats.classified} · Muestras sin clase: ${inventorySampler.stats.unknown} (combustible de respaldo: ${escapeHtml(fu.n)}).<br>Diagnóstico de muestras sin clase: sin polígono ${inventorySampler.stats.noFeature} · polígono sin atributos reconocidos ${inventorySampler.stats.unmapped} · fuera del área consultable ${inventorySampler.stats.outsideViewport}. Polígonos encontrados en total: ${inventorySampler.stats.featureHits}.<br>Transiciones detectadas: \${fuelCounts.size?[...fuelCounts.entries()].map(([k,n])=>escapeHtml(k.replace(/belarra|garoa|iratzea|pinudia|hostozabala/g,x=>fuelNames[x]||x))+" ("+n+")").join("; "):"ninguna en las rutas muestreadas"}.</div>`
     : (inventoryNote?`<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px">${escapeHtml(inventoryNote)}</div>`:"");
@@ -3919,7 +3928,7 @@ async function fsRun(){
     ["Radiación solar",w=>Number.isFinite(w.R)?`${Math.round(w.R)} W/m²`:"—"],
     ["Humedad combustible fino (1 h)",w=>Array.isArray(w.m)&&Number.isFinite(w.m[0])?`${w.m[0].toFixed(1)} %`:"—"]
   ].map(([name,fmt])=>`<tr><td style="padding:4px;border-bottom:1px solid #edf0ed">${name}</td>${times.map(t=>{const w=met.at(t);return `<td style="text-align:center;padding:4px;border-bottom:1px solid #edf0ed">${fmt(w)}</td>`;}).join("")}</tr>`).join("")}</tbody></table><div style="font-size:10px;color:#65736b;margin-top:4px">Valores horarios de Open-Meteo correspondientes a cada horizonte (la precipitación es la prevista para esa hora).</div></div>`;
-  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"manual":"prevista"} · superficie alcanzada</b>${table}${lidarNote}${fuelNote}${wxTable}
+  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"manual":"prevista"} · superficie alcanzada</b>${table}${lidarNote}${windNoteHtml}${fuelNote}${wxTable}
     <div style="font-size:10px;color:#65736b;margin-top:8px">${source}. Los cuatro perímetros representan 30, 60, 90 y 120 minutos; el color y el tipo de línea identifican cada horizonte. Cambia el selector de meteorología para alternar entre prevista y manual; en modo manual se reutilizan los campos de viento, temperatura y humedad.</div>
   </div>`);
   fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0:null,met,farBg:null,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
