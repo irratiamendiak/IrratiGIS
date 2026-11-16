@@ -49,7 +49,7 @@ test("ellipse rate, Byram intensity and flame length remain finite and ordered",
   assert.ok(engine.flameLength(intensity) > 0);
 });
 
-test("simulation is deterministic and receives terrain, weather and moisture as injected inputs", () => {
+test("simulation is deterministic and caches time-only weather samples across bearings", () => {
   let terrainCalls = 0, weatherCalls = 0, moistureCalls = 0;
   const options = {
     fuel,
@@ -62,11 +62,13 @@ test("simulation is deterministic and receives terrain, weather and moisture as 
     moistureAt: () => { moistureCalls++; return 8; }
   };
   const first = engine.simulate(options);
+  assert.equal(weatherCalls, 6); // 3 time steps × 2 terrain substeps, not × 120 rays.
   const second = engine.simulate(options);
-  assert.equal(first.length, 72);
+  assert.equal(weatherCalls, 12);
+  assert.equal(first.length, 120);
   assert.equal(first[0].pts.length, 4);
   assert.equal(JSON.stringify(first), JSON.stringify(second));
-  assert.ok(terrainCalls > 0 && weatherCalls > 0 && moistureCalls > 0);
+  assert.ok(terrainCalls > 0 && moistureCalls > 0);
   assert.ok(first[0].pts[3][1] > 0);
 });
 
