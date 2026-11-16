@@ -3541,7 +3541,7 @@ async function fsCreateInventoryFuelSampler(ignition){
    LiDAR 2012: altura a la primera rama. No existe aquí una medición directa de
    cobertura de copas; por eso solo identificamos abrigo PARCIAL conservador (WAF 0,3).
    Nunca inferimos abrigo completo (0,1–0,2) a partir de densidad de pies. */
-async function fsQueryForestPolygons(layerId, ignition, radiusM, outFields){
+async function fsQueryForestPolygons(layerId, ignition, radiusM, outFields, where="1=1"){
   const dLat=radiusM/111320, dLon=radiusM/(111320*Math.max(.2,Math.cos(ignition.lat*fsRad)));
   const geometry={xmin:ignition.lng-dLon,ymin:ignition.lat-dLat,
     xmax:ignition.lng+dLon,ymax:ignition.lat+dLat,spatialReference:{wkid:4326}};
@@ -3549,7 +3549,7 @@ async function fsQueryForestPolygons(layerId, ignition, radiusM, outFields){
   const features=[]; let offset=0, pages=0;
   while(pages<8){
     const params=new URLSearchParams({
-      where:"1=1",geometry:JSON.stringify(geometry),geometryType:"esriGeometryEnvelope",
+      where,geometry:JSON.stringify(geometry),geometryType:"esriGeometryEnvelope",
       inSR:"4326",spatialRel:"esriSpatialRelIntersects",outFields,
       returnGeometry:"true",outSR:"4326",geometryPrecision:"5",
       maxAllowableOffset:"0.00005",resultRecordCount:"1000",
@@ -3621,7 +3621,7 @@ function fsFirstBranchHeight(value){
 }
 async function fsCreateForestWindSampler(ignition,radiusM){
   const [forestFeatures,lidarFeatures]=await Promise.all([
-    fsQueryForestPolygons(259,ignition,radiusM,"HD,NREG,ABREG"),
+    fsQueryForestPolygons(259,ignition,radiusM,"HD,NREG,ABREG","HD >= 8 AND NREG >= 600 AND ABREG >= 15"),
     fsQueryForestPolygons(14,ignition,radiusM,"LEYENDA")
   ]);
   const forest=fsForestPolygonIndex(forestFeatures), lidar=fsForestPolygonIndex(lidarFeatures);
