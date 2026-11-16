@@ -4398,6 +4398,7 @@ const B5mCatalogControl=L.Control.extend({
         <strong>B5M GERUZAK</strong>
         <button type="button" class="b5m-close">✕</button>
       </div>
+      <input id="b5mLayerSearch" type="search" placeholder="Bilatu B5M geruzak eta ortoargazkiak…" autocomplete="off" aria-label="B5M geruzak bilatu" style="width:100%;padding:9px;border:1px solid #cfdad3;border-radius:8px;font:inherit;margin:2px 0 8px">
       <details class="b5m-group" open>
         <summary>B5M · KARTOGRAFIA-GERUZAK · overlay</summary>
         <div id="b5mMapList" class="b5m-list"><div class="b5m-loading">Geruzak kargatzen…</div></div>
@@ -4412,6 +4413,8 @@ const B5mCatalogControl=L.Control.extend({
 
     toggle.addEventListener("click",()=>root.classList.toggle("open"));
     panel.querySelector(".b5m-close").addEventListener("click",()=>root.classList.remove("open"));
+    const search=panel.querySelector("#b5mLayerSearch");
+    search.addEventListener("input",()=>filterB5mCatalog(root,search.value));
 
     setTimeout(()=>loadB5mCatalog(root),0);
     return root;
@@ -4436,6 +4439,27 @@ map.on("click",()=>{
   const ctl=document.querySelector(".b5m-control");
   if(ctl)ctl.classList.remove("open");
 });
+
+function filterB5mCatalog(root,query){
+  const q=String(query||"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLocaleLowerCase("eu");
+  root.querySelectorAll(".b5m-list").forEach(list=>{
+    let visible=0;
+    list.querySelectorAll(".b5m-item").forEach(item=>{
+      const value=item.textContent.normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLocaleLowerCase("eu");
+      const show=!q||value.includes(q);
+      item.style.display=show?"":"none";
+      if(show)visible++;
+    });
+    let empty=list.querySelector(".b5m-no-results");
+    if(!empty){
+      empty=document.createElement("div");
+      empty.className="b5m-no-results b5m-loading";
+      empty.textContent="Ez da B5M geruzarik aurkitu.";
+      list.appendChild(empty);
+    }
+    empty.style.display=q&&visible===0?"":"none";
+  });
+}
 
 async function loadB5mCatalog(root){
   const mapList=root.querySelector("#b5mMapList");
@@ -4475,6 +4499,8 @@ async function loadB5mCatalog(root){
     console.error("B5M ortho WMS:",err);
     orthoList.innerHTML='<div class="b5m-error">Ezin izan dira ortoargazkiak irakurri. WMS/CORS konexioa egiaztatu.</div>';
   }
+  const search=root.querySelector("#b5mLayerSearch");
+  if(search)filterB5mCatalog(root,search.value);
 }
 
 L.control.scale({metric:true,imperial:false}).addTo(map);
