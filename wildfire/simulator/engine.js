@@ -1,8 +1,9 @@
 /* IrratiGIS wildfire spread engine.
  * Rothermel (1972) surface-fire spread equations with the Anderson (1982) 13 fuel models.
  * Internal Rothermel calculations use the original US customary units; public rates are m/min.
- * Assumptions exposed by the caller: 10-m wind is reduced to mid-flame wind with WAF=0.4;
- * the supplied fine-fuel moisture is applied to all particle classes. This is not a crown-fire model.
+ * Wind adjustment is estimated by Anderson fuel-bed structure: exposed beds use depth-based
+ * WAF classes; timber-litter beds use a partially sheltered default where canopy density is unknown.
+ * The supplied fine-fuel moisture is applied to all particle classes. This is not a crown-fire model.
  */
 (function (root) {
   "use strict";
@@ -14,7 +15,6 @@
   const TOTAL_MINERAL = 0.0555;
   const EFFECTIVE_MINERAL = 0.01;
   const HEAT = 8000; // BTU/lb, common value for the original 13 models
-  const WIND_ADJUSTMENT = 0.4; // approximate 10-m to mid-flame conversion
 
   function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
   function damping(moisture, extinction) {
@@ -58,6 +58,17 @@
     const rate = heatSink > 0 ? reaction * xi / heatSink : 0; // ft/min, no wind/slope
     return { rate, sigma, beta, rhoBulk, gamma, xi, reaction, heatSink, etaM };
   }
+  function windAdjustmentFactor(fuel) {
+    const id = Number(fuel && fuel.id);
+    const depth = Number(fuel && fuel.depth);
+    // Anderson 8–10 are timber-understory/litter models: assume partial shelter
+    // unless a future local canopy layer supplies measured cover/height.
+    if (id >= 8 && id <= 10) return 0.3;
+    // Exposed fuels: NWCG unsheltered classes by fuel-bed depth.
+    if (depth > 2.7) return 0.5;
+    if (depth >= 0.9) return 0.4;
+    return 0.3;
+  }
   function behavior(fuel, tangentSlope, aspect, windFrom, windSpeedKmh, moisturePercent) {
     const downwind = (windFrom + 180) % 360;
     const base = rothermelBase(fuel, moisturePercent);
@@ -67,7 +78,8 @@
     const C = 7.47 * Math.exp(-0.133 * Math.pow(sigma, 0.55));
     const B = 0.02526 * Math.pow(sigma, 0.54);
     const E = 0.715 * Math.exp(-0.000359 * sigma);
-    const midFlameFtMin = Math.max(0, windSpeedKmh) * 54.68 * WIND_ADJUSTMENT;
+    const windAdjustment = windAdjustmentFactor(fuel);
+    const midFlameFtMin = Math.max(0, windSpeedKmh) * 54.68 * windAdjustment;
     const phiW = midFlameFtMin > 0.5
       ? C * Math.pow(midFlameFtMin, B) * Math.pow(beta / (3.348 * Math.pow(sigma, -0.8189)), -E)
       : 0;
@@ -86,7 +98,7 @@
       0.461 * Math.exp(-0.1548 * effectiveWindMph) - 0.397);
     return { Rh: rateFtMin * FT_TO_M, head, e: Math.sqrt(Math.max(0, LB*LB-1))/LB,
       LB, phiE, phiW, phiS, baseRate: base.rate*FT_TO_M, model: "rothermel",
-      sigma, beta, reactionIntensity: base.reaction };
+      sigma, beta, reactionIntensity: base.reaction, windAdjustment };
   }
 
   // Compatibility path for inventory records that have not yet been expressed
@@ -181,5 +193,5 @@
     return Infinity;
   }
   function angleDifference(a,b){return ((a-b+540)%360)-180;}
-  root.IrratiWildfireEngine=Object.freeze({fuelMoisture,behavior,ellipseRate,intensity,flameLength,simulate,arrivalTime});
+  root.IrratiWildfireEngine=Object.freeze({fuelMoisture,windAdjustmentFactor,behavior,ellipseRate,intensity,flameLength,simulate,arrivalTime});
 })(window);
