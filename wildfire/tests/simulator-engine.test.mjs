@@ -104,6 +104,8 @@ test("the Anderson 1982 catalog exposes all 13 models with fuel-bed parameters",
   assert.deepEqual(models, Array.from({length:13}, (_,i)=>i+1));
   assert.match(html, /loads:\[\.034,0,0,0\],sav:\[3500,109,30,1500\],depth:1,Mx:\.12/);
   assert.match(html, /loads:\[\.322,1\.058,1\.288,0\],sav:\[1500,109,30,1500\],depth:3,Mx:\.25/);
+  assert.match(html, /f\.w=total\*4\.882427636/);
+  assert.match(html, /f\.cls=deadTotal\?/);
 });
 
 test("Anderson models 1, 4 and 13 run through Rothermel and produce different spread rates", () => {
