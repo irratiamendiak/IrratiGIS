@@ -23,7 +23,7 @@ test("selects overview closest to target and samples projected coordinates",asyn
   const reader=loadProvider([fakeImage(1),fakeImage(8),fakeImage(16),fakeImage(32)]).create({url:"https://example.test/dem.tif",targetResolutionM:14});
   const info=await reader.open();assert.equal(info.resolutionM,16);
   await reader.loadBounds([160,-320,320,-160]);
-  assert.equal(reader.sample(200,-228),32);
+  assert.equal(reader.sample(175,-187),32);
 });
 test("returns NaN outside loaded window",async()=>{
   const reader=loadProvider([fakeImage(14)]).create({url:"https://example.test/dem.tif"});
@@ -88,4 +88,13 @@ test("treats GDAL no-data sentinel values as missing elevations",async()=>{
   await reader.open();
   await reader.loadBounds([160,-320,320,-160]);
   assert.ok(Number.isNaN(reader.sample(200,-228)));
+});
+
+
+test("rejects requests extending beyond the full COG raster coverage",async()=>{
+  const reader=loadProvider([fakeImage(14)]).create({url:"https://example.test/dem.tif"});
+  await reader.open();
+  const outside=[2000,-320,2200,-160];
+  assert.equal(await reader.canLoadBounds(outside),false);
+  await assert.rejects(reader.loadBounds(outside),/excede la cobertura del MDT LiDAR/);
 });
