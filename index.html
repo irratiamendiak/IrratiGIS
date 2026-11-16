@@ -3679,7 +3679,17 @@ async function fsBacktest(btn){
 const fsDec=s=>s.replace(/(\d)\.(\d)(?![^<]*>)/g,"$1,$2");   // komaz erakutsi dezimalak (etiketen barruko atributuak ukitu gabe)
 async function fsRun(){
   if(!fsIgn) return;
-  const my=++fsBusy, out=fsPanel.querySelector(".fs-out"), fu=FS_FUELS[fsCfg.fuel];
+  const out=fsPanel.querySelector(".fs-out");
+  if(fsFuelSource!=="inventory" && fsFuelSource!=="rothermel"){
+    ++fsBusy;
+    fsLast=null;
+    fsGroup.clearLayers();
+    L.marker(fsIgn,{icon:fsIcon("🔥",24)}).addTo(fsGroup);
+    fsSync3D();
+    out.textContent="Selecciona «Baso-inbentarioa» o «Rothermel eredua» para calcular la propagación.";
+    return;
+  }
+  const my=++fsBusy, fu=FS_FUELS[fsCfg.fuel];
   fsTerrainSamples={mdt:0,terrarium:0};
   fsGroup.clearLayers();
   L.marker(fsIgn,{icon:fsIcon("🔥",24)}).addTo(fsGroup);
