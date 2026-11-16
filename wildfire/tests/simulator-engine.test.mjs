@@ -158,7 +158,7 @@ test("Gipuzkoa forest structure and LiDAR layers feed the spatial wind adjustmen
   assert.match(html, /windAt, ignition:fsIgn/);
   assert.match(html, /fsEngine\.forestWindSite/);
   assert.match(html, /s==="3"\|\|/);
-  assert.match(html, /no se aplica abrigo completo/i);
+  assert.match(html, /Ez da babes osoa aplikatzen/i);
 });
 
 test("the map page loads and delegates its spread calculations to the engine module", () => {
