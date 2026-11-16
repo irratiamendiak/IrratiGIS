@@ -54,3 +54,24 @@ test("explains network/Range failures when opening the COG",async()=>{
   const reader=sandbox.window.IrratiMdtProvider.create({url:"https://example.test/dem.tif"});
   await assert.rejects(reader.open(),/HTTP Range.*Failed to fetch.*CORS/);
 });
+
+test("reuses an already loaded raster window for a contained request",async()=>{
+  const image=fakeImage(14); let reads=0;
+  const original=image.readRasters;
+  image.readRasters=async options=>{reads++;return original(options);};
+  const reader=loadProvider([image]).create({url:"https://example.test/dem.tif"});
+  await reader.open();
+  const first=await reader.loadBounds([160,-320,320,-160]);
+  const second=await reader.loadBounds([180,-300,300,-180]);
+  assert.equal(reads,1);
+  assert.equal(first.reused,false);
+  assert.equal(second.reused,true);
+  assert.equal(reader.sample(200,-228),32);
+});
+
+test("rejects malformed projected bounds instead of issuing a raster read",async()=>{
+  const reader=loadProvider([fakeImage(14)]).create({url:"https://example.test/dem.tif"});
+  await reader.open();
+  await assert.rejects(reader.loadBounds([10,20,10,40]),/xmin, ymin, xmax, ymax/);
+  await assert.rejects(reader.canLoadBounds([0,1,2,NaN]),/xmin, ymin, xmax, ymax/);
+});
