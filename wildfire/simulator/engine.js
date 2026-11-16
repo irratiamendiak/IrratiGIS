@@ -1,8 +1,9 @@
 /* IrratiGIS wildfire spread engine.
  * Rothermel (1972) surface-fire spread equations with the Anderson (1982) 13 fuel models.
  * Internal Rothermel calculations use the original US customary units; public rates are m/min.
- * Wind adjustment is estimated by Anderson fuel-bed structure: exposed beds use depth-based
- * WAF classes; timber-litter beds use a partially sheltered default where canopy density is unknown.
+ * Wind adjustment uses site-level forest structure when supplied by the caller. Gipuzkoa's
+ * mapped stand density/height plus LiDAR first-branch height can identify a conservative
+ * partial-shelter proxy; otherwise Anderson/NWCG fuel-bed defaults are used.
  * The supplied fine-fuel moisture is applied to all particle classes. This is not a crown-fire model.
  */
 (function (root) {
@@ -58,7 +59,9 @@
     const rate = heatSink > 0 ? reaction * xi / heatSink : 0; // ft/min, no wind/slope
     return { rate, sigma, beta, rhoBulk, gamma, xi, reaction, heatSink, etaM };
   }
-  function windAdjustmentFactor(fuel) {
+  function windAdjustmentFactor(fuel, windSite) {
+    const siteWaf = Number(windSite && windSite.waf);
+    if (Number.isFinite(siteWaf) && siteWaf >= 0.1 && siteWaf <= 0.5) return siteWaf;
     const id = Number(fuel && fuel.id);
     const depth = Number(fuel && fuel.depth);
     // Anderson 8–10 are timber-understory/litter models: assume partial shelter
@@ -69,16 +72,16 @@
     if (depth >= 0.9) return 0.4;
     return 0.3;
   }
-  function behavior(fuel, tangentSlope, aspect, windFrom, windSpeedKmh, moisturePercent) {
+  function behavior(fuel, tangentSlope, aspect, windFrom, windSpeedKmh, moisturePercent, windSite) {
     const downwind = (windFrom + 180) % 360;
     const base = rothermelBase(fuel, moisturePercent);
-    if (!base) return legacyBehavior(fuel, tangentSlope, aspect, windFrom, windSpeedKmh, moisturePercent);
+    if (!base) return legacyBehavior(fuel, tangentSlope, aspect, windFrom, windSpeedKmh, moisturePercent, windSite);
     if (!(base.rate > 0)) return { Rh: 0, head: downwind, e: 0, LB: 1, phiE: 0, model: "rothermel" };
     const sigma = base.sigma, beta = base.beta;
     const C = 7.47 * Math.exp(-0.133 * Math.pow(sigma, 0.55));
     const B = 0.02526 * Math.pow(sigma, 0.54);
     const E = 0.715 * Math.exp(-0.000359 * sigma);
-    const windAdjustment = windAdjustmentFactor(fuel);
+    const windAdjustment = windAdjustmentFactor(fuel, windSite);
     const midFlameFtMin = Math.max(0, windSpeedKmh) * 54.68 * windAdjustment;
     const phiW = midFlameFtMin > 0.5
       ? C * Math.pow(midFlameFtMin, B) * Math.pow(beta / (3.348 * Math.pow(sigma, -0.8189)), -E)
@@ -103,14 +106,14 @@
 
   // Compatibility path for inventory records that have not yet been expressed
   // as complete Anderson particle-class fuel beds.
-  function legacyBehavior(fuel, tangentSlope, aspect, windFrom, windSpeed, moisturePercent) {
+  function legacyBehavior(fuel, tangentSlope, aspect, windFrom, windSpeed, moisturePercent, windSite) {
     const baseRate = Number(fuel && fuel.R0) * fuelMoisture(fuel, moisturePercent);
     const downwind = (windFrom + 180) % 360;
     if (!(baseRate > 0)) return { Rh: 0, head: downwind, e: 0, LB: 1, phiE: 0, model: "legacy-inventory" };
     const sigma = Number(fuel.sig)||1800;
     const C = 7.47 * Math.exp(-0.133 * Math.pow(sigma, 0.55));
     const B = 0.02526 * Math.pow(sigma, 0.54);
-    const legacyWaf = windAdjustmentFactor(fuel);
+    const legacyWaf = windAdjustmentFactor(fuel, windSite);
     const phiW = windSpeed > 0.5 ? C * Math.pow(windSpeed * 54.68 * legacyWaf, B) : 0;
     const slope = Math.min(Math.max(0,tangentSlope),1.73);
     const phiS = 5.275 * Math.pow(Number(fuel.beta)||0.01, -0.3) * slope*slope;
@@ -120,7 +123,7 @@
     const Rh=Math.min(Number(fuel.Rmax)||100,baseRate*(1+phiE));
     const effectiveWind=Math.min(60,Math.pow(phiE/C,1/B)/88);
     const LB=Math.min(8,0.936*Math.exp(0.2566*effectiveWind)+0.461*Math.exp(-0.1548*effectiveWind)-0.397);
-    return {Rh,head,e:Math.sqrt(Math.max(0,LB*LB-1))/LB,LB,phiE,model:"legacy-inventory"};
+    return {Rh,head,e:Math.sqrt(Math.max(0,LB*LB-1))/LB,LB,phiE,model:"legacy-inventory",windAdjustment:legacyWaf};
   }
   function ellipseRate(result, angle) {
     return result.Rh * (1-result.e) / (1-result.e*Math.cos(angle*RAD));
@@ -134,7 +137,7 @@
 
   function simulate(options) {
     const { fuel, fuelAt, ignition, durationMinutes, stepMinutes, weatherAt, terrainAt,
-      moistureAt, heatContent, windFactor=1, moistureDelta=0, bearingStepDegrees=3,
+      moistureAt, windAt, heatContent, windFactor=1, moistureDelta=0, bearingStepDegrees=3,
       terrainStepMinutes=1 } = options;
     if (!fuel || !ignition || typeof weatherAt!=="function" || typeof terrainAt!=="function" ||
       typeof moistureAt!=="function" || !(stepMinutes>0) || !(durationMinutes>=stepMinutes)) {
@@ -163,8 +166,9 @@
             const selected=fuelAt?(fuelAt(lat,lon)||{}):{};
             activeFuel=selected.fuel||fuel; activeFuelKey=selected.key||"default";
             const moisture=Math.max(2,moistureAt(weather,activeFuel,terrain,sampleTime)+moistureDelta);
+            const windSite=typeof windAt==="function"?windAt(lat,lon,activeFuel,terrain,sampleTime):null;
             const spread=behavior(activeFuel,terrain.tan,terrain.asp,weather.dir,
-              weather.spd*windFactor,moisture);
+              weather.spd*windFactor,moisture,windSite);
             const increment=spread.Rh>0?ellipseRate(spread,angleDifference(bearing,spread.head))*dt:0;
             lat+=increment*Math.cos(bearingRadians)/111320;
             lon+=increment*Math.sin(bearingRadians)/metersPerLongitudeDegree;
