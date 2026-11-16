@@ -152,8 +152,8 @@ test("simulation rejects incomplete inputs instead of silently returning empty o
 
 test("Gipuzkoa forest structure and LiDAR layers feed the spatial wind adjustment", () => {
   assert.match(html, /fsCreateForestWindSampler/);
-  assert.match(html, /MapServer\/259\/query/);
-  assert.match(html, /MapServer\/14\/query/);
+  assert.match(html, /fsQueryForestPolygons\(259/);
+  assert.match(html, /fsQueryForestPolygons\(14/);
   assert.match(html, /fsMaxSpreadExtent\(FS_T\)/);
   assert.match(html, /windAt, ignition:fsIgn/);
   assert.match(html, /fsEngine\.forestWindSite/);
