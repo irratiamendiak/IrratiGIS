@@ -85,7 +85,7 @@ test("cover source selection matches the current inventory and WMS interface", (
   assert.match(html, /fsFuelSource==="rothermel"/);
   assert.match(cover, /source==="inventory"/);
   assert.ok(cover.includes("fsCoverFromInventory(ll)"));
-  assert.match(cover, /source:"inventory"/);
+  assert.match(html, /source:"inventory"/);
   assert.match(cover, /source:"wms"/);
   assert.match(html, /data-fs-inventory-enable/);
   assert.ok(html.includes("map.addLayer(inventarioForestalLayer)"));
