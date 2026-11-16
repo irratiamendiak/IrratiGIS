@@ -77,7 +77,7 @@ test("rejects malformed projected bounds instead of issuing a raster read",async
 });
 
 test("treats GDAL no-data sentinel values as missing elevations",async()=>{
-  const image=fakeImage(14);
+  const image=fakeImage(16);
   image.getFileDirectory=()=>({GDAL_NODATA:"-9999\\0"});
   image.readRasters=async({window:w})=>{
     const [x0,y0,x1,y1]=w,out=new Float32Array((x1-x0)*(y1-y0)).fill(100);
