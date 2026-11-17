@@ -3584,9 +3584,15 @@ function fsFuelFromInventoryProperties(p,lidar){
   const norm=v=>String(v??"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
   const fieldKey=v=>norm(v).replace(/[^a-z0-9]/g,"");
   const get=(obj,names)=>{
-    const wanted=new Set(names.map(fieldKey));
-    const entry=Object.entries(obj||{}).find(([k,v])=>wanted.has(fieldKey(k))&&v!==null&&v!==undefined&&String(v).trim()!=="");
-    return entry?entry[1]:"";
+    // Respect the semantic priority in names; Object.entries order may put
+    // numeric TIPES10 before the descriptive TIPES_ES/TIPES_EU field.
+    const entries=Object.entries(obj||{});
+    for(const name of names){
+      const wanted=fieldKey(name);
+      const entry=entries.find(([k,v])=>fieldKey(k)===wanted&&v!==null&&v!==undefined&&String(v).trim()!=="");
+      if(entry) return entry[1];
+    }
+    return "";
   };
   const use=norm(get(p,["TIPES_ES","TIPES_EU","TIPES10","TIPES"]));
   // Mixed herbaceous/shrub classes are not equivalent to a pure shrub fuel class.
@@ -3715,7 +3721,7 @@ async function fsCreateInventoryFuelSampler(ignition,radiusM){
   result.inspectAt=inspectAt;
   result.stats.targetPoint=inspectAt(43.01751711033769,-2.1399951424709918);
   const fuelAt=(lat,lon)=>{
-    const key="inventory-v7:"+lat.toFixed(5)+","+lon.toFixed(5);
+    const key="inventory-v8:"+lat.toFixed(5)+","+lon.toFixed(5);
     let value=cache.get(key);
     if(!value){
       const properties=fsForestFind(index,lat,lon);
