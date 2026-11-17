@@ -3546,29 +3546,41 @@ async function fsQueryForestPolygons(layerId, ignition, radiusM, outFields, wher
   const geometry={xmin:ignition.lng-dLon,ymin:ignition.lat-dLat,
     xmax:ignition.lng+dLon,ymax:ignition.lat+dLat,spatialReference:{wkid:4326}};
   const base="https://www.geo.euskadi.eus/geoeuskadi/rest/services/W26GIS/AGRICULTURA_CAS/MapServer/"+layerId+"/query";
-  const features=[]; let offset=0, pages=0;
-  while(pages<8){
-    const params=new URLSearchParams({
-      where,geometry:JSON.stringify(geometry),geometryType:"esriGeometryEnvelope",
-      inSR:"4326",spatialRel:"esriSpatialRelIntersects",outFields,
-      returnGeometry:"true",outSR:"4326",geometryPrecision:"5",
-      maxAllowableOffset:"0.00005",resultRecordCount:"1000",
-      resultOffset:String(offset),f:"json"
-    });
-    const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),25000);
-    let response,json;
+  const request=async params=>{
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),25000);
     try{
-      response=await fetch(base+"?"+params.toString(),{mode:"cors",credentials:"omit",signal:controller.signal});
+      const response=await fetch(base+"?"+params.toString(),{mode:"cors",credentials:"omit",signal:controller.signal});
       if(!response.ok) throw new Error("GeoEuskadi forest layer "+layerId+" HTTP "+response.status);
-      json=await response.json();
+      const json=await response.json();
+      if(json.error) throw new Error(json.error.message||("GeoEuskadi forest layer "+layerId+" error"));
+      return json;
     }finally{clearTimeout(timer);}
-    if(json.error) throw new Error(json.error.message||("GeoEuskadi forest layer "+layerId+" error"));
-    const batch=Array.isArray(json.features)?json.features:[];
-    features.push(...batch); pages++;
-    if(!json.exceededTransferLimit||!batch.length) return features;
-    offset+=batch.length;
+  };
+  const spatial={
+    where,geometry:JSON.stringify(geometry),geometryType:"esriGeometryEnvelope",
+    inSR:"4326",spatialRel:"esriSpatialRelIntersects",f:"json"
+  };
+  // Ask ArcGIS for the complete set of matching IDs first. Unlike offset paging,
+  // returnIdsOnly is not subject to the layer's maxRecordCount transfer limit.
+  const idResult=await request(new URLSearchParams({...spatial,returnIdsOnly:"true",returnGeometry:"false"}));
+  const ids=Array.isArray(idResult.objectIds)?idResult.objectIds:[];
+  if(!ids.length) return [];
+  const features=[];
+  // Fetch geometry and attributes in bounded object-ID batches. This avoids
+  // silently truncating large forest areas at an arbitrary page count.
+  const batchSize=500;
+  for(let start=0;start<ids.length;start+=batchSize){
+    const params=new URLSearchParams({
+      ...spatial,objectIds:ids.slice(start,start+batchSize).join(","),
+      outFields,returnGeometry:"true",outSR:"4326",geometryPrecision:"5",
+      maxAllowableOffset:"0.00005"
+    });
+    const result=await request(params);
+    const batch=Array.isArray(result.features)?result.features:[];
+    features.push(...batch);
+    if(result.exceededTransferLimit) throw new Error("GeoEuskadi forest layer "+layerId+" truncated an object-ID batch.");
   }
-  throw new Error("La consulta forestal supera el límite de páginas permitido.");
+  return features;
 }
 function fsForestPolygonIndex(features){
   const cell=.02, buckets=new Map(), polygons=[];
@@ -3621,7 +3633,7 @@ function fsFirstBranchHeight(value){
 }
 async function fsCreateForestWindSampler(ignition,radiusM){
   const [forestFeatures,lidarFeatures]=await Promise.all([
-    fsQueryForestPolygons(259,ignition,radiusM,"HD,NREG,ABREG","HD >= 8 AND NREG >= 600 AND ABREG >= 15"),
+    fsQueryForestPolygons(259,ignition,radiusM,"HD,NREG,ABREG","1=1"),
     fsQueryForestPolygons(14,ignition,radiusM,"LEYENDA")
   ]);
   const forest=fsForestPolygonIndex(forestFeatures), lidar=fsForestPolygonIndex(lidarFeatures);
