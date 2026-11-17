@@ -6,7 +6,7 @@
   "use strict";
   const CACHE_LIMIT=96;
   const cache=new Map(), pending=new Map();
-  let tiffPromise=null, imagePromise=null, projector=null, noData=null;
+  let tiffPromise=null, imagePromises=new Map(), projector=null, noData=null;
   const url=String(root.IRRATIGIS_MDT_COG_URL||"").trim();
   const targetResolution=Number(root.IRRATIGIS_MDT_TARGET_RESOLUTION_M)||14;
   const MAX_LAT=85.0511287798066;
@@ -20,16 +20,19 @@
     );
     return projector;
   }
-  async function image(){
+  async function image(z,y){
     if(!url)throw new Error("No está configurada la URL del MDT LiDAR de Gipuzkoa.");
     if(!root.GeoTIFF||typeof root.GeoTIFF.fromUrl!=="function")throw new Error("No está disponible GeoTIFF.js para leer el MDT LiDAR.");
     if(!tiffPromise)tiffPromise=root.GeoTIFF.fromUrl(url);
     const tiff=await tiffPromise;
-    if(!imagePromise)imagePromise=(async()=>{
+    const centerLat=lonLatAt(128,y*256+128,z)[1];
+    const target=156543.03392*Math.cos(centerLat*Math.PI/180)/Math.pow(2,z);
+    const key=z+":"+Math.round(target);
+    if(!imagePromises.has(key))imagePromises.set(key,(async()=>{
       const count=await tiff.getImageCount();
       let chosen=null,best=Infinity;
       for(let i=0;i<count;i++){
-        const base=await tiff.getImage(i), candidates=[base];
+        const base=await tiff.getImage(i),candidates=[base];
         if(typeof base.getOverviewCount==="function"&&typeof base.getOverview==="function"){
           let n=0;try{n=await base.getOverviewCount();}catch(_){}
           for(let j=0;j<n;j++)try{candidates.push(await base.getOverview(j));}catch(_){}
@@ -40,17 +43,17 @@
             if(!res||!origin||!res.every(Number.isFinite)||!origin.every(Number.isFinite))continue;
             const size=Math.max(Math.abs(res[0]),Math.abs(res[1]));
             if(!(size>0))continue;
-            const score=Math.abs(Math.log(size/targetResolution));
+            const score=Math.abs(Math.log(size/target));
             if(score<best){best=score;chosen=candidate;}
           }catch(_){}
         }
       }
       if(!chosen)throw new Error("El COG LiDAR no contiene una imagen georreferenciada válida.");
       const raw=chosen.getFileDirectory()?.GDAL_NODATA;
-      noData=raw===undefined?null:Number(String(raw).replace(/\0/g,"").trim());
+      noData=raw===undefined?null:Number(String(raw).replace(/\\0/g,"").trim());
       return chosen;
-    })();
-    return imagePromise;
+    })());
+    return imagePromises.get(key);
   }
   function lonLatAt(px,py,z){
     const n=Math.pow(2,z),gx=px/(256*n),gy=py/(256*n);
@@ -68,7 +71,7 @@
     while(cache.size>CACHE_LIMIT)cache.delete(cache.keys().next().value);
   }
   async function buildGrid(z,x,y,pad){
-    const img=await image(), n=Math.pow(2,z), width=256+2*pad;
+    const img=await image(z,y), width=256+2*pad;
     const corners=[
       lonLatAt(x*256-pad,y*256-pad,z),
       lonLatAt((x+1)*256+pad,(y+1)*256+pad,z),
