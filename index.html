@@ -3847,19 +3847,21 @@ async function fsRun(){
   fsSync3D();
   const manual=fsCfg.wind==="man";
   out.innerHTML=`<div style="font-weight:700;color:#52645a">Lurzorua kontsultatzen eta hedapena kalkulatzen (${manual?"eskuzko":"aurreikusitako"} modua)…</div>`;
+  const perfStart=performance.now(), perf={};
+  const fsTimed=(name,job)=>{const started=performance.now();return Promise.resolve(job).then(value=>{perf[name]=performance.now()-started;return value;},error=>{perf[name]=performance.now()-started;throw error;});};
   let met, ffn=null, netNote="", inventorySampler=null, inventoryNote="", windSampler=null, windSamplerError="", demCoverage=null;
   try{
     // Meteorologia eta MDT ez dira elkarren menpekoak: paraleloan kargatu.
     [met,demCoverage]=await Promise.all([
-      fsMeteo(),
-      fsLoadDem(fsIgn.lat,fsIgn.lng,fsMaxSpreadExtent(FS_T))
+      fsTimed("Meteorologia",fsMeteo()),
+      fsTimed("MDT",fsLoadDem(fsIgn.lat,fsIgn.lng,fsMaxSpreadExtent(FS_T)))
     ]);
     // Inbentarioa eta baso-egituraren haize-doikuntza ere independenteak dira.
     const [inventoryResult,windResult]=await Promise.all([
       fsFuelSource==="inventory"
-        ? fsCreateInventoryFuelSampler(fsIgn).then(value=>({value})).catch(error=>({error}))
+        ? fsTimed("Inventario",fsCreateInventoryFuelSampler(fsIgn)).then(value=>({value})).catch(error=>({error}))
         : Promise.resolve({value:null}),
-      fsCreateForestWindSampler(fsIgn,fsMaxSpreadExtent(FS_T))
+      fsTimed("Ajuste de viento",fsCreateForestWindSampler(fsIgn,fsMaxSpreadExtent(FS_T)))
         .then(value=>({value})).catch(error=>({error}))
     ]);
     if(inventoryResult.error){
@@ -3877,9 +3879,9 @@ async function fsRun(){
       windSampler=windResult.value;
     }
     fsCfg.modeEff=null;
-    try{ const net=await fsNet(); ffn=fsFfmcNet(net,fsIgn); if(fsCfg.moistMode==="ffmcnet") fsCfg.ffmcEff=ffn.val; }
+    try{ const net=await fsTimed("Red de estaciones",fsNet()); ffn=fsFfmcNet(net,fsIgn); if(fsCfg.moistMode==="ffmcnet") fsCfg.ffmcEff=ffn.val; }
     catch(e){ if(fsCfg.moistMode==="ffmcnet"){ fsCfg.modeEff=met.hours.length?"calc":"inst"; netNote=`Ezin izan da estazio-sareko FFMCa irakurri (${e.message||e}); kalkulatutako hezetasuna erabiliko da.`; } }
-    if(!Number.isFinite(fsElev(fsIgn.lat,fsIgn.lng))) throw new Error("Ezin izan da lurzorua kargatu (altitude-eredu digitala).");
+    if(!Number.isFinite(await fsTimed("Comprobación de altitud",Promise.resolve().then(()=>fsElev(fsIgn.lat,fsIgn.lng))))) throw new Error("Ezin izan da lurzorua kargatu (altitude-eredu digitala).");
   }catch(err){
     if(my===fsBusy) out.innerHTML=`<div style="color:#8b2f2f">⚠️ ${escapeHtml(err.message||String(err))}</div>`;
     return;
@@ -3895,12 +3897,13 @@ async function fsRun(){
   let rays;
   const areas={};
   try{
-    rays=fsSimulate(fu,met,null,inventorySampler&&inventorySampler.fuelAt,FS_T,windSampler&&windSampler.windAt);
+    rays=await fsTimed("Cálculo de propagación",Promise.resolve().then(()=>fsSimulate(fu,met,null,inventorySampler&&inventorySampler.fuelAt,FS_T,windSampler&&windSampler.windAt)));
     if(inventorySampler){
       try{inventorySampler.map.remove();}catch(_){}
       try{inventorySampler.container.remove();}catch(_){}
     }
     if(my!==fsBusy) return;
+    const renderStarted=performance.now();
     for(const t of times){
       const perimeter=fsPerim(rays,t), st=styles[t];
       areas[t]=fsHa(perimeter);
@@ -3910,6 +3913,7 @@ async function fsRun(){
       }).bindTooltip(`${manual?"Eskuzkoa":"Aurreikusitakoa"} · ${t} min · ${areas[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup);
       fsSync3D();
     }
+    perf["Dibujo de perímetros y 3D"]=performance.now()-renderStarted;
   }catch(err){
     if(inventorySampler){
       try{inventorySampler.map.remove();}catch(_){}
@@ -3954,7 +3958,10 @@ async function fsRun(){
     ["Eguzki-erradiazioa",w=>Number.isFinite(w.R)?`${Math.round(w.R)} W/m²`:"—"],
     ["Erregai finaren hezetasuna (1 h)",w=>Array.isArray(w.m)&&Number.isFinite(w.m[0])?`${w.m[0].toFixed(1)} %`:"—"]
   ].map(([name,fmt])=>`<tr><td style="padding:4px;border-bottom:1px solid #edf0ed">${name}</td>${times.map(t=>{const w=met.at(t);return `<td style="text-align:center;padding:4px;border-bottom:1px solid #edf0ed">${fmt(w)}</td>`;}).join("")}</tr>`).join("")}</tbody></table><div style="font-size:10px;color:#65736b;margin-top:4px">Open-Meteoren orduko balioak denbora-tarte bakoitzerako (prezipitazioa ordu horretarako aurreikusitakoa da).</div></div>`;
-  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"eskuzkoa":"aurreikusitakoa"} · hartutako azalera</b>${table}${lidarNote}${windNoteHtml}${fuelNote}${wxTable}
+  perf["Tiempo total"]=performance.now()-perfStart;
+  const perfRows=Object.entries(perf).map(([name,ms])=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:2px 0;border-bottom:1px solid #e8ece9"><span>${escapeHtml(name)}</span><b>${(ms/1000).toFixed(2)} s</b></div>`).join("");
+  const perfHtml=`<details style="margin-top:9px;padding:7px 9px;background:#f5f7f5;border-radius:5px;font-size:11px"><summary style="cursor:pointer;font-weight:700">Diagnóstico de tiempos · ${(perf["Tiempo total"]/1000).toFixed(2)} s</summary><div style="margin-top:6px">${perfRows}</div></details>`;
+  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"eskuzkoa":"aurreikusitakoa"} · hartutako azalera</b>${table}${lidarNote}${windNoteHtml}${fuelNote}${wxTable}${perfHtml}
     <div style="font-size:10px;color:#65736b;margin-top:8px">${source}. Lau perimetroek 30, 60, 90 eta 120 minutu adierazten dituzte; koloreak eta marra-motak denbora-tarte bakoitza bereizten dute. Aldatu meteorologia-hautatzailea aurreikuspenaren eta eskuzko moduaren artean; eskuzko moduan haizearen, tenperaturaren eta hezetasunaren eremuak erabiltzen dira.</div>
   </div>`);
   fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0:null,met,farBg:null,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
