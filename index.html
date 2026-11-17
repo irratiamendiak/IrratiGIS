@@ -3583,7 +3583,7 @@ function fsFuelFromInventoryProperties(p){
   // Las clases mixtas o ambiguas tienen prioridad: no asignar FM1/FM5
   // por una coincidencia parcial con "pastizal" o "matorral".
   if(/pastizal.*(matorral|arbust)|matorral.*pastizal|mixto|mezcla/.test(use)) return null;
-  if(/^(herbazal|prado|pastizal)$/.test(use)||/^prado con (setos|sebes)/.test(use)) return "fm1";
+  if(/^(herbazal|prados?|pastizales?)$/.test(use)||/^prado con (setos|sebes)/.test(use)) return "fm1";
   if(/matorral|brezal|argomal|tojal|landazuri|helechal|helecho|iratze/.test(use)) return "fm5";
   if(/(conifera|pinar|pinudi|abetal|alerzal)/.test(use)) return "fm8";
   if(/(frondosa|hayedo|pagadi|robledal|castanar|bosque caducifolio)/.test(use)) return "fm9";
