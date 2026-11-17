@@ -50,7 +50,6 @@ input[type=file]{position:absolute;left:-9999px}
 .ir3d-earth-actions button{gap:5px;font-size:11px;white-space:nowrap}
 .ir3d-earth-actions button span{font-size:16px;line-height:1}
 .ir3d-earth-actions button[data-act="north"]{background:#e8f2f8;border-color:#c9dce8}
-.ir3d-earth-actions button[data-act="exaggeration"]{background:#edf4ef}
 .ir3d-earth-compass button:hover,.ir3d-earth-actions button:hover,.ir3d-earth-compass button:focus-visible,.ir3d-earth-actions button:focus-visible{background:#dcebe2;border-color:#91b39e;outline:2px solid transparent}
 .ir3d-nav-caption{font:9px/1.4 system-ui;color:#5b6b61;text-align:center;border-top:1px solid #e8eee9;margin-top:7px;padding-top:6px}
 @media(max-width:520px){.ir3d-nav-control{width:164px;padding:7px}.ir3d-compass-dial{width:56px;height:56px}.ir3d-earth-actions button{font-size:10px;min-height:32px;height:32px}.ir3d-nav-caption{font-size:8px}}
@@ -741,7 +740,7 @@ const shpWriteAvailable=(typeof shpwrite!=="undefined");
 const map=L.map("map",{center:[43.05,-2.2],zoom:9});
 window.IrratiGISMap=map;
 
-/* El relieve 3D utiliza Terrarium global (sin cartografía LiDAR). */
+/* El visor 3D usa un DEM global interno solo para representar la orografía; las fuentes de simulación se eligen exclusivamente en el panel de incendios. */
 const osm=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
   maxZoom:20, attribution:"© OpenStreetMap contributors"
 }).addTo(map);
@@ -900,8 +899,8 @@ b5mTopo.on("add",loadB5mTopo);
 
 /* Oinarrizko mapak: B5M ortoargazki bat hautatzean hauek kenduko dira.
    B5M kartografia-geruzak ez dira zerrenda honetan sartzen; overlay gisa mantentzen dira. */
-/* Mapa base de relieve 3D sin LiDAR: ortofoto Esri + elevación global Terrarium.
-   Las capas WMS, incendios, tracks y demás overlays siguen siendo capas Leaflet normales. */
+/* Vista tridimensional de navegación: la elevación global se usa internamente para dibujar el terreno.
+   No ofrece selectores de relieve ni combustible; esos parámetros pertenecen al panel de simulación. */
 let lidarRelief3D=null;
 try{
   lidarRelief3D=L.maplibreGL({
@@ -994,7 +993,7 @@ try{
           const el=L.DomUtil.create("div","leaflet-bar ir3d-nav-control");
           el.setAttribute("role","group");
           el.setAttribute("aria-label","Controles orbitales del relieve 3D");
-          el.innerHTML='<div class="ir3d-earth-compass"><button type="button" data-act="rotate-left" title="Girar a la izquierda" aria-label="Girar a la izquierda">↶</button><div class="ir3d-compass-dial"><span class="ir3d-compass-n">N</span><span class="ir3d-compass-needle">▲</span></div><button type="button" data-act="rotate-right" title="Girar a la derecha" aria-label="Girar a la derecha">↷</button></div><div class="ir3d-earth-actions"><button type="button" data-act="tilt-up" title="Inclinar la cámara" aria-label="Inclinar"><span>↗</span>Inclinar</button><button type="button" data-act="tilt-down" title="Vista cenital" aria-label="Vista cenital"><span>↘</span>Cenital</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar"><span>＋</span>Zoom</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar"><span>－</span>Zoom</button><button type="button" data-act="north" title="Orientar al norte" aria-label="Orientar al norte"><span>🧭</span>Norte</button><button type="button" data-act="exaggeration" title="Cambiar exageración del relieve" aria-label="Exageración del relieve"><span>⛰</span>Relieve 1×</button></div><div class="ir3d-nav-caption">Arrastrar: mover · botón derecho: orbitar · brújula: girar · mantener pulsado: inclinar y zoom</div>';
+          el.innerHTML='<div class="ir3d-earth-compass"><button type="button" data-act="rotate-left" title="Girar a la izquierda" aria-label="Girar a la izquierda">↶</button><div class="ir3d-compass-dial"><span class="ir3d-compass-n">N</span><span class="ir3d-compass-needle">▲</span></div><button type="button" data-act="rotate-right" title="Girar a la derecha" aria-label="Girar a la derecha">↷</button></div><div class="ir3d-earth-actions"><button type="button" data-act="tilt-up" title="Inclinar la cámara" aria-label="Inclinar"><span>↗</span>Inclinar</button><button type="button" data-act="tilt-down" title="Vista cenital" aria-label="Vista cenital"><span>↘</span>Cenital</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar"><span>＋</span>Zoom</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar"><span>－</span>Zoom</button><button type="button" data-act="north" title="Orientar al norte" aria-label="Orientar al norte"><span>🧭</span>Norte</button></div><div class="ir3d-nav-caption">Arrastrar: mover · botón derecho: orbitar · brújula: girar · mantener pulsado: inclinar y zoom</div>';
           L.DomEvent.disableClickPropagation(el);
           L.DomEvent.disableScrollPropagation(el);
           // Mandos continuos: mantener pulsado produce movimiento fluido, no saltos.
@@ -1053,14 +1052,6 @@ try{
             if(!activeGl||!activeGl.isStyleLoaded())return;
             const act=b.dataset.act;
             if(act==="north")activeGl.easeTo({bearing:0,duration:450});
-            if(act==="exaggeration"){
-              const values=[1,1.5,2];
-              const current=Number(lidarRelief3D._terrainExaggeration)||1;
-              const next=values[(values.indexOf(current)+1)%values.length];
-              lidarRelief3D._terrainExaggeration=next;
-              try{activeGl.setTerrain({source:"global-dem",exaggeration:next});}catch(err){console.warn("Exageración del relieve:",err);}
-              b.innerHTML="<span>⛰</span>Relieve "+next+"×";
-            }
           });
           return el;
         };
