@@ -925,7 +925,20 @@ try{
       pane.style.display="none";
     });
     const gl=lidarRelief3D.getMaplibreMap();
-    if(!gl||lidarRelief3D._terrainReady)return;
+    if(!gl)return;
+    // MapLibre captura los clics en su canvas y no los propaga a Leaflet.
+    // Reenviar explícitamente el clic cuando el usuario está marcando la ignición.
+    if(!lidarRelief3D._fireClickHandler){
+      lidarRelief3D._fireClickHandler=e=>{
+        if(!fsArmed||wiMode||!map.hasLayer(fsGroup)||!e||!e.lngLat)return;
+        fsArmed=false;
+        map.getContainer().style.cursor="";
+        fsIgn=L.latLng(e.lngLat.lat,e.lngLat.lng);
+        fsRun();
+      };
+      gl.on("click",lidarRelief3D._fireClickHandler);
+    }
+    if(lidarRelief3D._terrainReady)return;
     lidarRelief3D._terrainReady=true;
     // Controles orbitales: giro, inclinación, zoom y exageración vertical.
     try{
