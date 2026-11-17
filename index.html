@@ -3961,7 +3961,7 @@ async function fsBacktest(btn){
       const R=fsBehavior(fu,ter.tan,ter.asp,w.dir,w.spd,fsMoistAt(w,fu,ter,null)).Rh; const A=fsHa(fsPerim(fsSimulate(fu,met,null,null,T),T)); fsFlat=true; const B=fsHa(fsPerim(fsSimulate(fu,met,null,null,T),T)); fsFlat=false;
       res.push({f,T,ok,A,B,R,sl:ok?ter.tan:NaN});
     }
-  }finally{ fsFlat=false; fsIgn=ign0; fsCfg.moistMode=mm0; fsCfg.modeEff=me0; fsDem.clear(); btn.disabled=false; btn.textContent=old; fsBtRunning=false; }
+  }finally{ fsFlat=false; fsIgn=ign0; fsCfg.moistMode=mm0; fsCfg.modeEff=me0;  btn.disabled=false; btn.textContent=old; fsBtRunning=false; }
   const ok=res.filter(x=>x.ok&&x.A>0&&x.B>0), obs=ok.map(x=>x.f[8]), A=ok.map(x=>x.A), B=ok.map(x=>x.B);
   const rat=A.map((a,i)=>a/obs[i]), und=A.filter((a,i)=>a<.5*obs[i]).length, undB=B.filter((a,i)=>a<.5*obs[i]).length;
   const big=ok.filter(x=>x.f[8]>=10), bigUnd=big.filter(x=>x.A<.5*x.f[8]);
