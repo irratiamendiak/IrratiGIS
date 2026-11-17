@@ -3571,7 +3571,7 @@ async function fsMeteo(){
 
 function fsFuelFromInventoryProperties(p){
   p=p||{};
-  const norm=v=>String(v??"").toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").trim();
+  const norm=v=>String(v??"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
   const fieldKey=v=>norm(v).replace(/[^a-z0-9]/g,"");
   const fields=Object.entries(p);
   const get=names=>{
