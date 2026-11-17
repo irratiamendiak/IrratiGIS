@@ -8,7 +8,6 @@
   const cache=new Map(), pending=new Map();
   let tiffPromise=null, imagePromises=new Map(), projector=null, noData=null;
   const url=String(root.IRRATIGIS_MDT_COG_URL||"").trim();
-  const targetResolution=Number(root.IRRATIGIS_MDT_TARGET_RESOLUTION_M)||14;
   const MAX_LAT=85.0511287798066;
 
   function project(){
