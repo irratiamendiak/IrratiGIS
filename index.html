@@ -2569,13 +2569,15 @@ async function fsLoadDem(lat,lng,maxExtent){
   const [x0,y0]=fsPix(lat+dLat,lng-dLon), [x1,y1]=fsPix(lat-dLat,lng+dLon);
   for(let tx=Math.floor(x0/256);tx<=Math.floor(x1/256);tx++) for(let ty=Math.floor(y0/256);ty<=Math.floor(y1/256);ty++){
     const key=tx+"/"+ty; if(fsDem.has(key)) continue;
-    jobs.push(new Promise(res=>{
+    jobs.push(new Promise((res,rej)=>{
       const img=new Image(); img.crossOrigin="anonymous";
-      img.onload=()=>{ const c=document.createElement("canvas"); c.width=c.height=256; const cx=c.getContext("2d"); cx.drawImage(img,0,0);
+      img.onload=()=>{ try{
+        const c=document.createElement("canvas"); c.width=c.height=256; const cx=c.getContext("2d"); cx.drawImage(img,0,0);
         const d=cx.getImageData(0,0,256,256).data, a=new Float32Array(65536);
         for(let i=0;i<65536;i++) a[i]=d[i*4]*256+d[i*4+1]+d[i*4+2]/256-32768;
-        fsDem.set(key,a); res(); };
-      img.onerror=()=>res();
+        fsDem.set(key,a); res();
+      }catch(error){rej(new Error("No se pudo leer el MDT Terrarium "+key+": "+(error.message||error)));} };
+      img.onerror=()=>rej(new Error("No se pudo cargar la tesela del MDT Terrarium "+key+". Comprueba la conexión o el proveedor de relieve."));
       img.src=TERRARIUM.replace("{z}",FS_Z).replace("{x}",tx).replace("{y}",ty);
     }));
   }
@@ -2602,8 +2604,7 @@ function fsTerrain(lat,lon){   // malda (tan) eta orientazioa (maldan behera, gr
   const d=40, dl=d/111320, dn=d/(111320*Math.cos(lat*fsRad));
   const E=fsElev(lat,lon+dn), W=fsElev(lat,lon-dn), N=fsElev(lat+dl,lon), S=fsElev(lat-dl,lon);
   if(![E,W,N,S].every(Number.isFinite)){
-    if(fsTerrainSource==="mdt") return null; // Sin cobertura LiDAR: el motor detiene únicamente este rayo.
-    return {tan:0,asp:0};
+    return null; // Sin cobertura del MDT: no inventar una pendiente llana; el motor detiene únicamente este rayo.
   }
   const gx=(E-W)/(2*d), gy=(N-S)/(2*d);
   return {tan:Math.hypot(gx,gy), asp:(Math.atan2(-gx,-gy)/fsRad+360)%360};
@@ -4095,8 +4096,7 @@ async function fsRun(){
     ]);
     if(inventoryResult.error){
       const e=inventoryResult.error;
-      inventoryNote="Ezin izan da 2024ko Baso Inbentarioa kargatu ("+(e.message||String(e))+"); ordezko erregai uniformea erabiliko da.";
-      console.warn(inventoryNote);
+      throw new Error("No se ha podido cargar el inventario forestal completo ("+(e.message||String(e))+"). Se cancela esta simulación para no sustituir todo el bosque por un combustible uniforme.");
     }else{
       inventorySampler=inventoryResult.value;
       if(inventorySampler) inventoryNote="2024ko Baso Inbentarioaren estaldura aldakorra, klase sinplifikatuen bidez; ez dator bat Rothermel-en 1–13 eredu ofizialekin. Sailkatu ezin diren eremuek hautatutako ordezko erregaia erabiltzen dute.";
