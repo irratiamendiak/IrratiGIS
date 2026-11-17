@@ -3611,50 +3611,45 @@ function fsFuelFromInventoryProperties(p){
   return conifer?"fm8":"fm9";
 }
 
-/* Muestreador sobre la capa PMTiles original del visor.
-   Evita crear un segundo MapLibre oculto: la consulta se hace sobre los tiles
-   que ya está renderizando inventarioForestalLayer. */
+/* Muestreador geográfico del Inventario Forestal 2024.
+   Consulta las capas oficiales de usos forestales de GeoEuskadi (55–63),
+   conserva sus atributos originales y localiza cada muestra por geometría,
+   sin depender del viewport ni de las teselas visibles de MapLibre. */
 const fsInventoryFuelCache=new Map();
-async function fsCreateInventoryFuelSampler(ignition){
+async function fsCreateInventoryFuelSampler(ignition,radiusM){
   const fallback=FS_FUELS[fsCfg.fuel], cache=fsInventoryFuelCache;
-  const result={map:null,container:null,ownsMap:false,cache,fallback,stats:{classified:0,unknown:0,noFeature:0,unmapped:0,outsideViewport:0,featureHits:0,transitions:0,sampleProperties:[]}};
-  if(!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer);
-  const gl=inventarioForestalLayer.getMaplibreMap();
-  if(!gl) throw new Error("La capa original del Inventario Forestal no tiene un mapa MapLibre activo.");
-  result.map=gl;
-  await new Promise((resolve,reject)=>{
-    let done=false;
-    const finish=err=>{if(done)return;done=true;clearTimeout(timer);err?reject(err):resolve();};
-    const timer=setTimeout(()=>finish(new Error("Tiempo agotado esperando los polígonos del Inventario Forestal 2024.")),20000);
-    const ready=()=>{
-      if(!gl.isStyleLoaded()||!gl.getLayer("forestal-poligonos")) return false;
-      return typeof gl.isSourceLoaded!=="function"||gl.isSourceLoaded("forestal");
-    };
-    if(ready()){finish();return;}
-    gl.once("idle",()=>ready()?finish():finish(new Error("La capa PMTiles no terminó de cargar sus teselas.")));
-    gl.on("error",e=>{if(!gl.isStyleLoaded())finish(e.error||new Error("Error cargando la capa PMTiles del inventario."));});
-  });
+  const result={cache,fallback,stats:{classified:0,unknown:0,noFeature:0,unmapped:0,outsideViewport:0,featureHits:0,inventoryPolygons:0,sampleProperties:[]}};
+  const outFields="OBJECTID,TIPES10,TIPES_ES,TIPES_EU,SP1,SP1_ES,SP1_EU,O1,E1,EMASA1,SP2,SP2_ES,SP2_EU,O2,E2,EMASA2,SP3,SP3_ES,SP3_EU,O3,E3,EMASA3";
+  // 55–63 son las nueve clases del grupo oficial «Usos del suelo»:
+  // bosque natural, plantación, matorral, pastizal, prados y resto de coberturas.
+  const layerIds=[55,56,57,58,59,60,61,62,63];
+  const layers=await Promise.all(layerIds.map(async layerId=>{
+    const features=await fsQueryForestPolygons(layerId,ignition,radiusM,outFields);
+    return features.map(feature=>({
+      ...feature,
+      attributes:{...(feature.attributes||{}),_SOURCE_LAYER:layerId}
+    }));
+  }));
+  const allFeatures=layers.flat();
+  const index=fsForestPolygonIndex(allFeatures);
+  result.stats.inventoryPolygons=index.polygons.length;
+  if(!index.polygons.length) throw new Error("GeoEuskadi ez da poligonorik itzuli simulazio-eremuan (55–63 geruzak).");
   const counted=new Set();
   const fuelAt=(lat,lon)=>{
-    const key="inventory-v4:"+lat.toFixed(3)+","+lon.toFixed(3);
+    const key="inventory-v5:"+lat.toFixed(5)+","+lon.toFixed(5);
     let value=cache.get(key);
     if(!value){
-      const px=gl.project([lon,lat]);
-      let features=[],reason="no-feature";
-      const canvas=gl.getCanvas(), width=canvas.clientWidth||canvas.width, height=canvas.clientHeight||canvas.height;
-      const inside=px.x>=0&&px.y>=0&&px.x<width&&px.y<height;
-      if(inside) features=gl.queryRenderedFeatures(px,{layers:["forestal-poligonos"]})||[];
-      else reason="outside-viewport";
-      let mapped=null;
-      for(const feature of features){
-        const candidate=fsFuelFromInventoryProperties(feature.properties||{});
-        if(candidate){mapped=candidate;break;}
+      const properties=fsForestFind(index,lat,lon);
+      const featureCount=properties?1:0;
+      const mapped=properties?fsFuelFromInventoryProperties(properties):null;
+      const reason=properties?(mapped?null:"unmapped"):"no-feature";
+      if(properties&&result.stats.sampleProperties.length<3){
+        const sample=Object.fromEntries(Object.entries(properties).filter(([k,v])=>k!=="_SOURCE_LAYER"&&v!==null&&v!==undefined&&String(v)!=="").slice(0,22));
+        sample.SOURCE_LAYER=properties._SOURCE_LAYER;
+        result.stats.sampleProperties.push(sample);
       }
-      if(features.length&&!mapped) reason="unmapped";
-      if(features.length&&result.stats.sampleProperties.length<3)
-        result.stats.sampleProperties.push(Object.fromEntries(Object.entries(features[0].properties||{}).slice(0,12)));
-      value=mapped?{key:mapped,fuel:FS_FUELS[mapped],source:"inventory",featureCount:features.length}:
-        {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback",reason,featureCount:features.length};
+      value=mapped?{key:mapped,fuel:FS_FUELS[mapped],source:"inventory",featureCount}:
+        {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback",reason,featureCount};
       cache.set(key,value);
     }
     if(!counted.has(key)){
@@ -3662,11 +3657,10 @@ async function fsCreateInventoryFuelSampler(ignition){
       if(value.source==="inventory") result.stats.classified++;
       else{
         result.stats.unknown++;
-        if(value.reason==="outside-viewport") result.stats.outsideViewport++;
-        else if(value.reason==="unmapped") result.stats.unmapped++;
+        if(value.reason==="unmapped") result.stats.unmapped++;
         else result.stats.noFeature++;
       }
-      result.stats.featureHits+=value.featureCount||0;
+      if(value.featureCount) result.stats.featureHits++;
     }
     return value;
   };
@@ -3996,7 +3990,7 @@ async function fsRun(){
     // Inbentarioa eta baso-egituraren haize-doikuntza ere independenteak dira.
     const [inventoryResult,windResult]=await Promise.all([
       fsFuelSource==="inventory"
-        ? fsTimed("Inventario",fsCreateInventoryFuelSampler(fsIgn)).then(value=>({value})).catch(error=>({error}))
+        ? fsTimed("Inventario",fsCreateInventoryFuelSampler(fsIgn,fsMaxSpreadExtent(FS_T))).then(value=>({value})).catch(error=>({error}))
         : Promise.resolve({value:null}),
       fsTimed("Ajuste de viento",fsCreateForestWindSampler(fsIgn,fsMaxSpreadExtent(FS_T)))
         .then(value=>({value})).catch(error=>({error}))
@@ -4084,7 +4078,7 @@ async function fsRun(){
     ? `<div style="margin-top:9px;padding:8px;background:#eef4f8;border-left:3px solid #527c9b;border-radius:5px;font-size:11px"><b>Haizearen doikuntza · Gipuzkoako baso-egitura</b><br>Kontsultatutako geruzak: 2024ko baso-produktibitatea (goi-altuera, dentsitatea eta azalera basimetrikoa) + 2012ko LiDAR lehen adarraren altuera. Kargatutako poligonoak: ${windSampler.stats.forestPolygons} (2024) eta ${windSampler.stats.lidarPolygons} (LiDAR). Babes partzialaren zantzuak dituzten laginak: ${windSampler.stats.sheltered}; zantzu nahikorik gabe: ${windSampler.stats.notSheltered}; hautagai-poligono edo datu parekaturik gabe: ${windSampler.stats.missing}.<br>Iturriak: <a href="https://www.geo.euskadi.eus/geoeuskadi/rest/services/W26GIS/AGRICULTURA_CAS/MapServer/259" target="_blank" rel="noopener">2024ko baso-egitura</a> · <a href="https://www.geo.euskadi.eus/geoeuskadi/rest/services/W26GIS/AGRICULTURA_CAS/MapServer/14" target="_blank" rel="noopener">2012ko LiDAR lehen adarraren altuera</a>.<br>Egitura-adierazleek atalasea betetzen dutenean, WAF 0,3 aplikatzen da (babes partziala); gainerakoetan erregai-ereduaren doikuntza mantentzen da. Ez da babes osoa aplikatzen, geruza hauek ez baitute adaburuen estaldura zuzenean neurtzen. Lehen adarraren altuera 2012ko LiDAR datua da, eta baliteke ondorengo aldaketak ez islatzea.</div>`
     : `<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px"><b>Baso-egituraren doikuntza ez dago erabilgarri</b><br>${escapeHtml(windSamplerError||"Ezin izan dira baso-geruzak kontsultatu.")} Erregai-ereduaren doikuntza estandarra mantendu da; ez da baso-dentsitaterik asmatu.</div>`;
   const fuelNote=inventorySampler
-    ? `<div style="margin-top:9px;padding:8px;background:#f1f6f2;border-left:3px solid #527c63;border-radius:5px;font-size:11px"><b>2024ko Baso Inbentarioa · estaldura</b><br>${inventorySampler.stats.classified} lagin sailkatuta · ${inventorySampler.stats.unknown} sailkatu gabe (ordezko erregaia: ${escapeHtml(fu.n)}).<br><span style="color:#65736b">Diagnostikoa: ${inventorySampler.stats.featureHits} feature; hutsik ${inventorySampler.stats.noFeature}, atributu ezezagunak ${inventorySampler.stats.unmapped}, ikus-eremutik kanpo ${inventorySampler.stats.outsideViewport}.<br>${inventorySampler.stats.sampleProperties.length?"Atributuak: "+inventorySampler.stats.sampleProperties.map(p=>Object.entries(p).map(([k,v])=>k+"="+String(v)).join(", ")).join(" | "):"Ez da atributurik jaso."}</span><br><b>Erregai-aldaketak:</b> ${fuelCounts.size?[...fuelCounts.entries()].map(([k,n])=>escapeHtml(k.replace(/belarra|garoa|iratzea|pinudia|hostozabala/g,x=>fuelNames[x]||x))+" ("+n+")").join("; "):"ez da aldaketarik hauteman lagindutako ibilbideetan"}.</div>`
+    ? `<div style="margin-top:9px;padding:8px;background:#f1f6f2;border-left:3px solid #527c63;border-radius:5px;font-size:11px"><b>2024ko Baso Inbentarioa · estaldura</b><br>${inventorySampler.stats.classified} lagin sailkatuta · ${inventorySampler.stats.unknown} sailkatu gabe (ordezko erregaia: ${escapeHtml(fu.n)}).<br><span style="color:#65736b">Diagnostikoa: ${inventorySampler.stats.featureHits} laginek poligonoa dute; hutsik ${inventorySampler.stats.noFeature}, atributu ezezagunak ${inventorySampler.stats.unmapped}, ikus-eremutik kanpo 0. Kontsultatutako poligonoak: ${inventorySampler.stats.inventoryPolygons}.<br>${inventorySampler.stats.sampleProperties.length?"Atributuak: "+inventorySampler.stats.sampleProperties.map(p=>Object.entries(p).map(([k,v])=>k+"="+String(v)).join(", ")).join(" | "):"Ez da atributurik jaso."}</span><br><b>Erregai-aldaketak:</b> ${fuelCounts.size?[...fuelCounts.entries()].map(([k,n])=>escapeHtml(k.replace(/belarra|garoa|iratzea|pinudia|hostozabala/g,x=>fuelNames[x]||x))+" ("+n+")").join("; "):"ez da aldaketarik hauteman lagindutako ibilbideetan"}.</div>`
     : (inventoryNote?`<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px">${escapeHtml(inventoryNote)}</div>`:"");
   const wxTable=manual?"":`<div style="margin-top:10px;overflow-x:auto"><b style="font-size:12px">Aurreikusitako meteorologia denbora-tarteka</b><table style="width:100%;min-width:430px;border-collapse:collapse;font-size:11px;margin-top:5px"><thead><tr><th style="text-align:left;padding:4px;border-bottom:1px solid #d8dfda">Aldagaia</th>${times.map(t=>`<th style="padding:4px;border-bottom:1px solid #d8dfda">${t} min</th>`).join("")}</tr></thead><tbody>${[
     ["Haizea",w=>`${Math.round(w.spd)} km/h ${fsCard(w.dir)}`],
