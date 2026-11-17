@@ -2396,16 +2396,21 @@ const fsMdt=fsMdtUrl&&window.IrratiMdtProvider
 let fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};
 function fsMdtLabel(){if(fsTerrainSource==="terrarium")return "Terrarium · fuente seleccionada";return fsMdtStatus.loaded?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m${Number.isFinite(fsMdtStatus.radiusM)?` · cobertura ${ (fsMdtStatus.radiusM/1000).toFixed(1)} km`:``}`:(fsMdtStatus.error?`MDT LiDAR · error: ${fsMdtStatus.error}`:"MDT LiDAR · pendiente de consultar");}
 function fsUpdateTerrainStatus(){const el=fsPanel&&fsPanel.querySelector(".fs-terrain-status");if(el)el.textContent="Lurzoruaren iturria: "+fsMdtLabel();}
+// Reutilizar el conversor Proj4: crear la transformación en cada muestra
+// volvía a analizar las definiciones CRS miles de veces durante la simulación.
+let fsMdtProjector=null;
 function fsMdtXY(lat,lon){
   if(typeof proj4!=="function") return null;
   try{
-    // Definición explícita ETRS89 / UTM 30N (EPSG:25830).
-    // Evita depender de que Proj4 tenga registrado el alias "EPSG:25830".
-    const xy=proj4(
-      "+proj=longlat +datum=WGS84 +no_defs",
-      "+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs",
-      [lon,lat]
-    );
+    if(!fsMdtProjector){
+      // Definición explícita ETRS89 / UTM 30N (EPSG:25830).
+      // Evita depender de que Proj4 tenga registrado el alias "EPSG:25830".
+      fsMdtProjector=proj4(
+        "+proj=longlat +datum=WGS84 +no_defs",
+        "+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs"
+      );
+    }
+    const xy=fsMdtProjector([lon,lat]);
     return Array.isArray(xy)&&xy.length===2&&xy.every(Number.isFinite)?xy:null;
   }catch(_){return null;}
 }
