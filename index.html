@@ -4026,9 +4026,9 @@ async function fsRun(){
   const areas={};
   try{
     rays=await fsTimed("Cálculo de propagación",Promise.resolve().then(()=>fsSimulate(fu,met,null,inventorySampler&&inventorySampler.fuelAt,FS_T,windSampler&&windSampler.windAt)));
-    if(inventorySampler){
+    if(inventorySampler?.ownsMap){
       try{inventorySampler.map.remove();}catch(_){}
-      try{inventorySampler.container.remove();}catch(_){}
+      try{inventorySampler.container?.remove();}catch(_){}
     }
     if(my!==fsBusy) return;
     const renderStarted=performance.now();
@@ -4043,9 +4043,9 @@ async function fsRun(){
     }
     perf["Dibujo de perímetros y 3D"]=performance.now()-renderStarted;
   }catch(err){
-    if(inventorySampler){
+    if(inventorySampler?.ownsMap){
       try{inventorySampler.map.remove();}catch(_){}
-      try{inventorySampler.container.remove();}catch(_){}
+      try{inventorySampler.container?.remove();}catch(_){}
     }
     if(my===fsBusy) out.innerHTML=`<div style="color:#8b2f2f">⚠️ ${escapeHtml(err.message||String(err))}</div>`;
     return;
