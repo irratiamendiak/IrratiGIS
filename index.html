@@ -43,6 +43,7 @@ input[type=file]{position:absolute;left:-9999px}
 .ir3d-earth-compass button,.ir3d-earth-actions button{display:flex;align-items:center;justify-content:center;border:1px solid #dce5df;background:#f7faf8;color:#234233;border-radius:10px;cursor:pointer;font:700 12px/1 system-ui;min-height:34px;height:34px;padding:4px 7px}
 .ir3d-earth-compass button{width:34px;font-size:18px;border-radius:50%}
 .ir3d-compass-dial{position:relative;width:64px;height:64px;border:2px solid #d7e1da;border-radius:50%;background:radial-gradient(circle,#fff 48%,#edf3ef 50%,#fff 72%);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 3px #fff,0 1px 4px rgba(0,0,0,.12)}
+.ir3d-compass-dial{touch-action:none;cursor:grab;user-select:none}.ir3d-compass-dial:active{cursor:grabbing}.ir3d-earth-compass button,.ir3d-earth-actions button{touch-action:none;user-select:none}
 .ir3d-compass-n{position:absolute;top:2px;font:800 10px/1 system-ui;color:#bd3b2b}
 .ir3d-compass-needle{font-size:25px;line-height:1;color:#bd3b2b;transform-origin:50% 50%;filter:drop-shadow(0 1px 1px rgba(0,0,0,.18))}
 .ir3d-earth-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
