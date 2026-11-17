@@ -38,15 +38,21 @@ input[type=file]{position:absolute;left:-9999px}
 .badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#e8f5ed;color:#176b43;font-size:12px;font-weight:800}
 .badge.blue{background:#e8f2f8;color:#175f8f}
 #map{height:62vh;min-height:430px;border-radius:13px;background:#e7ece9}
-.ir3d-nav-control{width:218px;max-width:calc(100vw - 34px);background:#fff;border:1px solid rgba(0,0,0,.22);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.28);padding:7px}
-.ir3d-nav-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
-.ir3d-nav-grid button{display:flex;align-items:center;justify-content:flex-start;gap:7px;min-height:34px;height:34px;padding:4px 8px;border:1px solid #e0e8e2;border-radius:7px;background:#f5f8f6;color:#173d2b;font:600 11px/1.1 system-ui;cursor:pointer;text-align:left;white-space:nowrap}
-.ir3d-nav-grid button span{font-size:17px;line-height:1}
-.ir3d-nav-grid button:hover,.ir3d-nav-grid button:focus-visible{background:#dcebe2;border-color:#91b39e;outline:2px solid transparent}
-.ir3d-nav-grid button[data-act="reset"]{background:#e8f2f8;border-color:#c9dce8}
-.ir3d-nav-grid button[data-act="exaggeration"]{background:#edf4ef}
-.ir3d-nav-caption{text-align:left;font:10px/1.45 system-ui;color:#40564a;padding:7px 2px 1px;white-space:normal;border-top:1px solid #e8eee9;margin-top:6px}
-@media(max-width:520px){.ir3d-nav-control{width:194px}.ir3d-nav-grid button{font-size:10px;min-height:32px;height:32px}.ir3d-nav-caption{font-size:9px}}
+.ir3d-nav-control{width:176px;max-width:calc(100vw - 28px);padding:9px;background:rgba(255,255,255,.96);border:1px solid rgba(42,63,51,.2);border-radius:16px;box-shadow:0 3px 14px rgba(0,0,0,.24);backdrop-filter:blur(7px);color:#20372b}
+.ir3d-earth-compass{display:grid;grid-template-columns:34px 1fr 34px;align-items:center;justify-items:center;gap:7px;padding:1px 2px 8px}
+.ir3d-earth-compass button,.ir3d-earth-actions button{display:flex;align-items:center;justify-content:center;border:1px solid #dce5df;background:#f7faf8;color:#234233;border-radius:10px;cursor:pointer;font:700 12px/1 system-ui;min-height:34px;height:34px;padding:4px 7px}
+.ir3d-earth-compass button{width:34px;font-size:18px;border-radius:50%}
+.ir3d-compass-dial{position:relative;width:64px;height:64px;border:2px solid #d7e1da;border-radius:50%;background:radial-gradient(circle,#fff 48%,#edf3ef 50%,#fff 72%);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 3px #fff,0 1px 4px rgba(0,0,0,.12)}
+.ir3d-compass-n{position:absolute;top:2px;font:800 10px/1 system-ui;color:#bd3b2b}
+.ir3d-compass-needle{font-size:25px;line-height:1;color:#bd3b2b;transform-origin:50% 50%;filter:drop-shadow(0 1px 1px rgba(0,0,0,.18))}
+.ir3d-earth-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.ir3d-earth-actions button{gap:5px;font-size:11px;white-space:nowrap}
+.ir3d-earth-actions button span{font-size:16px;line-height:1}
+.ir3d-earth-actions button[data-act="north"]{background:#e8f2f8;border-color:#c9dce8}
+.ir3d-earth-actions button[data-act="exaggeration"]{background:#edf4ef}
+.ir3d-earth-compass button:hover,.ir3d-earth-actions button:hover,.ir3d-earth-compass button:focus-visible,.ir3d-earth-actions button:focus-visible{background:#dcebe2;border-color:#91b39e;outline:2px solid transparent}
+.ir3d-nav-caption{font:9px/1.4 system-ui;color:#5b6b61;text-align:center;border-top:1px solid #e8eee9;margin-top:7px;padding-top:6px}
+@media(max-width:520px){.ir3d-nav-control{width:164px;padding:7px}.ir3d-compass-dial{width:56px;height:56px}.ir3d-earth-actions button{font-size:10px;min-height:32px;height:32px}.ir3d-nav-caption{font-size:8px}}
 
 .layers-note,.footer{font-size:12px;color:var(--muted)}
 .details{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
@@ -941,7 +947,16 @@ try{
       };
       gl.on("click",lidarRelief3D._fireClickHandler);
     }
-    if(lidarRelief3D._terrainReady)return;
+    if(lidarRelief3D._terrainReady){
+      // Al reactivar la capa 3D, volver a mostrar sus mandos y sincronizar
+      // la simulación actual: fsGroup puede haber cambiado mientras estaba en 2D.
+      if(lidarRelief3D._ir3dControl&&!lidarRelief3D._ir3dControl._map){
+        lidarRelief3D._ir3dControl.addTo(map);
+      }
+      const syncCurrentFire=()=>{if(map.hasLayer(lidarRelief3D))fsSync3D();};
+      if(gl.isStyleLoaded())syncCurrentFire();else gl.once("idle",syncCurrentFire);
+      return;
+    }
     lidarRelief3D._terrainReady=true;
     // Controles orbitales: giro, inclinación, zoom y exageración vertical.
     try{
@@ -951,7 +966,7 @@ try{
           const el=L.DomUtil.create("div","leaflet-bar ir3d-nav-control");
           el.setAttribute("role","group");
           el.setAttribute("aria-label","Controles orbitales del relieve 3D");
-          el.innerHTML='<div class="ir3d-nav-grid"><button type="button" data-act="rotate-left" title="Girar la vista a la izquierda" aria-label="Girar a la izquierda"><span>↶</span>Girar izq.</button><button type="button" data-act="rotate-right" title="Girar la vista a la derecha" aria-label="Girar a la derecha"><span>↷</span>Girar der.</button><button type="button" data-act="tilt-down" title="Ver más desde arriba" aria-label="Vista más cenital"><span>▽</span>Más cenital</button><button type="button" data-act="tilt-up" title="Inclinar la cámara" aria-label="Inclinar cámara"><span>△</span>Inclinar</button><button type="button" data-act="zoom-in" title="Acercar el terreno" aria-label="Acercar"><span>＋</span>Acercar</button><button type="button" data-act="zoom-out" title="Alejar el terreno" aria-label="Alejar"><span>－</span>Alejar</button><button type="button" data-act="reset" title="Volver a la vista inicial" aria-label="Restablecer vista"><span>⌂</span>Vista inicial</button><button type="button" data-act="exaggeration" title="Cambiar exageración vertical del relieve" aria-label="Cambiar exageración del relieve"><span>⛰</span>Relieve 1×</button></div><div class="ir3d-nav-caption"><b>Ratón:</b> arrastrar para desplazar · botón derecho + arrastrar para orbitar · rueda para zoom</div>';
+          el.innerHTML='<div class="ir3d-earth-compass"><button type="button" data-act="rotate-left" title="Girar a la izquierda" aria-label="Girar a la izquierda">↶</button><div class="ir3d-compass-dial"><span class="ir3d-compass-n">N</span><span class="ir3d-compass-needle">▲</span></div><button type="button" data-act="rotate-right" title="Girar a la derecha" aria-label="Girar a la derecha">↷</button></div><div class="ir3d-earth-actions"><button type="button" data-act="tilt-up" title="Inclinar la cámara" aria-label="Inclinar"><span>↗</span>Inclinar</button><button type="button" data-act="tilt-down" title="Vista cenital" aria-label="Vista cenital"><span>↘</span>Cenital</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar"><span>＋</span>Zoom</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar"><span>－</span>Zoom</button><button type="button" data-act="north" title="Orientar al norte" aria-label="Orientar al norte"><span>🧭</span>Norte</button><button type="button" data-act="exaggeration" title="Cambiar exageración del relieve" aria-label="Exageración del relieve"><span>⛰</span>Relieve 1×</button></div><div class="ir3d-nav-caption">Arrastrar: desplazar · botón derecho: orbitar · rueda: zoom</div>';
           L.DomEvent.disableClickPropagation(el);
           L.DomEvent.disableScrollPropagation(el);
           el.addEventListener("click",ev=>{
@@ -963,6 +978,7 @@ try{
             if(act==="tilt-down")gl.easeTo({pitch:Math.max(0,pitch-10),duration:250});
             if(act==="rotate-left")gl.easeTo({bearing:bearing-15,duration:250});
             if(act==="rotate-right")gl.easeTo({bearing:bearing+15,duration:250});
+            if(act==="north")gl.easeTo({bearing:0,duration:300});
             if(act==="reset")gl.easeTo({pitch:50,bearing:0,duration:350});
             if(act==="zoom-in")gl.zoomIn({duration:250});
             if(act==="zoom-out")gl.zoomOut({duration:250});
@@ -984,7 +1000,13 @@ try{
     gl.on("error",e=>console.warn("MapLibre 3D:",e&&e.error?e.error:e));
     // Tras mover la cámara, fuerza a MapLibre a recalcular el tamaño y repintar.
     // Es especialmente importante para el canvas WebGL embebido en el overlay Leaflet.
-    gl.on("moveend",()=>requestAnimationFrame(()=>{try{gl.resize();gl.triggerRepaint();}catch(_){}}));
+    gl.on("moveend",()=>requestAnimationFrame(()=>{
+      try{
+        gl.resize();gl.triggerRepaint();
+        const needle=lidarRelief3D._ir3dControl&&lidarRelief3D._ir3dControl._container?.querySelector(".ir3d-compass-needle");
+        if(needle)needle.style.transform="rotate("+(-gl.getBearing())+"deg)";
+      }catch(_){}
+    }));
     const enableTerrain=()=>{
       lidarRelief3D._terrainExaggeration=1;
       try{gl.setTerrain({source:"global-dem",exaggeration:1});gl.setPitch(50);gl.setBearing(0);}catch(err){console.warn("Terrarium terrain:",err);}
@@ -2345,6 +2367,10 @@ function fsSync3D(){
   }catch(err){console.warn("Ezin izan dira suteen geometriak 3D mapara bidali:",err);}
 }
 if(lidarRelief3D) lidarRelief3D.on("remove",()=>{
+  // Retirar los mandos al abandonar la capa 3D: no deben quedarse sobre mapas 2D.
+  if(lidarRelief3D._ir3dControl&&lidarRelief3D._ir3dControl._map){
+    lidarRelief3D._ir3dControl.remove();
+  }
   // Restaurar exactamente la visibilidad previa de las capas 2D al salir del modo 3D.
   Object.entries(lidarRelief3D._hiddenPanes||{}).forEach(([name,display])=>{
     const pane=map.getPane(name);
