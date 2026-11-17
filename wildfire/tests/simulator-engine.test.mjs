@@ -170,10 +170,10 @@ test("the map page loads and delegates its spread calculations to the engine mod
 
 
 test("forest polygon ring bounds preserve the original even-odd containment result", () => {
-  const block = html.match(/function fsForestPolygonIndex[\\s\\S]*?(?=function fsFirstBranchHeight)/)?.[0];
+  const block = html.match(/function fsForestPolygonIndex[\s\S]*?(?=function fsFirstBranchHeight)/)?.[0];
   assert.ok(block, "forest spatial helpers are present in the map page");
   const sandbox = {};
-  vm.runInNewContext(block + "\\nglobalThis.forestHelpers = {fsForestPolygonIndex, fsForestContains, fsForestFind};", sandbox);
+  vm.runInNewContext(block + "\nglobalThis.forestHelpers = {fsForestPolygonIndex, fsForestContains, fsForestFind};", sandbox);
   const {fsForestPolygonIndex, fsForestContains, fsForestFind} = sandbox.forestHelpers;
   const outer = [[0,0],[10,0],[10,10],[0,10],[0,0]];
   const hole = [[3,3],[7,3],[7,7],[3,7],[3,3]];
