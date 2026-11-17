@@ -114,11 +114,41 @@
       if(!image||!raster||!windowInfo) return NaN;
       const p=pixelOf(x,y), fx=p[0]-.5-windowInfo.x0, fy=p[1]-.5-windowInfo.y0;
       const ix=Math.floor(fx),iy=Math.floor(fy),ax=fx-ix,ay=fy-iy;
-      if(ix<0||iy<0||ix+1>=windowInfo.width||iy+1>=windowInfo.height) return NaN;
-      const at=(col,row)=>{const v=Number(raster[row*windowInfo.width+col]);return Number.isFinite(v)&&(noData===null||v!==noData)?v:NaN;};
-      const a=at(ix,iy),b=at(ix+1,iy),c=at(ix,iy+1),d=at(ix+1,iy+1);
-      if(![a,b,c,d].every(Number.isFinite)) return NaN;
-      return a*(1-ax)*(1-ay)+b*ax*(1-ay)+c*(1-ax)*ay+d*ax*ay;
+      const at=(col,row)=>{
+        if(col<0||row<0||col>=windowInfo.width||row>=windowInfo.height) return NaN;
+        const v=Number(raster[row*windowInfo.width+col]);
+        if(!Number.isFinite(v)) return NaN;
+        if(noData!==null && (Number.isNaN(noData)?Number.isNaN(v):v===noData)) return NaN;
+        return v;
+      };
+      // Interpolar con los píxeles válidos. En MDT LiDAR pueden existir
+      // celdas NoData aisladas (vegetación/agua/bordes); exigir siempre los
+      // cuatro vecinos hacía fallar incluso la ignición aunque el COG y su
+      // cobertura estuvieran correctamente cargados.
+      const corners=[
+        [ix,iy,(1-ax)*(1-ay)],
+        [ix+1,iy,ax*(1-ay)],
+        [ix,iy+1,(1-ax)*ay],
+        [ix+1,iy+1,ax*ay]
+      ];
+      let weighted=0,weight=0;
+      for(const [col,row,w] of corners){
+        if(w<=1e-9) continue;
+        const v=at(col,row);
+        if(Number.isFinite(v)){weighted+=v*w;weight+=w;}
+      }
+      if(weight>1e-9) return weighted/weight;
+      // Si el centro cae justo sobre una celda NoData, utilizar el píxel
+      // válido más cercano dentro de un radio máximo de 1,5 celdas.
+      let nearest=NaN,best=Infinity;
+      for(let row=Math.max(0,iy-1);row<=Math.min(windowInfo.height-1,iy+2);row++){
+        for(let col=Math.max(0,ix-1);col<=Math.min(windowInfo.width-1,ix+2);col++){
+          const v=at(col,row); if(!Number.isFinite(v)) continue;
+          const dist=Math.hypot(col-(fx),row-(fy));
+          if(dist<=1.5&&dist<best){best=dist;nearest=v;}
+        }
+      }
+      return nearest;
     }
     return {open,canLoadBounds,loadBounds,sample,get resolutionM(){return sourceResolution;},get loadedBounds(){return windowInfo?{...windowInfo}:null;}};
   }
