@@ -980,22 +980,26 @@ try{
           el.addEventListener("click",ev=>{
             const b=ev.target.closest("button[data-act]");
             if(!b)return;
+            // Resolver la instancia activa en cada pulsación: el plugin puede
+            // reconstruir MapLibre al retirar y reactivar el relieve.
+            const activeGl=lidarRelief3D.getMaplibreMap();
+            if(!activeGl||!activeGl.isStyleLoaded())return;
             const act=b.dataset.act;
-            const pitch=gl.getPitch(), bearing=gl.getBearing();
-            if(act==="tilt-up")gl.easeTo({pitch:Math.min(75,pitch+10),duration:250});
-            if(act==="tilt-down")gl.easeTo({pitch:Math.max(0,pitch-10),duration:250});
-            if(act==="rotate-left")gl.easeTo({bearing:bearing-15,duration:250});
-            if(act==="rotate-right")gl.easeTo({bearing:bearing+15,duration:250});
-            if(act==="north")gl.easeTo({bearing:0,duration:300});
-            if(act==="reset")gl.easeTo({pitch:50,bearing:0,duration:350});
-            if(act==="zoom-in")gl.zoomIn({duration:250});
-            if(act==="zoom-out")gl.zoomOut({duration:250});
+            const pitch=activeGl.getPitch(), bearing=activeGl.getBearing();
+            if(act==="tilt-up")activeGl.easeTo({pitch:Math.min(75,pitch+10),duration:250});
+            if(act==="tilt-down")activeGl.easeTo({pitch:Math.max(0,pitch-10),duration:250});
+            if(act==="rotate-left")activeGl.easeTo({bearing:bearing-15,duration:250});
+            if(act==="rotate-right")activeGl.easeTo({bearing:bearing+15,duration:250});
+            if(act==="north")activeGl.easeTo({bearing:0,duration:300});
+            if(act==="reset")activeGl.easeTo({pitch:50,bearing:0,duration:350});
+            if(act==="zoom-in")activeGl.zoomIn({duration:250});
+            if(act==="zoom-out")activeGl.zoomOut({duration:250});
             if(act==="exaggeration"){
               const values=[1,1.5,2];
               const current=Number(lidarRelief3D._terrainExaggeration)||1;
               const next=values[(values.indexOf(current)+1)%values.length];
               lidarRelief3D._terrainExaggeration=next;
-              try{gl.setTerrain({source:"global-dem",exaggeration:next});}catch(err){console.warn("Exageración del relieve:",err);}
+              try{activeGl.setTerrain({source:"global-dem",exaggeration:next});}catch(err){console.warn("Exageración del relieve:",err);}
               b.innerHTML="<span>⛰</span>Relieve "+next+"×";
             }
           });
@@ -1008,13 +1012,23 @@ try{
     gl.on("error",e=>console.warn("MapLibre 3D:",e&&e.error?e.error:e));
     // Tras mover la cámara, fuerza a MapLibre a recalcular el tamaño y repintar.
     // Es especialmente importante para el canvas WebGL embebido en el overlay Leaflet.
-    gl.on("moveend",()=>requestAnimationFrame(()=>{
-      try{
-        gl.resize();gl.triggerRepaint();
-        const needle=lidarRelief3D._ir3dControl&&lidarRelief3D._ir3dControl._container?.querySelector(".ir3d-compass-needle");
-        if(needle)needle.style.transform="rotate("+(-gl.getBearing())+"deg)";
-      }catch(_){}
-    }));
+    // Mantener un único listener de cámara, asociado a la instancia GL vigente.
+    if(lidarRelief3D._ir3dCameraMap!==gl){
+      if(lidarRelief3D._ir3dCameraMap&&lidarRelief3D._ir3dCameraHandler){
+        try{lidarRelief3D._ir3dCameraMap.off("moveend",lidarRelief3D._ir3dCameraHandler);}catch(_){}
+      }
+      lidarRelief3D._ir3dCameraMap=gl;
+      lidarRelief3D._ir3dCameraHandler=()=>{
+        requestAnimationFrame(()=>{
+          try{
+            gl.resize();gl.triggerRepaint();
+            const needle=lidarRelief3D._ir3dControl&&lidarRelief3D._ir3dControl._container?.querySelector(".ir3d-compass-needle");
+            if(needle)needle.style.transform="rotate("+(-gl.getBearing())+"deg)";
+          }catch(_){}
+        });
+      };
+      gl.on("moveend",lidarRelief3D._ir3dCameraHandler);
+    }
     const enableTerrain=()=>{
       lidarRelief3D._terrainExaggeration=1;
       try{gl.setTerrain({source:"global-dem",exaggeration:1});gl.setPitch(50);gl.setBearing(0);}catch(err){console.warn("Terrarium terrain:",err);}
