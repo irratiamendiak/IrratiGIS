@@ -3570,18 +3570,18 @@ async function fsMeteo(){
 }
 
 function fsFuelLidarRange(value){
-  const s=String(value||"").trim().toLowerCase().replace(",",".").replace(/\\s+/g,"");
-  let m=s.match(/^(\\d+(?:\\.\\d+)?)[-–](\\d+(?:\\.\\d+)?)(cm)?$/);
+  const s=String(value||"").trim().toLowerCase().replace(",","." ).replace(/\s+/g,"");
+  let m=s.match(/^(\d+(?:\.\d+)?)[-–](\d+(?:\.\d+)?)(cm)?$/);
   if(m) return {min:Number(m[1]),max:Number(m[2])};
-  m=s.match(/^>(\\d+(?:\\.\\d+)?)(cm|m)?$/);
+  m=s.match(/^>(\d+(?:\.\d+)?)(cm|m)?$/);
   if(m) return {min:Number(m[1])*(m[2]==="m"?100:1),max:Infinity};
-  m=s.match(/^<(\\d+(?:\\.\\d+)?)(cm|m)?$/);
+  m=s.match(/^<(\d+(?:\.\d+)?)(cm|m)?$/);
   if(m) return {min:0,max:Number(m[1])*(m[2]==="m"?100:1)};
   return null;
 }
 function fsFuelFromInventoryProperties(p,lidar){
   p=p||{}; lidar=lidar||{};
-  const norm=v=>String(v??"").toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").trim();
+  const norm=v=>String(v??"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
   const fieldKey=v=>norm(v).replace(/[^a-z0-9]/g,"");
   const get=(obj,names)=>{
     const wanted=new Set(names.map(fieldKey));
