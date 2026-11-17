@@ -144,17 +144,10 @@
         if(Number.isFinite(v)){weighted+=v*w;weight+=w;}
       }
       if(weight>1e-9) return weighted/weight;
-      // Si el centro cae justo sobre una celda NoData, utilizar el píxel
-      // válido más cercano dentro de un radio máximo de 1,5 celdas.
-      let nearest=NaN,best=Infinity;
-      for(let row=Math.max(0,iy-1);row<=Math.min(windowInfo.height-1,iy+2);row++){
-        for(let col=Math.max(0,ix-1);col<=Math.min(windowInfo.width-1,ix+2);col++){
-          const v=at(col,row); if(!Number.isFinite(v)) continue;
-          const dist=Math.hypot(col-(fx),row-(fy));
-          if(dist<=1.5&&dist<best){best=dist;nearest=v;}
-        }
-      }
-      return nearest;
+      // Si el píxel consultado es NoData y no hay vecinos con peso
+      // válido para interpolar, conservar NoData. No sustituirlo por una
+      // elevación cercana: falsearía la altitud de la ignición y las pendientes.
+      return NaN;
     }
     return {open,canLoadBounds,loadBounds,sample,get resolutionM(){return sourceResolution;},get loadedBounds(){return windowInfo?{...windowInfo}:null;}};
   }
