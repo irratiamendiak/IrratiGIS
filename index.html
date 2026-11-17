@@ -3643,7 +3643,7 @@ async function fsCreateInventoryFuelSampler(ignition,radiusM){
       const featureCount=properties?1:0;
       const mapped=properties?fsFuelFromInventoryProperties(properties):null;
       const reason=properties?(mapped?null:"unmapped"):"no-feature";
-      if(properties&&result.stats.sampleProperties.length<3){
+      if(properties&&result.stats.sampleProperties.length<3&&!result.stats.sampleProperties.some(p=>String(p.OBJECTID)===String(properties.OBJECTID)&&String(p.SOURCE_LAYER)===String(properties._SOURCE_LAYER))){
         const sample=Object.fromEntries(Object.entries(properties).filter(([k,v])=>k!=="_SOURCE_LAYER"&&v!==null&&v!==undefined&&String(v)!=="").slice(0,22));
         sample.SOURCE_LAYER=properties._SOURCE_LAYER;
         result.stats.sampleProperties.push(sample);
