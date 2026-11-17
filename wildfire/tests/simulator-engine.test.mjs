@@ -167,3 +167,35 @@ test("the map page loads and delegates its spread calculations to the engine mod
   assert.match(html, /fsEngine\.behavior\(/);
   assert.doesNotMatch(html, /for\(let bg=0;bg<360;bg\+=5\)/);
 });
+
+
+test("forest polygon ring bounds preserve the original even-odd containment result", () => {
+  const block = html.match(/function fsForestPolygonIndex[\\s\\S]*?(?=function fsFirstBranchHeight)/)?.[0];
+  assert.ok(block, "forest spatial helpers are present in the map page");
+  const sandbox = {};
+  vm.runInNewContext(block + "\\nglobalThis.forestHelpers = {fsForestPolygonIndex, fsForestContains, fsForestFind};", sandbox);
+  const {fsForestPolygonIndex, fsForestContains, fsForestFind} = sandbox.forestHelpers;
+  const outer = [[0,0],[10,0],[10,10],[0,10],[0,0]];
+  const hole = [[3,3],[7,3],[7,7],[3,7],[3,3]];
+  const detached = [[20,20],[22,20],[22,22],[20,22],[20,20]];
+  const features = [{geometry:{rings:[outer,hole,detached]},attributes:{id:7}}];
+  const index = fsForestPolygonIndex(features);
+  const legacyContains = (rings,lon,lat) => {
+    let inside=false;
+    for(const ring of rings){
+      for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+        const a=ring[i],b=ring[j];
+        if((a[1]>lat)!==(b[1]>lat)&&lon<(b[0]-a[0])*(lat-a[1])/(b[1]-a[1])+a[0]) inside=!inside;
+      }
+    }
+    return inside;
+  };
+  for(let lon=-1;lon<=23;lon+=.125){
+    for(let lat=-1;lat<=23;lat+=.125){
+      assert.equal(fsForestContains(features[0].geometry.rings,lon,lat,index.polygons[0].ringBounds),
+        legacyContains(features[0].geometry.rings,lon,lat), `containment differs at ${lon},${lat}`);
+      const expected=legacyContains(features[0].geometry.rings,lon,lat)?features[0].attributes:null;
+      assert.deepEqual(fsForestFind(index,lat,lon),expected);
+    }
+  }
+});
