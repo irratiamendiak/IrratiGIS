@@ -3571,32 +3571,30 @@ async function fsMeteo(){
 
 function fsFuelFromInventoryProperties(p){
   p=p||{};
-  const norm=v=>String(v??"").toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").replace(/[_-]+/g," ").replace(/\\s+/g," ").trim();
-  // PMTiles conserva los nombres originales de GeoEuskadi, que pueden variar
-  // en mayúsculas/minúsculas según la exportación. Resolver campos sin depender
-  // de la capitalización ni de la variante _es / ES.
+  const norm=v=>String(v??"").toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").trim();
+  const fieldKey=v=>norm(v).replace(/[^a-z0-9]/g,"");
   const fields=Object.entries(p);
-  const key=v=>norm(v).replace(/\\s+/g,"");
   const get=names=>{
-    const wanted=new Set(names.map(key));
-    const entry=fields.find(([k,v])=>wanted.has(key(k))&&v!==null&&v!==undefined&&String(v).trim()!=="");
+    const wanted=new Set(names.map(fieldKey));
+    const entry=fields.find(([k,v])=>wanted.has(fieldKey(k))&&v!==null&&v!==undefined&&String(v).trim()!=="");
     return entry?entry[1]:"";
   };
   const use=norm(get(["TIPES_es","TIPES_ES","TIPES_E","TIPES","tipo","tipo_es","TYPE","USO","USO_ES","FORMACION","FORMACION_ES"]));
+  // Las clases mixtas o ambiguas tienen prioridad: no asignar FM1/FM5
+  // por una coincidencia parcial con "pastizal" o "matorral".
+  if(/pastizal.*(matorral|arbust)|matorral.*pastizal|mixto|mezcla/.test(use)) return null;
   if(/^(herbazal|prado|pastizal)$/.test(use)||/^prado con (setos|sebes)/.test(use)) return "fm1";
-  if(/matorral|brezal|argomal|tojal|landazuri/.test(use)) return "fm5";
-  if(/helechal|helecho|iratze/.test(use)) return "fm5";
-  if(/pastizal.*(matorral|arbust)|mixto|mezcla/.test(use)) return null;
+  if(/matorral|brezal|argomal|tojal|landazuri|helechal|helecho|iratze/.test(use)) return "fm5";
   if(/(conifera|pinar|pinudi|abetal|alerzal)/.test(use)) return "fm8";
   if(/(frondosa|hayedo|pagadi|robledal|castanar|bosque caducifolio)/.test(use)) return "fm9";
-  // Las especies del inventario se publican como SP1/SP2/SP3; algunas
-  // exportaciones añaden el sufijo lingüístico o cambian su capitalización.
+  // SP1/SP2/SP3 pueden llegar con sufijos de idioma y separadores variables.
   const species=norm(fields
-    .filter(([k,v])=>/^sp[123](es|eu|fr)?$/.test(key(k))||/^especie[123](es|eu|fr)?$/.test(key(k)))
-    .map(([,v])=>v).filter(Boolean).join(" "));
+    .filter(([k,v])=>/^sp[123](es|eu|fr)?$/.test(fieldKey(k))||/^especie[123](es|eu|fr)?$/.test(fieldKey(k)))
+    .map(([,v])=>String(v??"").trim()).filter(Boolean).join(" "));
   if(!species) return null;
   const conifer=/pinus|pino|picea|larix|alerce|cryptomeria|pseudotsuga|douglas|chamaecyparis|conifer|abeto|sequoia|secoya/.test(species);
   const broadleaf=/fagus|haya|quercus|roble|castanea|castan|fraxinus|fresno|alnus|aliso|betula|abedul|salix|sauce|populus|chopo|platanus|platano|robinia|acacia|frondosa|frondosas/.test(species);
+  // Solo una especie dominante inequívoca; mezcla o especie no catalogada = sin proxy.
   if(conifer===broadleaf) return null;
   return conifer?"fm8":"fm9";
 }
