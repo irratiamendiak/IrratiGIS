@@ -50,7 +50,7 @@
       }
       if(!chosen)throw new Error("El COG LiDAR no contiene una imagen georreferenciada válida.");
       const raw=chosen.getFileDirectory()?.GDAL_NODATA;
-      noData=raw===undefined?null:Number(String(raw).replace(/\\0/g,"").trim());
+      noData=raw===undefined?null:Number(String(raw).replace(/\0/g,"").trim());
       return chosen;
     })());
     return imagePromises.get(key);
