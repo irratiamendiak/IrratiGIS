@@ -3597,6 +3597,10 @@ function fsFuelFromInventoryProperties(p){
   // 961=coníferas y 962=mezcla. No tratar el código como texto de especie.
   const codes=fields.filter(([k])=>/^sp[123]$/.test(String(k??"").toLowerCase().replace(/[^a-z0-9]/g,"")))
     .map(([,v])=>Number(v)).filter(Number.isFinite);
+  // 982 = bosque mixto atlántico: arbolado de frondosas autóctonas
+  // con sotobosque. Se prioriza sobre códigos secundarios (p. ej. SP2=960).
+  const atlanticMixedForest=codes.includes(982)||/bosque mixto atlantico|atlantiar baso mixtoa/.test(species);
+  if(atlanticMixedForest) return "fm10";
   const officialBroadleaf=codes.includes(960)||/plantaciones de frondosas variadas/.test(species);
   const officialConifer=codes.includes(961)||/plantaciones de coniferas variadas/.test(species);
   const officialMixed=codes.includes(962)||/plantaciones de frondosas y coniferas variadas/.test(species);
