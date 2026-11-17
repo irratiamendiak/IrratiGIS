@@ -903,9 +903,15 @@ b5mTopo.on("add",loadB5mTopo);
    No ofrece selectores de relieve ni combustible; esos parámetros pertenecen al panel de simulación. */
 let lidarRelief3D=null;
 try{
+  // El canvas 3D necesita un panel propio: overlayPane se oculta al activar 3D
+  // porque contiene capas 2D que no siguen la cámara orbital.
+  if(!map.getPane("relief3dPane")){
+    map.createPane("relief3dPane");
+    map.getPane("relief3dPane").style.zIndex="450";
+  }
   lidarRelief3D=L.maplibreGL({
-    // Cámara MapLibre interactiva: rotación e inclinación orbital del terreno.
-    // Leaflet sigue gestionando las capas 2D; el relieve 3D tiene navegación propia.
+    pane:"relief3dPane",
+    // La cámara MapLibre controla los gestos sobre el canvas 3D.
     interactive:true,
     attributionControl:false,
     style:{
@@ -925,6 +931,15 @@ try{
     // Las capas Leaflet/WMS no se reproyectan con la cámara orbital.
     // Se ocultan temporalmente para evitar que queden flotando o desalineadas;
     // los perímetros e igniciones se dibujan en MapLibre mediante fsSync3D().
+    // Evitar que el arrastre Leaflet compita con el arrastre de cámara MapLibre.
+    if(map.dragging){
+      lidarRelief3D._leafletDraggingWasEnabled=map.dragging.enabled();
+      if(lidarRelief3D._leafletDraggingWasEnabled)map.dragging.disable();
+    }
+    if(map.scrollWheelZoom){
+      lidarRelief3D._leafletScrollWasEnabled=map.scrollWheelZoom.enabled();
+      if(lidarRelief3D._leafletScrollWasEnabled)map.scrollWheelZoom.disable();
+    }
     const paneNames=["overlayPane","markerPane","shadowPane","wmsOverlayPane","forestalPane"];
     lidarRelief3D._hiddenPanes={};
     paneNames.forEach(name=>{
@@ -2467,6 +2482,11 @@ if(lidarRelief3D) lidarRelief3D.on("remove",()=>{
     if(pane)pane.style.display=display;
   });
   lidarRelief3D._hiddenPanes=null;
+  // Devolver a Leaflet los gestos que estaban activos antes de entrar en 3D.
+  if(map.dragging&&lidarRelief3D._leafletDraggingWasEnabled)map.dragging.enable();
+  if(map.scrollWheelZoom&&lidarRelief3D._leafletScrollWasEnabled)map.scrollWheelZoom.enable();
+  lidarRelief3D._leafletDraggingWasEnabled=null;
+  lidarRelief3D._leafletScrollWasEnabled=null;
   fsGroup.eachLayer(layer=>{
     if(layer instanceof L.Polygon){
       const st=layer._fs3dOriginalStyle||{};
