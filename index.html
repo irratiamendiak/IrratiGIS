@@ -3589,7 +3589,10 @@ function fsFuelFromInventoryProperties(p){
   if(/(frondosa|hayedo|pagadi|robledal|castanar|bosque caducifolio)/.test(use)) return "fm9";
   // SP1/SP2/SP3 pueden llegar con sufijos de idioma y separadores variables.
   const species=norm(fields
-    .filter(([k,v])=>/^sp[123](es|eu|fr)?$/.test(fieldKey(k))||/^especie[123](es|eu|fr)?$/.test(fieldKey(k)))
+    .filter(([k,v])=>{
+      const key=String(k??"").toLowerCase().replace(/[^a-z0-9]/g,"");
+      return /^sp[123](?:es|eu|fr)?$/.test(key)||/^especie[123](?:es|eu|fr)?$/.test(key);
+    })
     .map(([,v])=>String(v??"").trim()).filter(Boolean).join(" "));
   if(!species) return null;
   const conifer=/pinus|pino|picea|larix|alerce|cryptomeria|pseudotsuga|douglas|chamaecyparis|conifer|abeto|sequoia|secoya/.test(species);
