@@ -112,7 +112,13 @@
     }
     function sample(x,y) {
       if(!image||!raster||!windowInfo) return NaN;
-      const p=pixelOf(x,y), fx=p[0]-.5-windowInfo.x0, fy=p[1]-.5-windowInfo.y0;
+      const p=pixelOf(x,y);
+      // No interpolar ni buscar vecinos fuera de la extensión geográfica real
+      // del COG, aunque la ventana local tenga píxeles válidos cerca del borde.
+      if(!p.every(Number.isFinite)||p[0]<0||p[1]<0||
+         p[0]>=image.getWidth()||p[1]>=image.getHeight()) return NaN;
+      const fx=p[0]-.5-windowInfo.x0, fy=p[1]-.5-windowInfo.y0;
+      if(fx<-.5||fy<-.5||fx>windowInfo.width-.5||fy>windowInfo.height-.5) return NaN;
       const ix=Math.floor(fx),iy=Math.floor(fy),ax=fx-ix,ay=fy-iy;
       const at=(col,row)=>{
         if(col<0||row<0||col>=windowInfo.width||row>=windowInfo.height) return NaN;
