@@ -936,8 +936,13 @@ try{
     const gl=lidarRelief3D.getMaplibreMap();
     if(!gl)return;
     // MapLibre captura los clics en su canvas y no los propaga a Leaflet.
-    // Reenviar explícitamente el clic cuando el usuario está marcando la ignición.
-    if(!lidarRelief3D._fireClickHandler){
+    // El plugin puede crear otra instancia GL al retirar y volver a añadir la capa:
+    // enlazar los eventos a la instancia real, no a un booleano global.
+    if(lidarRelief3D._fireClickMap!==gl){
+      if(lidarRelief3D._fireClickMap&&lidarRelief3D._fireClickHandler){
+        try{lidarRelief3D._fireClickMap.off("click",lidarRelief3D._fireClickHandler);}catch(_){}
+        try{lidarRelief3D._fireClickMap.off("style.load",lidarRelief3D._fireStyleHandler);}catch(_){}
+      }
       lidarRelief3D._fireClickHandler=e=>{
         if(!fsArmed||wiMode||!map.hasLayer(fsGroup)||!e||!e.lngLat)return;
         fsArmed=false;
@@ -945,7 +950,10 @@ try{
         fsIgn=L.latLng(e.lngLat.lat,e.lngLat.lng);
         fsRun();
       };
+      lidarRelief3D._fireStyleHandler=()=>{if(map.hasLayer(lidarRelief3D))fsSync3D();};
+      lidarRelief3D._fireClickMap=gl;
       gl.on("click",lidarRelief3D._fireClickHandler);
+      gl.on("style.load",lidarRelief3D._fireStyleHandler);
     }
     if(lidarRelief3D._terrainReady){
       // Al reactivar la capa 3D, volver a mostrar sus mandos y sincronizar
@@ -2328,36 +2336,33 @@ function fsSync3D(){
     const data={type:"FeatureCollection",features};
     if(!gl.getSource("irrati-fs-3d")){
       gl.addSource("irrati-fs-3d",{type:"geojson",data});
-      gl.addLayer({id:"irrati-fs-3d-fill",type:"fill",source:"irrati-fs-3d",filter:["==",["get","kind"],"perimeter"],paint:{"fill-color":["get","fillColor"],"fill-opacity":["get","fillOpacity"]}});
-      gl.addLayer({id:"irrati-fs-3d-line",type:"line",source:"irrati-fs-3d",filter:["==",["get","kind"],"perimeter"],paint:{"line-color":["get","color"],"line-width":["get","weight"],"line-dasharray":[2,2]}});
-      // Dibujar el emoji como imagen propia: las fuentes glyph remotas de MapLibre
-      // no siempre incluyen pictogramas emoji y por eso la ignición podía desaparecer.
-      let fireIconReady=gl.hasImage("irrati-fire-emoji");
-      if(!fireIconReady){
-        try{
-          const fireCanvas=document.createElement("canvas");
-          fireCanvas.width=fireCanvas.height=72;
-          const fireCtx=fireCanvas.getContext("2d",{willReadFrequently:true});
-          if(!fireCtx) throw new Error("No hay contexto Canvas 2D disponible.");
-          fireCtx.clearRect(0,0,fireCanvas.width,fireCanvas.height);
-          fireCtx.textAlign="center";fireCtx.textBaseline="middle";
-          fireCtx.font='60px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-          fireCtx.fillText("🔥",36,38);
-          // MapLibre espera un tipo de imagen compatible (ImageData), no Canvas.
-          const fireImage=fireCtx.getImageData(0,0,fireCanvas.width,fireCanvas.height);
-          gl.addImage("irrati-fire-emoji",fireImage,{pixelRatio:2});
-          fireIconReady=true;
-        }catch(iconErr){
-          // Un icono opcional nunca debe interrumpir el terreno ni los perímetros.
-          console.warn("No se pudo registrar el icono de ignición 3D; se usará un marcador circular.",iconErr);
-        }
-      }
-      if(fireIconReady){
-        gl.addLayer({id:"irrati-fs-3d-ignition",type:"symbol",source:"irrati-fs-3d",filter:["==",["get","kind"],"ignition"],layout:{"icon-image":"irrati-fire-emoji","icon-size":0.8,"icon-allow-overlap":true,"icon-ignore-placement":true}});
-      }else{
-        gl.addLayer({id:"irrati-fs-3d-ignition-fallback",type:"circle",source:"irrati-fs-3d",filter:["==",["get","kind"],"ignition"],paint:{"circle-radius":7,"circle-color":"#ff6b00","circle-stroke-color":"#fff","circle-stroke-width":2}});
-      }
     }else gl.getSource("irrati-fs-3d").setData(data);
+    // Una recarga de estilo puede conservar o recrear la fuente de forma distinta
+    // a sus capas. Asegurar cada capa por separado evita dejar los datos invisibles.
+    if(!gl.getLayer("irrati-fs-3d-fill"))gl.addLayer({id:"irrati-fs-3d-fill",type:"fill",source:"irrati-fs-3d",filter:["==",["get","kind"],"perimeter"],paint:{"fill-color":["get","fillColor"],"fill-opacity":["get","fillOpacity"]}});
+    if(!gl.getLayer("irrati-fs-3d-line"))gl.addLayer({id:"irrati-fs-3d-line",type:"line",source:"irrati-fs-3d",filter:["==",["get","kind"],"perimeter"],paint:{"line-color":["get","color"],"line-width":["get","weight"],"line-dasharray":[2,2]}});
+    // MapLibre también pierde las imágenes y capas de símbolos al recargar el estilo.
+    let fireIconReady=gl.hasImage("irrati-fire-emoji");
+    if(!fireIconReady){
+      try{
+        const fireCanvas=document.createElement("canvas");
+        fireCanvas.width=fireCanvas.height=72;
+        const fireCtx=fireCanvas.getContext("2d",{willReadFrequently:true});
+        if(!fireCtx) throw new Error("No hay contexto Canvas 2D disponible.");
+        fireCtx.clearRect(0,0,fireCanvas.width,fireCanvas.height);
+        fireCtx.textAlign="center";fireCtx.textBaseline="middle";
+        fireCtx.font='60px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+        fireCtx.fillText("🔥",36,38);
+        gl.addImage("irrati-fire-emoji",fireCtx.getImageData(0,0,72,72),{pixelRatio:2});
+        fireIconReady=true;
+      }catch(iconErr){console.warn("No se pudo registrar el icono de ignición 3D; se usará un marcador circular.",iconErr);}
+    }
+    if(fireIconReady){
+      if(gl.getLayer("irrati-fs-3d-ignition-fallback"))gl.removeLayer("irrati-fs-3d-ignition-fallback");
+      if(!gl.getLayer("irrati-fs-3d-ignition"))gl.addLayer({id:"irrati-fs-3d-ignition",type:"symbol",source:"irrati-fs-3d",filter:["==",["get","kind"],"ignition"],layout:{"icon-image":"irrati-fire-emoji","icon-size":0.8,"icon-allow-overlap":true,"icon-ignore-placement":true}});
+    }else if(!gl.getLayer("irrati-fs-3d-ignition-fallback")){
+      gl.addLayer({id:"irrati-fs-3d-ignition-fallback",type:"circle",source:"irrati-fs-3d",filter:["==",["get","kind"],"ignition"],paint:{"circle-radius":7,"circle-color":"#ff6b00","circle-stroke-color":"#fff","circle-stroke-width":2}});
+    }
     fsGroup.eachLayer(layer=>{
       if(layer instanceof L.Polygon){
         if(!layer._fs3dOriginalStyle)layer._fs3dOriginalStyle={opacity:layer.options.opacity,fillOpacity:layer.options.fillOpacity};
