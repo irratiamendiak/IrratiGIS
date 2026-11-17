@@ -175,9 +175,9 @@ test("forest polygon ring bounds preserve the original even-odd containment resu
   const sandbox = {};
   vm.runInNewContext(block + "\nglobalThis.forestHelpers = {fsForestPolygonIndex, fsForestContains, fsForestFind};", sandbox);
   const {fsForestPolygonIndex, fsForestContains, fsForestFind} = sandbox.forestHelpers;
-  const outer = [[0,0],[10,0],[10,10],[0,10],[0,0]];
-  const hole = [[3,3],[7,3],[7,7],[3,7],[3,3]];
-  const detached = [[20,20],[22,20],[22,22],[20,22],[20,20]];
+  const outer = [[0,0],[.1,0],[.1,.1],[0,.1],[0,0]];
+  const hole = [[.03,.03],[.07,.03],[.07,.07],[.03,.07],[.03,.03]];
+  const detached = [[.2,.2],[.22,.2],[.22,.22],[.2,.22],[.2,.2]];
   const features = [{geometry:{rings:[outer,hole,detached]},attributes:{id:7}}];
   const index = fsForestPolygonIndex(features);
   const legacyContains = (rings,lon,lat) => {
@@ -190,8 +190,8 @@ test("forest polygon ring bounds preserve the original even-odd containment resu
     }
     return inside;
   };
-  for(let lon=-1;lon<=23;lon+=.125){
-    for(let lat=-1;lat<=23;lat+=.125){
+  for(let lon=-.01;lon<=.23;lon+=.00125){
+    for(let lat=-.01;lat<=.23;lat+=.00125){
       assert.equal(fsForestContains(features[0].geometry.rings,lon,lat,index.polygons[0].ringBounds),
         legacyContains(features[0].geometry.rings,lon,lat), `containment differs at ${lon},${lat}`);
       const expected=legacyContains(features[0].geometry.rings,lon,lat)?features[0].attributes:null;
