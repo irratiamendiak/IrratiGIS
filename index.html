@@ -3598,19 +3598,12 @@ function fsForestPolygonIndex(features){
     const rings=feature.geometry&&feature.geometry.rings;
     if(!Array.isArray(rings)||!rings.length) continue;
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-    const ringBounds=[];
-    for(const ring of rings){
-      let rMinX=Infinity,rMinY=Infinity,rMaxX=-Infinity,rMaxY=-Infinity;
-      for(const p of ring){
-        minX=Math.min(minX,p[0]);maxX=Math.max(maxX,p[0]);
-        minY=Math.min(minY,p[1]);maxY=Math.max(maxY,p[1]);
-        rMinX=Math.min(rMinX,p[0]);rMaxX=Math.max(rMaxX,p[0]);
-        rMinY=Math.min(rMinY,p[1]);rMaxY=Math.max(rMaxY,p[1]);
-      }
-      ringBounds.push([rMinX,rMinY,rMaxX,rMaxY]);
+    for(const ring of rings) for(const p of ring){
+      minX=Math.min(minX,p[0]);maxX=Math.max(maxX,p[0]);
+      minY=Math.min(minY,p[1]);maxY=Math.max(maxY,p[1]);
     }
     if(!Number.isFinite(minX)) continue;
-    const item={rings,ringBounds,minX,minY,maxX,maxY,attributes:feature.attributes||{}};
+    const item={rings,minX,minY,maxX,maxY,attributes:feature.attributes||{}};
     const index=polygons.length;polygons.push(item);
     for(let x=Math.floor(minX/cell);x<=Math.floor(maxX/cell);x++)
       for(let y=Math.floor(minY/cell);y<=Math.floor(maxY/cell);y++){
@@ -3620,15 +3613,9 @@ function fsForestPolygonIndex(features){
   }
   return {polygons,buckets,cell};
 }
-function fsForestContains(rings,lon,lat,ringBounds){
+function fsForestContains(rings,lon,lat){
   let inside=false;
-  for(let r=0;r<rings.length;r++){
-    const bounds=ringBounds&&ringBounds[r];
-    // A ring whose bounding box excludes the sample cannot cross its ray.
-    // Skipping it preserves the original even/odd test while avoiding scans
-    // through vertices of distant holes or disconnected parts.
-    if(bounds&&(lon<bounds[0]||lon>bounds[2]||lat<bounds[1]||lat>bounds[3])) continue;
-    const ring=rings[r];
+  for(const ring of rings){
     for(let i=0,j=ring.length-1;i<ring.length;j=i++){
       const a=ring[i],b=ring[j];
       if((a[1]>lat)!==(b[1]>lat)&&lon<(b[0]-a[0])*(lat-a[1])/(b[1]-a[1])+a[0]) inside=!inside;
@@ -3641,7 +3628,7 @@ function fsForestFind(index,lat,lon){
   for(const id of candidates){
     const p=index.polygons[id];
     if(lon<p.minX||lon>p.maxX||lat<p.minY||lat>p.maxY) continue;
-    if(fsForestContains(p.rings,lon,lat,p.ringBounds)) return p.attributes;
+    if(fsForestContains(p.rings,lon,lat)) return p.attributes;
   }
   return null;
 }
