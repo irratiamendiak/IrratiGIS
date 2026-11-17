@@ -3844,21 +3844,32 @@ async function fsRun(){
   out.innerHTML=`<div style="font-weight:700;color:#52645a">Lurzorua kontsultatzen eta hedapena kalkulatzen (${manual?"eskuzko":"aurreikusitako"} modua)…</div>`;
   let met, ffn=null, netNote="", inventorySampler=null, inventoryNote="", windSampler=null, windSamplerError="", demCoverage=null;
   try{
-    met=await fsMeteo(); demCoverage=await fsLoadDem(fsIgn.lat,fsIgn.lng,fsMaxSpreadExtent(FS_T));
-    if(fsFuelSource==="inventory"){
-      try{
-        inventorySampler=await fsCreateInventoryFuelSampler(fsIgn);
-        inventoryNote="2024ko Baso Inbentarioaren estaldura aldakorra, klase sinplifikatuen bidez; ez dator bat Rothermel-en 1–13 eredu ofizialekin. Sailkatu ezin diren eremuek hautatutako ordezko erregaia erabiltzen dute.";
-      }catch(e){
-        inventoryNote="Ezin izan da 2024ko Baso Inbentarioa kargatu ("+(e.message||String(e))+"); ordezko erregai uniformea erabiliko da.";
-        console.warn(inventoryNote);
-      }
+    // Meteorologia eta MDT ez dira elkarren menpekoak: paraleloan kargatu.
+    [met,demCoverage]=await Promise.all([
+      fsMeteo(),
+      fsLoadDem(fsIgn.lat,fsIgn.lng,fsMaxSpreadExtent(FS_T))
+    ]);
+    // Inbentarioa eta baso-egituraren haize-doikuntza ere independenteak dira.
+    const [inventoryResult,windResult]=await Promise.all([
+      fsFuelSource==="inventory"
+        ? fsCreateInventoryFuelSampler(fsIgn).then(value=>({value})).catch(error=>({error}))
+        : Promise.resolve({value:null}),
+      fsCreateForestWindSampler(fsIgn,fsMaxSpreadExtent(FS_T))
+        .then(value=>({value})).catch(error=>({error}))
+    ]);
+    if(inventoryResult.error){
+      const e=inventoryResult.error;
+      inventoryNote="Ezin izan da 2024ko Baso Inbentarioa kargatu ("+(e.message||String(e))+"); ordezko erregai uniformea erabiliko da.";
+      console.warn(inventoryNote);
+    }else{
+      inventorySampler=inventoryResult.value;
+      if(inventorySampler) inventoryNote="2024ko Baso Inbentarioaren estaldura aldakorra, klase sinplifikatuen bidez; ez dator bat Rothermel-en 1–13 eredu ofizialekin. Sailkatu ezin diren eremuek hautatutako ordezko erregaia erabiltzen dute.";
     }
-    try{
-      windSampler=await fsCreateForestWindSampler(fsIgn,fsMaxSpreadExtent(FS_T));
-    }catch(e){
-      windSamplerError=e.message||String(e);
+    if(windResult.error){
+      windSamplerError=windResult.error.message||String(windResult.error);
       console.warn("Ezin izan da Gipuzkoako baso-egitura kontsultatu haizea doitzeko:",windSamplerError);
+    }else{
+      windSampler=windResult.value;
     }
     fsCfg.modeEff=null;
     try{ const net=await fsNet(); ffn=fsFfmcNet(net,fsIgn); if(fsCfg.moistMode==="ffmcnet") fsCfg.ffmcEff=ffn.val; }
