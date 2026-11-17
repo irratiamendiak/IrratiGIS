@@ -52,8 +52,8 @@ jobs:
           set -o pipefail
           npx --yes wrangler@latest pages deploy . \
             --project-name irratigis-wildfire-preview \
-            --branch pr-29 \
-            --commit-message "IrratiGIS wildfire simulator preview PR #29" | tee /tmp/pages-deploy.log
+            --branch pr-24 \
+            --commit-message "IrratiGIS wildfire simulator preview PR #29 (CORS-compatible origin pr-24)" | tee /tmp/pages-deploy.log
           DEPLOY_URL=$(grep -Eo 'https://[A-Za-z0-9.-]+\.pages\.dev' /tmp/pages-deploy.log | tail -n 1)
           if [ -z "$DEPLOY_URL" ]; then
             echo "::error::Wrangler did not report a Pages deployment URL."
