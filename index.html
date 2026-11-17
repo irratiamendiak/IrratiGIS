@@ -913,6 +913,17 @@ try{
     }
   });
   lidarRelief3D.on("add",()=>{
+    // Las capas Leaflet/WMS no se reproyectan con la cámara orbital.
+    // Se ocultan temporalmente para evitar que queden flotando o desalineadas;
+    // los perímetros e igniciones se dibujan en MapLibre mediante fsSync3D().
+    const paneNames=["overlayPane","markerPane","shadowPane","wmsOverlayPane","forestalPane"];
+    lidarRelief3D._hiddenPanes={};
+    paneNames.forEach(name=>{
+      const pane=map.getPane(name);
+      if(!pane)return;
+      lidarRelief3D._hiddenPanes[name]=pane.style.display;
+      pane.style.display="none";
+    });
     const gl=lidarRelief3D.getMaplibreMap();
     if(!gl||lidarRelief3D._terrainReady)return;
     lidarRelief3D._terrainReady=true;
@@ -924,7 +935,7 @@ try{
           const el=L.DomUtil.create("div","leaflet-bar ir3d-nav-control");
           el.setAttribute("role","group");
           el.setAttribute("aria-label","Controles orbitales del relieve 3D");
-          el.innerHTML='<div class="ir3d-nav-grid"><button type="button" data-act="tilt-down" title="Vista más cenital" aria-label="Vista más cenital">▽</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar">＋</button><button type="button" data-act="tilt-up" title="Inclinar cámara" aria-label="Inclinar cámara">△</button><button type="button" data-act="rotate-left" title="Girar a la izquierda" aria-label="Girar a la izquierda">↶</button><button type="button" data-act="reset" title="Restablecer vista" aria-label="Restablecer vista">⌂</button><button type="button" data-act="rotate-right" title="Girar a la derecha" aria-label="Girar a la derecha">↷</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar">－</button><button type="button" data-act="exaggeration" title="Cambiar exageración del relieve" aria-label="Cambiar exageración del relieve">⛰ 1×</button></div><div class="ir3d-nav-caption">Arrastra con botón derecho para girar · rueda para zoom</div>';
+          el.innerHTML='<div class="ir3d-nav-grid"><button type="button" data-act="tilt-down" title="Vista más cenital" aria-label="Vista más cenital">▽</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar">＋</button><button type="button" data-act="tilt-up" title="Inclinar cámara" aria-label="Inclinar cámara">△</button><button type="button" data-act="rotate-left" title="Girar a la izquierda" aria-label="Girar a la izquierda">↶</button><button type="button" data-act="reset" title="Restablecer vista" aria-label="Restablecer vista">⌂</button><button type="button" data-act="rotate-right" title="Girar a la derecha" aria-label="Girar a la derecha">↷</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar">－</button><button type="button" data-act="exaggeration" title="Cambiar exageración del relieve" aria-label="Cambiar exageración del relieve">⛰ 1×</button></div><div class="ir3d-nav-caption">Botón derecho: girar · rueda: zoom · capas 2D ocultas en vista orbital</div>';
           L.DomEvent.disableClickPropagation(el);
           L.DomEvent.disableScrollPropagation(el);
           el.addEventListener("click",ev=>{
@@ -2318,6 +2329,12 @@ function fsSync3D(){
   }catch(err){console.warn("Ezin izan dira suteen geometriak 3D mapara bidali:",err);}
 }
 if(lidarRelief3D) lidarRelief3D.on("remove",()=>{
+  // Restaurar exactamente la visibilidad previa de las capas 2D al salir del modo 3D.
+  Object.entries(lidarRelief3D._hiddenPanes||{}).forEach(([name,display])=>{
+    const pane=map.getPane(name);
+    if(pane)pane.style.display=display;
+  });
+  lidarRelief3D._hiddenPanes=null;
   fsGroup.eachLayer(layer=>{
     if(layer instanceof L.Polygon){
       const st=layer._fs3dOriginalStyle||{};
