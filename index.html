@@ -3635,23 +3635,30 @@ async function fsCreateInventoryFuelSampler(ignition,radiusM){
   result.stats.inventoryPolygons=index.polygons.length;
   if(!index.polygons.length) throw new Error("GeoEuskadi ez da poligonorik itzuli simulazio-eremuan (55–63 geruzak).");
   const counted=new Set();
+  const recordSample=properties=>{
+    if(!properties||result.stats.sampleProperties.length>=3) return;
+    if(result.stats.sampleProperties.some(p=>String(p.OBJECTID)===String(properties.OBJECTID)&&String(p.SOURCE_LAYER)===String(properties._SOURCE_LAYER))) return;
+    const sample=Object.fromEntries(Object.entries(properties).filter(([k,v])=>k!=="_SOURCE_LAYER"&&v!==null&&v!==undefined&&String(v)!=="").slice(0,22));
+    sample.SOURCE_LAYER=properties._SOURCE_LAYER;
+    result.stats.sampleProperties.push(sample);
+  };
   const fuelAt=(lat,lon)=>{
-    const key="inventory-v5:"+lat.toFixed(5)+","+lon.toFixed(5);
+    // v6: cache-ak geometria/atributu-erreferentzia ere gordetzen du;
+    // bestela aurreko simulazio bateko cache-hit-ek diagnostiko-laginak ezabatzen dituzte.
+    const key="inventory-v6:"+lat.toFixed(5)+","+lon.toFixed(5);
     let value=cache.get(key);
     if(!value){
       const properties=fsForestFind(index,lat,lon);
       const featureCount=properties?1:0;
       const mapped=properties?fsFuelFromInventoryProperties(properties):null;
       const reason=properties?(mapped?null:"unmapped"):"no-feature";
-      if(properties&&result.stats.sampleProperties.length<3&&!result.stats.sampleProperties.some(p=>String(p.OBJECTID)===String(properties.OBJECTID)&&String(p.SOURCE_LAYER)===String(properties._SOURCE_LAYER))){
-        const sample=Object.fromEntries(Object.entries(properties).filter(([k,v])=>k!=="_SOURCE_LAYER"&&v!==null&&v!==undefined&&String(v)!=="").slice(0,22));
-        sample.SOURCE_LAYER=properties._SOURCE_LAYER;
-        result.stats.sampleProperties.push(sample);
-      }
-      value=mapped?{key:mapped,fuel:FS_FUELS[mapped],source:"inventory",featureCount}:
-        {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback",reason,featureCount};
+      value=mapped?{key:mapped,fuel:FS_FUELS[mapped],source:"inventory",featureCount,properties}:
+        {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback",reason,featureCount,properties};
       cache.set(key,value);
     }
+    // Laginak simulazio honetako ibilbideetan erabilitako poligonoetatik bildu,
+    // baita cache-hit denean ere.
+    recordSample(value.properties);
     if(!counted.has(key)){
       counted.add(key);
       if(value.source==="inventory") result.stats.classified++;
