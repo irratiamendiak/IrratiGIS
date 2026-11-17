@@ -954,6 +954,22 @@ try{
       lidarRelief3D._fireStyleHandler=()=>{if(map.hasLayer(lidarRelief3D))fsSync3D();};
       lidarRelief3D._fireClickMap=gl;
       gl.on("click",lidarRelief3D._fireClickHandler);
+      // Respaldo DOM en fase de captura: algunos contenedores Leaflet/MapLibre
+      // detienen la propagación del clic antes de que llegue al evento de Leaflet.
+      // Capturarlo en el contenedor garantiza la selección de ignición en 3D.
+      lidarRelief3D._fireDomClickHandler=e=>{
+        if(!fsArmed||wiMode||!map.hasLayer(fsGroup)||!map.hasLayer(lidarRelief3D))return;
+        const canvas=gl.getCanvasContainer();
+        if(!canvas||!canvas.contains(e.target))return;
+        const rect=canvas.getBoundingClientRect();
+        const ll=gl.unproject([e.clientX-rect.left,e.clientY-rect.top]);
+        if(!ll||!Number.isFinite(ll.lat)||!Number.isFinite(ll.lng))return;
+        fsArmed=false;
+        map.getContainer().style.cursor="";
+        fsIgn=L.latLng(ll.lat,ll.lng);
+        fsRun();
+      };
+      map.getContainer().addEventListener("click",lidarRelief3D._fireDomClickHandler,true);
       gl.on("style.load",lidarRelief3D._fireStyleHandler);
     }
     if(lidarRelief3D._terrainReady){
