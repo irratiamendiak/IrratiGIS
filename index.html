@@ -3660,8 +3660,13 @@ async function fsCreateInventoryFuelSampler(ignition,radiusM){
   if(!index.polygons.length) throw new Error("GeoEuskadi ez da poligonorik itzuli simulazio-eremuan (55–63 geruzak).");
   const counted=new Set();
   const recordSample=(properties,lidar)=>{
-    if(!properties||result.stats.sampleProperties.length>=3) return;
-    if(result.stats.sampleProperties.some(p=>String(p.OBJECTID)===String(properties.OBJECTID)&&String(p.SOURCE_LAYER)===String(properties._SOURCE_LAYER))) return;
+    if(!properties) return;
+    const existing=result.stats.sampleProperties.find(p=>String(p.OBJECTID)===String(properties.OBJECTID)&&String(p.SOURCE_LAYER)===String(properties._SOURCE_LAYER));
+    if(existing){
+      if(lidar){existing.LIDAR_SOTOBOSQUE_CM=lidar.height?.LEYENDA||"—";existing.LIDAR_BIOMASA_T_HA=lidar.mass?.LEYENDA||"—";existing.LIDAR_PRIMERA_RAMA_M=lidar.branch?.LEYENDA||"—";}
+      return;
+    }
+    if(result.stats.sampleProperties.length>=3) return;
     const sample=Object.fromEntries(Object.entries(properties).filter(([k,v])=>k!=="_SOURCE_LAYER"&&v!==null&&v!==undefined&&String(v)!=="").slice(0,22));
     sample.SOURCE_LAYER=properties._SOURCE_LAYER;
     if(lidar){sample.LIDAR_SOTOBOSQUE_CM=lidar.height?.LEYENDA||"—";sample.LIDAR_BIOMASA_T_HA=lidar.mass?.LEYENDA||"—";sample.LIDAR_PRIMERA_RAMA_M=lidar.branch?.LEYENDA||"—";}
