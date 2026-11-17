@@ -718,6 +718,7 @@ body.map-is-fullscreen #map .leaflet-top.leaflet-right{margin-top:58px}
 <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
 <script src="wildfire/terrain-config.js?v=2"></script>
 <script src="wildfire/terrain/mdt-cog-provider.js?v=3"></script>
+<script src="wildfire/terrain/lidar-dem-tiles.js?v=1"></script>
 <script src="wildfire/simulator/engine.js?v=3"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
@@ -919,11 +920,11 @@ try{
       glyphs:"https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
       sources:{
         imagery:{type:"raster",tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],tileSize:256,attribution:"Esri, Vantor, Earthstar Geographics"},
-        "global-dem":{type:"raster-dem",tiles:["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],tileSize:256,encoding:"terrarium",minzoom:0,maxzoom:15,attribution:"Terrain data © Mapzen"}
+        "gipuzkoa-lidar-dem":{type:"raster-dem",tiles:["lidar-dem://{z}/{x}/{y}"],tileSize:256,encoding:"mapbox",minzoom:8,maxzoom:14,attribution:"MDT LiDAR Gipuzkoa 2017 · 16 m"}
       },
       layers:[
         {id:"relief3d-ortho-base",type:"raster",source:"imagery"},
-        {id:"relief3d-hillshade-base",type:"hillshade",source:"global-dem",paint:{"hillshade-exaggeration":0.65,"hillshade-illumination-direction":315,"hillshade-shadow-color":"#344238","hillshade-highlight-color":"#fff7dc"}}
+        {id:"relief3d-hillshade-base",type:"hillshade",source:"gipuzkoa-lidar-dem",paint:{"hillshade-exaggeration":0.65,"hillshade-illumination-direction":315,"hillshade-shadow-color":"#344238","hillshade-highlight-color":"#fff7dc"}}
       ]
     }
   });
@@ -1108,7 +1109,7 @@ try{
     }
     const enableTerrain=()=>{
       lidarRelief3D._terrainExaggeration=1;
-      try{gl.setTerrain({source:"global-dem",exaggeration:1});gl.setPitch(50);gl.setBearing(0);}catch(err){console.warn("Terrarium terrain:",err);}
+      try{gl.setTerrain({source:"gipuzkoa-lidar-dem",exaggeration:1});gl.setPitch(50);gl.setBearing(0);}catch(err){console.warn("MDT LiDAR terrain:",err);}
       fsSync3D();
     };
     if(gl.isStyleLoaded())enableTerrain();else gl.once("load",enableTerrain);
@@ -1356,7 +1357,7 @@ const layersControl=new GroupedLayersControl(
     "Esri · Ortoargazki hibridoa":esriHybrid,
     "SP IGM Raster · IGN":ignRaster,
     "EU Huts":euHuts,
-    ...(lidarRelief3D?{"🌄 Relieve 3D · Ortofoto + Terrarium":lidarRelief3D}:{})
+    ...(lidarRelief3D?{"🌄 Relieve 3D · Ortofoto + MDT LiDAR Gipuzkoa":lidarRelief3D}:{})
   },
   {
   "Eskuz marraztutako track-a":manualTrackLayer,
@@ -2132,10 +2133,8 @@ map.on("overlayremove",e=>{
 });
 
 /* ===== Campbell lerrokadura: malda + haizea + eguzkia =====
-   Lur-eredua: AWS Terrarium (elevation-tiles-prod), ~30 m bereizmena.
-   Malda eta orientazioa nabigatzailean kalkulatzen dira (Horn metodoa).
-   Eguzkiaren posizioa aukeratutako orduan kalkulatzen da (SunCalc formulak). */
-const TERRARIUM="https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+   Eredu topografikoa: MDT LiDAR Gipuzkoa 2017 (COG probintziala, 16 m).
+   Malda eta orientazioa nabigatzailean kalkulatzen dira (Horn metodoa). */
 const CAMPBELL_MINZOOM=11;
 const campbellCfg={wind:"auto",minSlope:11,hour:"now",opacity:.75};   // 11° ≈ %20
 const WIND_DIR={N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315};
@@ -2234,53 +2233,28 @@ const CAMPBELL_ALPHA={3:230,2:200,1:160};
 const CampbellLayer=L.GridLayer.extend({
   createTile:function(coords,done){
     const tile=document.createElement("canvas");
-    tile.width=256; tile.height=256;
-    // Zoom txikian ez da kalkulatzen (geruza markatu daiteke, baina hutsik).
-    if(coords.z<CAMPBELL_MINZOOM){ setTimeout(()=>done(null,tile),0); return tile; }
-    const img=new Image();
-    img.crossOrigin="anonymous";
-    img.onload=()=>{
-      try{
-        const tmp=document.createElement("canvas");
-        tmp.width=256; tmp.height=256;
-        const tctx=tmp.getContext("2d");
-        tctx.drawImage(img,0,0);
-        const src=tctx.getImageData(0,0,256,256).data;
-        const N=256, elev=new Float32Array(N*N);
-        for(let i=0;i<N*N;i++){
-          elev[i]=(src[i*4]*256+src[i*4+1]+src[i*4+2]/256)-32768;
-        }
-        const n=Math.pow(2,coords.z);
-        const latRad=Math.atan(Math.sinh(Math.PI*(1-2*(coords.y+.5)/n)));
-        const res=156543.03392*Math.cos(latRad)/n;
-        const E=(x,y)=>elev[Math.min(N-1,Math.max(0,y))*N+Math.min(N-1,Math.max(0,x))];
-
-        const ctx=tile.getContext("2d");
-        const out=ctx.createImageData(N,N);
-        const minTan=Math.tan(campbellCfg.minSlope*Math.PI/180);
-        for(let y=0;y<N;y++){
-          for(let x=0;x<N;x++){
-            const a=E(x-1,y-1),b=E(x,y-1),c=E(x+1,y-1),
-                  d=E(x-1,y),          f=E(x+1,y),
-                  g=E(x-1,y+1),hh=E(x,y+1),ii=E(x+1,y+1);
-            const dzdx=((c+2*f+ii)-(a+2*d+g))/(8*res);
-            const dzdy=((g+2*hh+ii)-(a+2*b+c))/(8*res);
-            if(Math.hypot(dzdx,dzdy)<minTan) continue;
-            let az=Math.atan2(-dzdx,dzdy)*180/Math.PI;
-            if(az<0) az+=360;
-            const lvl=campbellLevel(az);
-            if(!lvl) continue;
-            const col=CAMPBELL_COLORS[lvl];
-            const k=(y*N+x)*4;
-            out.data[k]=col[0]; out.data[k+1]=col[1]; out.data[k+2]=col[2]; out.data[k+3]=CAMPBELL_ALPHA[lvl];
-          }
-        }
-        ctx.putImageData(out,0,0);
-        done(null,tile);
-      }catch(err){ done(err,tile); }
-    };
-    img.onerror=()=>done(new Error("DEM"),tile);
-    img.src=TERRARIUM.replace("{z}",coords.z).replace("{x}",coords.x).replace("{y}",coords.y);
+    tile.width=256;tile.height=256;
+    if(coords.z<CAMPBELL_MINZOOM){setTimeout(()=>done(null,tile),0);return tile;}
+    const demTiles=window.IrratiLidarDemTiles;
+    if(!demTiles){done(new Error("No está disponible el proveedor de teselas MDT LiDAR."),tile);return tile;}
+    demTiles.getElevationGrid(coords.z,coords.x,coords.y,1).then(grid=>{
+      const N=256,ctx=tile.getContext("2d"),out=ctx.createImageData(N,N);
+      const n=Math.pow(2,coords.z),latRad=Math.atan(Math.sinh(Math.PI*(1-2*(coords.y+.5)/n)));
+      const res=156543.03392*Math.cos(latRad)/n;
+      const E=(x,y)=>grid.data[(y+1)*grid.width+(x+1)];
+      const minTan=Math.tan(campbellCfg.minSlope*Math.PI/180);
+      for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+        const a=E(x-1,y-1),b=E(x,y-1),c=E(x+1,y-1),d=E(x-1,y),f=E(x+1,y),g=E(x-1,y+1),hh=E(x,y+1),ii=E(x+1,y+1);
+        if(![a,b,c,d,f,g,hh,ii].every(Number.isFinite))continue;
+        const dzdx=((c+2*f+ii)-(a+2*d+g))/(8*res),dzdy=((g+2*hh+ii)-(a+2*b+c))/(8*res);
+        if(Math.hypot(dzdx,dzdy)<minTan)continue;
+        let az=Math.atan2(-dzdx,dzdy)*180/Math.PI;if(az<0)az+=360;
+        const lvl=campbellLevel(az);if(!lvl)continue;
+        const col=CAMPBELL_COLORS[lvl],k=(y*N+x)*4;
+        out.data[k]=col[0];out.data[k+1]=col[1];out.data[k+2]=col[2];out.data[k+3]=CAMPBELL_ALPHA[lvl];
+      }
+      ctx.putImageData(out,0,0);done(null,tile);
+    }).catch(error=>done(error,tile));
     return tile;
   }
 });
@@ -2288,7 +2262,7 @@ const CampbellLayer=L.GridLayer.extend({
 /* OHARRA: ez jarri minZoom aukera; bestela Leaflet-ek kontroleko kontrol-laukia desgaitzen du. */
 const campbellLayer=new CampbellLayer({
   pane:"wmsOverlayPane", maxNativeZoom:15, maxZoom:20,
-  opacity:campbellCfg.opacity, attribution:"Lur-eredua: Mapzen/AWS Terrain Tiles"
+  opacity:campbellCfg.opacity, attribution:"Lur-eredua: MDT LiDAR Gipuzkoa 2017 (16 m)"
 });
 layersControl.addOverlay(campbellLayer,"⛰️ Campbell · lerrokadura");
 
@@ -2365,9 +2339,9 @@ map.on("overlayremove",e=>{
 
 /* ===== 🔥 Suteen bilakaera: hedapena + defentsa-lerroak + leku seguruak + estrategia + OACEL =====
    Eredu sinplifikatua (Rothermel motakoa): malda eta haizea bektore gisa batzen dira, elipsea (Anderson 1983),
-   Byram intentsitatea eta garaiera. Lur-eredua: Terrarium (Campbell geruzaren berbera). Lerroak/lekuak: OpenStreetMap (Overpass).
-   Lur-iturria hautagarria da (MDT LiDAR edo Terrarium); kalkulu numerikoa wildfire/simulator/engine.js moduluan dago. */
-const FS_Z=13, FS_H=18600, FS_DT=2, FS_T=120;
+   Byram intentsitatea eta garaiera. Lur-eredua: MDT LiDAR Gipuzkoa 2017 (COG probintziala).
+   Lerroak/lekuak: OpenStreetMap (Overpass); kalkulu numerikoa wildfire/simulator/engine.js moduluan dago. */
+const FS_H=18600, FS_DT=2, FS_T=120;
 const FS_FUELS={
   // Anderson (1982) / Albini (1976). Loads: lb/ft²; SAVR: ft⁻¹; depth: ft.
   // Fuel-bed constants shared by the original 13 models: particle density 32 lb/ft³,
@@ -2400,10 +2374,9 @@ Object.values(FS_FUELS).forEach(f=>{
 });
 const fsCfg={fuel:"fm5",moistMode:"calc",startH:0,ffmc:85,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
 let fsIgn=null, fsBusy=0, fsLast=null, fsFlat=false;
-let fsTerrainSource="mdt", fsTerrainSamples={mdt:0,terrarium:0};
 let fsFuelSource="";
 
-const fsGroup=L.layerGroup(), fsDem=new Map();
+const fsGroup=L.layerGroup();
 /* Suteen simulazioaren geometria MapLibre 3D mapan marraztu, kamerarekin batera mugitzeko. */
 function fsSync3D(){
   if(!lidarRelief3D||!map.hasLayer(lidarRelief3D)) return;
@@ -2503,101 +2476,49 @@ function fsMaxSpreadExtent(durationMinutes){
   return Math.ceil(maxRate*durationMinutes+160); // margen para muestreo de pendiente y borde del raster.
 }
 
-/* --- terreno (Terrarium z13, ~14 m/px) --- */
-function fsPix(lat,lon){ const n=256*Math.pow(2,FS_Z), s=Math.sin(lat*fsRad); return [(lon+180)/360*n,(0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n]; }
+/* --- terreno: MDT LiDAR Gipuzkoa 2017 (COG provincial) --- */
 const fsMdtUrl=String(window.IRRATIGIS_MDT_COG_URL||"").trim();
-const fsMdt=fsMdtUrl&&window.IrratiMdtProvider
-  ?window.IrratiMdtProvider.create({url:fsMdtUrl,targetResolutionM:Number(window.IRRATIGIS_MDT_TARGET_RESOLUTION_M)||14})
-  :null;
+const fsMdt=fsMdtUrl&&window.IrratiMdtProvider?window.IrratiMdtProvider.create({url:fsMdtUrl,targetResolutionM:Number(window.IRRATIGIS_MDT_TARGET_RESOLUTION_M)||14}):null;
 let fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};
-function fsMdtLabel(){if(fsTerrainSource==="terrarium")return "Terrarium · fuente seleccionada";return fsMdtStatus.loaded?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m${Number.isFinite(fsMdtStatus.radiusM)?` · cobertura ${ (fsMdtStatus.radiusM/1000).toFixed(1)} km`:``}`:(fsMdtStatus.error?`MDT LiDAR · error: ${fsMdtStatus.error}`:"MDT LiDAR · pendiente de consultar");}
+function fsMdtLabel(){return fsMdtStatus.loaded?`MDT LiDAR Gipuzkoa 2017 · vista ${fsMdtStatus.resolutionM.toFixed(1)} m${Number.isFinite(fsMdtStatus.radiusM)?` · cobertura ${(fsMdtStatus.radiusM/1000).toFixed(1)} km`:""}`:(fsMdtStatus.error?`MDT LiDAR · error: ${fsMdtStatus.error}`:"MDT LiDAR · pendiente de consultar");}
 function fsUpdateTerrainStatus(){const el=fsPanel&&fsPanel.querySelector(".fs-terrain-status");if(el)el.textContent="Lurzoruaren iturria: "+fsMdtLabel();}
-// Reutilizar el conversor Proj4: crear la transformación en cada muestra
-// volvía a analizar las definiciones CRS miles de veces durante la simulación.
 let fsMdtProjector=null;
 function fsMdtXY(lat,lon){
-  if(typeof proj4!=="function") return null;
+  if(typeof proj4!=="function")return null;
   try{
-    if(!fsMdtProjector){
-      // Definición explícita ETRS89 / UTM 30N (EPSG:25830).
-      // Evita depender de que Proj4 tenga registrado el alias "EPSG:25830".
-      fsMdtProjector=proj4(
-        "+proj=longlat +datum=WGS84 +no_defs",
-        "+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs"
-      );
-    }
+    if(!fsMdtProjector)fsMdtProjector=proj4("+proj=longlat +datum=WGS84 +no_defs","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs");
     const xy=fsMdtProjector.forward([lon,lat]);
     return Array.isArray(xy)&&xy.length===2&&xy.every(Number.isFinite)?xy:null;
   }catch(_){return null;}
 }
 function fsDemBounds(lat,lng,rad){
-  const dLat=rad/111320, dLon=rad/(111320*Math.cos(lat*fsRad));
-  const corners=[[lat+dLat,lng-dLon],[lat+dLat,lng+dLon],[lat-dLat,lng-dLon],[lat-dLat,lng+dLon]]
-    .map(([a,b])=>fsMdtXY(a,b)).filter(Boolean);
-  if(corners.length!==4) throw new Error("No se pudo transformar el área a EPSG:25830.");
+  const dLat=rad/111320,dLon=rad/(111320*Math.cos(lat*fsRad));
+  const corners=[[lat+dLat,lng-dLon],[lat+dLat,lng+dLon],[lat-dLat,lng-dLon],[lat-dLat,lng+dLon]].map(([a,b])=>fsMdtXY(a,b)).filter(Boolean);
+  if(corners.length!==4)throw new Error("No se pudo transformar el área a EPSG:25830.");
   const xs=corners.map(p=>p[0]),ys=corners.map(p=>p[1]);
   return [Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)];
 }
 async function fsLoadDem(lat,lng,maxExtent){
-  const dLat=maxExtent/111320, dLon=maxExtent/(111320*Math.cos(lat*fsRad)), jobs=[];
-  if(fsTerrainSource==="mdt"){
-    if(!fsMdt) throw new Error("El proveedor MDT LiDAR no está configurado.");
-    try{
-      await fsMdt.open();
-      let radius=maxExtent;
-      if(!await fsMdt.canLoadBounds(fsDemBounds(lat,lng,radius))){
-        let lo=0,hi=maxExtent;
-        for(let i=0;i<22;i++){
-          const mid=(lo+hi)/2;
-          if(await fsMdt.canLoadBounds(fsDemBounds(lat,lng,mid))) lo=mid;
-          else hi=mid;
-        }
-        // Margen para que las muestras cardinales de pendiente no dependan
-        // del último píxel del raster.
-        radius=Math.max(0,lo-100);
-      }
-      if(radius<250) throw new Error("La cobertura LiDAR alrededor de la ignición es demasiado pequeña para simular con fiabilidad (menos de 250 m).");
-      const info=await fsMdt.loadBounds(fsDemBounds(lat,lng,radius));
-      fsMdtStatus={active:true,loaded:true,resolutionM:info.resolutionM,error:null,radiusM:radius,limited:radius<maxExtent-1};
-      fsUpdateTerrainStatus();
-      return {radiusM:radius,maxExtentM:maxExtent,limited:radius<maxExtent-1};
-    }catch(e){
-      fsMdtStatus={active:true,loaded:false,resolutionM:null,error:e.message||String(e)};
-      fsUpdateTerrainStatus(); throw e;
+  if(!fsMdt)throw new Error("El proveedor MDT LiDAR de Gipuzkoa no está configurado.");
+  try{
+    await fsMdt.open();
+    let radius=maxExtent;
+    if(!await fsMdt.canLoadBounds(fsDemBounds(lat,lng,radius))){
+      let lo=0,hi=maxExtent;
+      for(let i=0;i<22;i++){const mid=(lo+hi)/2;if(await fsMdt.canLoadBounds(fsDemBounds(lat,lng,mid)))lo=mid;else hi=mid;}
+      radius=Math.max(0,lo-100);
     }
-  }
-  const [x0,y0]=fsPix(lat+dLat,lng-dLon), [x1,y1]=fsPix(lat-dLat,lng+dLon);
-  for(let tx=Math.floor(x0/256);tx<=Math.floor(x1/256);tx++) for(let ty=Math.floor(y0/256);ty<=Math.floor(y1/256);ty++){
-    const key=tx+"/"+ty; if(fsDem.has(key)) continue;
-    jobs.push(new Promise((res,rej)=>{
-      const img=new Image(); img.crossOrigin="anonymous";
-      img.onload=()=>{ try{
-        const c=document.createElement("canvas"); c.width=c.height=256; const cx=c.getContext("2d"); cx.drawImage(img,0,0);
-        const d=cx.getImageData(0,0,256,256).data, a=new Float32Array(65536);
-        for(let i=0;i<65536;i++) a[i]=d[i*4]*256+d[i*4+1]+d[i*4+2]/256-32768;
-        fsDem.set(key,a); res();
-      }catch(error){rej(new Error("No se pudo leer el MDT Terrarium "+key+": "+(error.message||error)));} };
-      img.onerror=()=>rej(new Error("No se pudo cargar la tesela del MDT Terrarium "+key+". Comprueba la conexión o el proveedor de relieve."));
-      img.src=TERRARIUM.replace("{z}",FS_Z).replace("{x}",tx).replace("{y}",ty);
-    }));
-  }
-  await Promise.all(jobs);
-  return {radiusM:maxExtent,maxExtentM:maxExtent,limited:false};
+    if(radius<250)throw new Error("La cobertura LiDAR alrededor de la ignición es demasiado pequeña para simular con fiabilidad (menos de 250 m).");
+    const info=await fsMdt.loadBounds(fsDemBounds(lat,lng,radius));
+    fsMdtStatus={active:true,loaded:true,resolutionM:info.resolutionM,error:null,radiusM:radius,limited:radius<maxExtent-1};
+    fsUpdateTerrainStatus();
+    return {radiusM:radius,maxExtentM:maxExtent,limited:radius<maxExtent-1};
+  }catch(e){fsMdtStatus={active:true,loaded:false,resolutionM:null,error:e.message||String(e)};fsUpdateTerrainStatus();throw e;}
 }
 function fsElev(lat,lon){
-  if(fsTerrainSource==="mdt"){
-    if(!fsMdt||!fsMdtStatus.loaded) return NaN;
-    const xy=fsMdtXY(lat,lon); if(!xy) return NaN;
-    const z=fsMdt.sample(xy[0],xy[1]); if(Number.isFinite(z)) fsTerrainSamples.mdt++;
-    return z;
-  }
-  const [px,py]=fsPix(lat,lon), tx=Math.floor(px/256), ty=Math.floor(py/256), t=fsDem.get(tx+"/"+ty);
-  if(!t) return NaN;
-  const fx=Math.min(254.999,Math.max(0,px-tx*256-.5)), fy=Math.min(254.999,Math.max(0,py-ty*256-.5));
-  const x=Math.floor(fx), y=Math.floor(fy), ax=fx-x, ay=fy-y, g=(i,j)=>t[(y+j)*256+x+i];
-  const z=g(0,0)*(1-ax)*(1-ay)+g(1,0)*ax*(1-ay)+g(0,1)*(1-ax)*ay+g(1,1)*ax*ay;
-  if(Number.isFinite(z)) fsTerrainSamples.terrarium++;
-  return z;
+  if(!fsMdt||!fsMdtStatus.loaded)return NaN;
+  const xy=fsMdtXY(lat,lon);if(!xy)return NaN;
+  return fsMdt.sample(xy[0],xy[1]);
 }
 function fsTerrain(lat,lon){   // malda (tan) eta orientazioa (maldan behera, gradu)
   if(fsFlat) return {tan:0,asp:0};
@@ -3967,7 +3888,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div style="${row}"><b>Erregai mota</b> <select class="fs-fuel-source" style="max-width:100%"><option value=""${!fsFuelSource?" selected":""}>Aukeratu erregaia</option><option value="inventory"${fsFuelSource==="inventory"?" selected":""}>Baso-inbentarioa (Gipuzkoa 2024 · estaldura)</option><option value="rothermel"${fsFuelSource==="rothermel"?" selected":""}>Rothermel eredua (eskuzko erregaia)</option></select></div>`+
    `<div class="fs-fuel-help" style="font-size:10px;color:#65736b;margin:-2px 0 5px">${!fsFuelSource?"Aukeratu erregai-iturri bat simulazioa kalkulatu aurretik.":fsFuelSource==="inventory"?"Inbentarioa estaldura-mota sinplifikatuen arabera erabiltzen da; sailkatu gabeko eremuetan beheko ordezko erregaia erabiliko da. Ez dira Rothermel 1–13 eredu ofizialak.":"Hautatu Anderson (1982) 1–13 eredu estandarretako bat; hedapena Rothermel-en gainazaleko su-ekuazioekin kalkulatzen da."}</div>`+
    `<div class="fs-fuel-manual" style="${fsFuelSource==="rothermel"?"":"display:none;"}${row}"><b>Erregai-eredua</b> <select class="fs-fuel" style="max-width:100%">${Object.keys(FS_FUELS).map(k=>`<option value="${k}"${k===fsCfg.fuel?" selected":""}>${FS_FUELS[k].n}</option>`).join("")}</select></div>`+
-   `<div style="${row}"><b>Topografia</b> <select class="fs-terrain-source"><option value="mdt"${fsTerrainSource==="mdt"?" selected":""}>MDT LiDAR Gipuzkoa 2017 (16 m)</option><option value="terrarium"${fsTerrainSource==="terrarium"?" selected":""}>Terrarium (ordezkoa)</option></select></div>`+
+   `<div style="${row}"><b>Topografia</b> MDT LiDAR Gipuzkoa 2017 (16 m)</div>`+
    `<div class="fs-terrain-status" style="padding:6px 8px;margin:5px 0 8px;background:#edf4ef;border-left:3px solid #527c63;border-radius:5px;font-size:11px;font-weight:700">Lurzoruaren iturria: ${escapeHtml(fsMdtLabel())}</div>`+
    `<div class="fs-prof-slot" style="display:none;margin:6px 0 8px"><div style="font-weight:700;color:#52645a">📈 Hedapenaren, maldaren eta Campbell-en grafikoa</div><div style="font-size:11px;color:#65736b">Hasiera-puntua markatu eta simulazioa kalkulatu ondoren agertuko da.</div></div>`+
    `<div style="${row}"><b>Hedapena</b> <select class="fs-ws"><option value="auto">Aurreikusitako eguraldia (Open-Meteo)</option><option value="man">Eskuzkoa</option></select></div>`+
@@ -3978,7 +3899,6 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   const q=s=>fsPanel.querySelector(s), rerun=()=>{ if(fsIgn) fsRun(); }, num=(e,lo,hi,d)=>Math.min(hi,Math.max(lo,Number(e.target.value)||d));
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
   fsPanelWindow(fsPanel);
-  q(".fs-terrain-source").onchange=e=>{fsTerrainSource=e.target.value==="terrarium"?"terrarium":"mdt";fsTerrainSamples={mdt:0,terrarium:0};fsDem.clear();fsMdtStatus={active:!!fsMdt,loaded:false,resolutionM:null,error:null};fsUpdateTerrainStatus();rerun();};
   q(".fs-fuel-source").onchange=e=>{ fsFuelSource=e.target.value==="inventory"?"inventory":e.target.value==="rothermel"?"rothermel":""; q(".fs-fuel-manual").style.display=fsFuelSource==="rothermel"?"block":"none"; q(".fs-fuel-help").textContent=!fsFuelSource?"Aukeratu erregai-iturri bat simulazioa kalkulatu aurretik.":fsFuelSource==="inventory"?"Inbentarioa estaldura-mota sinplifikatuen arabera erabiltzen da; sailkatu gabeko eremuetan aurrez ezarritako ordezko erregaia erabiliko da. Ez dira Rothermel 1–13 eredu ofizialak.":"Hautatu Rothermel-en katalogo sinplifikatuko erregai uniformea."; if(fsFuelSource==="inventory"){ if(!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer); }else if(map.hasLayer(inventarioForestalLayer)){ map.removeLayer(inventarioForestalLayer); } rerun(); };
   q(".fs-fuel").onchange=e=>{ fsCfg.fuel=e.target.value; rerun(); };
   q(".fs-ws").onchange=e=>{ fsCfg.wind=e.target.value; q(".fs-man").style.display=fsCfg.wind==="man"?"block":"none"; rerun(); };
@@ -4031,7 +3951,7 @@ async function fsBacktest(btn){
   try{
     for(let i=0;i<fires.length;i++){
       const f=fires[i]; box.textContent=`⏳ Sutea: ${i+1}/${fires.length}…`; await new Promise(r=>setTimeout(r,0));
-      fsIgn={lat:f[0],lng:f[1]}; fsDem.clear();
+      fsIgn={lat:f[0],lng:f[1]}; 
       const w={dir:f[6],spd:f[5]*wf,gust:NaN,T:f[3],RH:f[4]}, met={at:()=>w,sun:()=>null,hours:[],m0:0,sh:0};
       const fu=FS_FUELS[FUEL[f[10]]], T=Math.min(360,Math.max(30,Math.round(Math.min(Math.max(f[9]==null?2:f[9],.5),6)*30)*2));
       try{ await fsLoadDem(f[0],f[1],fsMaxSpreadExtent(T)); }catch(e){}
@@ -4071,7 +3991,6 @@ async function fsRun(){
     return;
   }
   const my=++fsBusy, fu=FS_FUELS[fsCfg.fuel];
-  fsTerrainSamples={mdt:0,terrarium:0};
   fsGroup.clearLayers();
   L.marker(fsIgn,{icon:fsIcon("🔥",24)}).addTo(fsGroup);
   fsSync3D();
@@ -4168,9 +4087,9 @@ async function fsRun(){
     }
   }
   const fuelNames={belarra:"Belardia/larrea",garoa:"Sastraka",iratzea:"Iratze-saila",pinudia:"Pinudia",hostozabala:"Hostozabalak"};
-  const lidarLimited=fsTerrainSource==="mdt"&&(demCoverage?.limited||rays.some(r=>r.limited));
+  const lidarLimited=!!(demCoverage?.limited||rays.some(r=>r.limited));
   const lidarNote=lidarLimited
-    ? `<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px"><b>⚠️ LiDAR estaldura mugatua</b><br>Eskuragarri dagoen LiDAR estaldura: pizte-puntutik ${Math.round(demCoverage.radiusM/100)/10} km-ra arte. Datuen mugara iristen diren sektoreak azken lagin baliodunean gelditu dira; gainerakoek 120 minutuak osatu arte jarraitzen dute. Ez da erliebea estrapolatu, ezta Terrarium erabili ere.</div>`
+    ? `<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px"><b>⚠️ LiDAR estaldura mugatua</b><br>Eskuragarri dagoen LiDAR estaldura: pizte-puntutik ${Math.round(demCoverage.radiusM/100)/10} km-ra arte. Datuen mugara iristen diren sektoreak azken lagin baliodunean gelditu dira; gainerakoek 120 minutuak osatu arte jarraitzen dute. Ez da erliebea estrapolatu, ezta MDT LiDAR beste eredu batez ordezkatu ere.</div>`
     : "";
   const windNoteHtml=windSampler
     ? `<div style="margin-top:9px;padding:8px;background:#eef4f8;border-left:3px solid #527c9b;border-radius:5px;font-size:11px"><b>Haizearen doikuntza · Gipuzkoako baso-egitura</b><br>Kontsultatutako geruzak: 2024ko baso-produktibitatea (goi-altuera, dentsitatea eta azalera basimetrikoa) + 2012ko LiDAR lehen adarraren altuera. Kargatutako poligonoak: ${windSampler.stats.forestPolygons} (2024) eta ${windSampler.stats.lidarPolygons} (LiDAR). Babes partzialaren zantzuak dituzten laginak: ${windSampler.stats.sheltered}; zantzu nahikorik gabe: ${windSampler.stats.notSheltered}; hautagai-poligono edo datu parekaturik gabe: ${windSampler.stats.missing}.<br>Iturriak: <a href="https://www.geo.euskadi.eus/geoeuskadi/rest/services/W26GIS/AGRICULTURA_CAS/MapServer/259" target="_blank" rel="noopener">2024ko baso-egitura</a> · <a href="https://www.geo.euskadi.eus/geoeuskadi/rest/services/W26GIS/AGRICULTURA_CAS/MapServer/14" target="_blank" rel="noopener">2012ko LiDAR lehen adarraren altuera</a>.<br>Egitura-adierazleek atalasea betetzen dutenean, WAF 0,3 aplikatzen da (babes partziala); gainerakoetan erregai-ereduaren doikuntza mantentzen da. Ez da babes osoa aplikatzen, geruza hauek ez baitute adaburuen estaldura zuzenean neurtzen. Lehen adarraren altuera 2012ko LiDAR datua da, eta baliteke ondorengo aldaketak ez islatzea.</div>`
