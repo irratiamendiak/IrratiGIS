@@ -3569,50 +3569,67 @@ async function fsMeteo(){
   return {at,now,hours,m0,sh,sun:sunAt(sh),rain:{h24:sum(24),d3:sum(72),d7:sum(168),d14:sum(336),src:rainSrc,err:netErr},src:"Open-Meteo, historial de 14 días y previsión horaria"};
 }
 
-function fsFuelFromInventoryProperties(p){
-  p=p||{};
-  const norm=v=>String(v??"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+function fsFuelLidarRange(value){
+  const s=String(value||"").trim().toLowerCase().replace(",",".").replace(/\\s+/g,"");
+  let m=s.match(/^(\\d+(?:\\.\\d+)?)[-–](\\d+(?:\\.\\d+)?)(cm)?$/);
+  if(m) return {min:Number(m[1]),max:Number(m[2])};
+  m=s.match(/^>(\\d+(?:\\.\\d+)?)(cm|m)?$/);
+  if(m) return {min:Number(m[1])*(m[2]==="m"?100:1),max:Infinity};
+  m=s.match(/^<(\\d+(?:\\.\\d+)?)(cm|m)?$/);
+  if(m) return {min:0,max:Number(m[1])*(m[2]==="m"?100:1)};
+  return null;
+}
+function fsFuelFromInventoryProperties(p,lidar){
+  p=p||{}; lidar=lidar||{};
+  const norm=v=>String(v??"").toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").trim();
   const fieldKey=v=>norm(v).replace(/[^a-z0-9]/g,"");
   const fields=Object.entries(p);
-  const get=names=>{
+  const get=(obj,names)=>{
     const wanted=new Set(names.map(fieldKey));
-    const entry=fields.find(([k,v])=>wanted.has(fieldKey(k))&&v!==null&&v!==undefined&&String(v).trim()!=="");
+    const entry=Object.entries(obj||{}).find(([k,v])=>wanted.has(fieldKey(k))&&v!==null&&v!==undefined&&String(v).trim()!=="");
     return entry?entry[1]:"";
   };
-  const use=norm(get(["TIPES_es","TIPES_ES","TIPES_E","TIPES","tipo","tipo_es","TYPE","USO","USO_ES","FORMACION","FORMACION_ES"]));
-  // Las clases mixtas o ambiguas tienen prioridad: no asignar FM1/FM5
-  // por una coincidencia parcial con "pastizal" o "matorral".
-  if(/pastizal.*(matorral|arbust)|matorral.*pastizal|mixto|mezcla/.test(use)) return null;
+  const use=norm(get(p,["TIPES_ES","TIPES_EU","TIPES10","TIPES"]));
   if(/^(herbazal|prados?|pastizales?)$/.test(use)||/^prado con (setos|sebes)/.test(use)) return "fm1";
   if(/matorral|brezal|argomal|tojal|landazuri|helechal|helecho|iratze/.test(use)) return "fm5";
-  if(/(conifera|pinar|pinudi|abetal|alerzal)/.test(use)) return "fm8";
-  if(/(frondosa|hayedo|pagadi|robledal|castanar|bosque caducifolio)/.test(use)) return "fm9";
-  // SP1/SP2/SP3 pueden llegar con sufijos de idioma y separadores variables.
-  const speciesEntries=fields.filter(([k])=>{
-    const key=String(k??"").toLowerCase().replace(/[^a-z0-9]/g,"");
-    return /^sp[123](?:es|eu|fr)?$/.test(key)||/^especie[123](?:es|eu|fr)?$/.test(key);
-  }).map(([,v])=>String(v??"").trim()).filter(Boolean);
-  const species=norm(speciesEntries.join(" "));
-  // Códigos oficiales IFN de plantaciones variadas: 960=frondosas,
-  // 961=coníferas y 962=mezcla. No tratar el código como texto de especie.
-  const codes=fields.filter(([k])=>/^sp[123]$/.test(String(k??"").toLowerCase().replace(/[^a-z0-9]/g,"")))
-    .map(([,v])=>Number(v)).filter(Number.isFinite);
-  // 982 = bosque mixto atlántico: arbolado de frondosas autóctonas
-  // con sotobosque. Se prioriza sobre códigos secundarios (p. ej. SP2=960).
-  const atlanticMixedForest=codes.includes(982)||/bosque mixto atlantico|atlantiar baso mixtoa/.test(species);
-  if(atlanticMixedForest) return "fm10";
-  const officialBroadleaf=codes.includes(960)||/plantaciones de frondosas variadas/.test(species);
-  const officialConifer=codes.includes(961)||/plantaciones de coniferas variadas/.test(species);
-  const officialMixed=codes.includes(962)||/plantaciones de frondosas y coniferas variadas/.test(species);
-  if(officialMixed||(officialBroadleaf&&officialConifer)) return null;
-  if(officialBroadleaf) return "fm9";
-  if(officialConifer) return "fm8";
-  if(!species) return null;
-  const conifer=/pinus|pino|picea|larix|alerce|cryptomeria|pseudotsuga|douglas|chamaecyparis|conifer|abeto|sequoia|secoya/.test(species);
-  const broadleaf=/fagus|haya|quercus|roble|castanea|castan|fraxinus|fresno|alnus|aliso|betula|abedul|salix|sauce|populus|chopo|platanus|platano|robinia|acacia|frondosa|frondosas/.test(species);
-  // Solo una especie dominante inequívoca; mezcla o especie no catalogada = sin proxy.
-  if(conifer===broadleaf) return null;
-  return conifer?"fm8":"fm9";
+
+  // O1–O3 son puntuaciones relativas de representatividad (1–10), no porcentajes.
+  // Se elige la especie con mayor puntuación; empate entre tipos distintos = ambiguo.
+  const rows=[1,2,3].map(i=>({
+    code:Number(get(p,["SP"+i])),
+    occupancy:Number(get(p,["O"+i])),
+    species:norm(get(p,["SP"+i+"_ES","SP"+i+"_EU"]))
+  })).filter(x=>Number.isFinite(x.code)&&x.code>0);
+  const ranked=rows.map((x,i)=>({...x,score:Number.isFinite(x.occupancy)?x.occupancy:(i===0?1:0)}))
+    .sort((a,b)=>b.score-a.score);
+  const top=ranked[0], tied=ranked.filter(x=>x.score===top?.score);
+  const codes=ranked.map(x=>x.code);
+  const atlanticMixed=codes.includes(982)||/bosque mixto atlantico|atlantiar baso mixtoa/.test(use+" "+ranked.map(x=>x.species).join(" "));
+  if(atlanticMixed && (!top||top.code===982||!Number.isFinite(top.occupancy))) return "fm10";
+  if(top&&tied.length>1&&new Set(tied.map(x=>x.code===960?"broadleaf":x.code===961?"conifer":x.code===982?"atlantic":x.code===962?"mixed":"other")).size>1) return null;
+
+  const dominant=top?.code;
+  const speciesText=ranked.map(x=>x.species).join(" ");
+  const broadleaf=dominant===960||/plantaciones de frondosas variadas/.test(speciesText);
+  const conifer=dominant===961||/plantaciones de coniferas variadas/.test(speciesText);
+  const mixed=dominant===962||/plantaciones de frondosas y coniferas variadas/.test(speciesText);
+  if(mixed) return null;
+  if(broadleaf||(!ranked.length&&/(frondosa|hayedo|pagadi|robledal|castanar|bosque caducifolio)/.test(use+" "+speciesText))){
+    // LiDAR 2012: FM10 solo cuando hay evidencia conjunta de sotobosque
+    // relativamente alto (>=40 cm) y biomasa seca apreciable (>=20 t/ha).
+    // Son umbrales heurísticos conservadores, no una equivalencia oficial Anderson.
+    const shrubHeight=fsFuelLidarRange(get(lidar,["LEYENDA_HEIGHT"]));
+    const shrubMass=fsFuelLidarRange(get(lidar,["LEYENDA_MASS"]));
+    if(shrubHeight&&shrubMass&&shrubHeight.max>=40&&shrubMass.max>=20&&shrubHeight.min>=40&&shrubMass.min>=20) return "fm10";
+    return "fm9";
+  }
+  if(conifer||(!ranked.length&&/(conifera|pinar|pinudi|abetal|alerzal)/.test(use+" "+speciesText))) return "fm8";
+  if(/mixto|mezcla/.test(use)) return null;
+  if(!ranked.length&&!speciesText) return null;
+  const coniferText=/pinus|pino|picea|larix|alerce|cryptomeria|pseudotsuga|douglas|chamaecyparis|conifer|abeto|sequoia|secoya/.test(speciesText);
+  const broadleafText=/fagus|haya|quercus|roble|castanea|castan|fraxinus|fresno|alnus|aliso|betula|abedul|salix|sauce|populus|chopo|platanus|platano|robinia|acacia|frondosa|frondosas/.test(speciesText);
+  if(coniferText===broadleafText) return null;
+  return coniferText?"fm8":"fm9";
 }
 
 /* Muestreador geográfico del Inventario Forestal 2024.
@@ -3622,62 +3639,64 @@ function fsFuelFromInventoryProperties(p){
 const fsInventoryFuelCache=new Map();
 async function fsCreateInventoryFuelSampler(ignition,radiusM){
   const fallback=FS_FUELS[fsCfg.fuel], cache=fsInventoryFuelCache;
-  const result={cache,fallback,stats:{classified:0,unknown:0,noFeature:0,unmapped:0,outsideViewport:0,featureHits:0,inventoryPolygons:0,sampleProperties:[]}};
+  const result={cache,fallback,stats:{classified:0,unknown:0,noFeature:0,unmapped:0,outsideViewport:0,featureHits:0,inventoryPolygons:0,lidarHeightPolygons:0,lidarMassPolygons:0,lidarBranchPolygons:0,lidarMatched:0,lidarMissing:0,sampleProperties:[]}};
   const outFields="OBJECTID,TIPES10,TIPES_ES,TIPES_EU,SP1,SP1_ES,SP1_EU,O1,E1,EMASA1,SP2,SP2_ES,SP2_EU,O2,E2,EMASA2,SP3,SP3_ES,SP3_EU,O3,E3,EMASA3";
-  // 55–63 son las nueve clases del grupo oficial «Usos del suelo»:
-  // bosque natural, plantación, matorral, pastizal, prados y resto de coberturas.
   const layerIds=[55,56,57,58,59,60,61,62,63];
-  const layers=await Promise.all(layerIds.map(async layerId=>{
-    const features=await fsQueryForestPolygons(layerId,ignition,radiusM,outFields);
-    return features.map(feature=>({
-      ...feature,
-      attributes:{...(feature.attributes||{}),_SOURCE_LAYER:layerId}
-    }));
-  }));
-  const allFeatures=layers.flat();
-  const index=fsForestPolygonIndex(allFeatures);
+  const [layers,lidarHeightFeatures,lidarMassFeatures,lidarBranchFeatures]=await Promise.all([
+    Promise.all(layerIds.map(async layerId=>{
+      const features=await fsQueryForestPolygons(layerId,ignition,radiusM,outFields);
+      return features.map(feature=>({...feature,attributes:{...(feature.attributes||{}),_SOURCE_LAYER:layerId}}));
+    })),
+    fsQueryForestPolygons(12,ignition,radiusM,"LEYENDA"),
+    fsQueryForestPolygons(13,ignition,radiusM,"LEYENDA"),
+    fsQueryForestPolygons(14,ignition,radiusM,"LEYENDA")
+  ]);
+  const allFeatures=layers.flat(), index=fsForestPolygonIndex(allFeatures);
+  const lidarHeight=fsForestPolygonIndex(lidarHeightFeatures), lidarMass=fsForestPolygonIndex(lidarMassFeatures), lidarBranch=fsForestPolygonIndex(lidarBranchFeatures);
   result.stats.inventoryPolygons=index.polygons.length;
+  result.stats.lidarHeightPolygons=lidarHeight.polygons.length;
+  result.stats.lidarMassPolygons=lidarMass.polygons.length;
+  result.stats.lidarBranchPolygons=lidarBranch.polygons.length;
   if(!index.polygons.length) throw new Error("GeoEuskadi ez da poligonorik itzuli simulazio-eremuan (55–63 geruzak).");
   const counted=new Set();
-  const recordSample=properties=>{
+  const recordSample=(properties,lidar)=>{
     if(!properties||result.stats.sampleProperties.length>=3) return;
     if(result.stats.sampleProperties.some(p=>String(p.OBJECTID)===String(properties.OBJECTID)&&String(p.SOURCE_LAYER)===String(properties._SOURCE_LAYER))) return;
     const sample=Object.fromEntries(Object.entries(properties).filter(([k,v])=>k!=="_SOURCE_LAYER"&&v!==null&&v!==undefined&&String(v)!=="").slice(0,22));
     sample.SOURCE_LAYER=properties._SOURCE_LAYER;
+    if(lidar){sample.LIDAR_SOTOBOSQUE_CM=lidar.height?.LEYENDA||"—";sample.LIDAR_BIOMASA_T_HA=lidar.mass?.LEYENDA||"—";sample.LIDAR_PRIMERA_RAMA_M=lidar.branch?.LEYENDA||"—";}
     result.stats.sampleProperties.push(sample);
   };
-  // Erakutsi kontsultatutako estaldurako hiru poligono desberdinen atributuak,
-  // simulazioaren ibilbideak poligono bakar bat zeharkatzen badu ere.
-  for(const polygon of index.polygons){
-    recordSample(polygon.attributes);
-    if(result.stats.sampleProperties.length>=3) break;
-  }
+  for(const polygon of index.polygons){recordSample(polygon.attributes,null);if(result.stats.sampleProperties.length>=3) break;}
   const fuelAt=(lat,lon)=>{
-    // v6: cache-ak geometria/atributu-erreferentzia ere gordetzen du;
-    // bestela aurreko simulazio bateko cache-hit-ek diagnostiko-laginak ezabatzen dituzte.
-    const key="inventory-v6:"+lat.toFixed(5)+","+lon.toFixed(5);
+    const key="inventory-v7:"+lat.toFixed(5)+","+lon.toFixed(5);
     let value=cache.get(key);
     if(!value){
       const properties=fsForestFind(index,lat,lon);
+      const lidarData={
+        height:fsForestFind(lidarHeight,lat,lon),
+        mass:fsForestFind(lidarMass,lat,lon),
+        branch:fsForestFind(lidarBranch,lat,lon)
+      };
+      const hasLidar=!!(lidarData.height&&lidarData.mass);
+      const lidarProps={
+        LEYENDA_HEIGHT:lidarData.height?.LEYENDA||"",
+        LEYENDA_MASS:lidarData.mass?.LEYENDA||""
+      };
       const featureCount=properties?1:0;
-      const mapped=properties?fsFuelFromInventoryProperties(properties):null;
+      const mapped=properties?fsFuelFromInventoryProperties(properties,lidarProps):null;
       const reason=properties?(mapped?null:"unmapped"):"no-feature";
-      value=mapped?{key:mapped,fuel:FS_FUELS[mapped],source:"inventory",featureCount,properties}:
-        {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback",reason,featureCount,properties};
+      value=mapped?{key:mapped,fuel:FS_FUELS[mapped],source:"inventory",featureCount,properties,lidarData,hasLidar}:
+        {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback",reason,featureCount,properties,lidarData,hasLidar};
       cache.set(key,value);
     }
-    // Laginak simulazio honetako ibilbideetan erabilitako poligonoetatik bildu,
-    // baita cache-hit denean ere.
-    recordSample(value.properties);
+    recordSample(value.properties,value.lidarData);
     if(!counted.has(key)){
       counted.add(key);
       if(value.source==="inventory") result.stats.classified++;
-      else{
-        result.stats.unknown++;
-        if(value.reason==="unmapped") result.stats.unmapped++;
-        else result.stats.noFeature++;
-      }
+      else{result.stats.unknown++;if(value.reason==="unmapped") result.stats.unmapped++;else result.stats.noFeature++;}
       if(value.featureCount) result.stats.featureHits++;
+      if(value.hasLidar) result.stats.lidarMatched++; else result.stats.lidarMissing++;
     }
     return value;
   };
@@ -4095,7 +4114,7 @@ async function fsRun(){
     ? `<div style="margin-top:9px;padding:8px;background:#eef4f8;border-left:3px solid #527c9b;border-radius:5px;font-size:11px"><b>Haizearen doikuntza · Gipuzkoako baso-egitura</b><br>Kontsultatutako geruzak: 2024ko baso-produktibitatea (goi-altuera, dentsitatea eta azalera basimetrikoa) + 2012ko LiDAR lehen adarraren altuera. Kargatutako poligonoak: ${windSampler.stats.forestPolygons} (2024) eta ${windSampler.stats.lidarPolygons} (LiDAR). Babes partzialaren zantzuak dituzten laginak: ${windSampler.stats.sheltered}; zantzu nahikorik gabe: ${windSampler.stats.notSheltered}; hautagai-poligono edo datu parekaturik gabe: ${windSampler.stats.missing}.<br>Iturriak: <a href="https://www.geo.euskadi.eus/geoeuskadi/rest/services/W26GIS/AGRICULTURA_CAS/MapServer/259" target="_blank" rel="noopener">2024ko baso-egitura</a> · <a href="https://www.geo.euskadi.eus/geoeuskadi/rest/services/W26GIS/AGRICULTURA_CAS/MapServer/14" target="_blank" rel="noopener">2012ko LiDAR lehen adarraren altuera</a>.<br>Egitura-adierazleek atalasea betetzen dutenean, WAF 0,3 aplikatzen da (babes partziala); gainerakoetan erregai-ereduaren doikuntza mantentzen da. Ez da babes osoa aplikatzen, geruza hauek ez baitute adaburuen estaldura zuzenean neurtzen. Lehen adarraren altuera 2012ko LiDAR datua da, eta baliteke ondorengo aldaketak ez islatzea.</div>`
     : `<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px"><b>Baso-egituraren doikuntza ez dago erabilgarri</b><br>${escapeHtml(windSamplerError||"Ezin izan dira baso-geruzak kontsultatu.")} Erregai-ereduaren doikuntza estandarra mantendu da; ez da baso-dentsitaterik asmatu.</div>`;
   const fuelNote=inventorySampler
-    ? `<div style="margin-top:9px;padding:8px;background:#f1f6f2;border-left:3px solid #527c63;border-radius:5px;font-size:11px"><b>2024ko Baso Inbentarioa · estaldura</b><br>${inventorySampler.stats.classified} lagin sailkatuta · ${inventorySampler.stats.unknown} sailkatu gabe (ordezko erregaia: ${escapeHtml(fu.n)}).<br><span style="color:#65736b">Diagnostikoa: ${inventorySampler.stats.featureHits} laginek poligonoa dute; hutsik ${inventorySampler.stats.noFeature}, atributu ezezagunak ${inventorySampler.stats.unmapped}, ikus-eremutik kanpo 0. Kontsultatutako poligonoak: ${inventorySampler.stats.inventoryPolygons}.<br>${inventorySampler.stats.sampleProperties.length?"Atributu-adibideak (kontsultatutako poligonoak): "+inventorySampler.stats.sampleProperties.map(p=>Object.entries(p).map(([k,v])=>k+"="+String(v)).join(", ")).join(" | "):"Ez da atributurik jaso."}</span><br><b>Erregai-aldaketak:</b> ${fuelCounts.size?[...fuelCounts.entries()].map(([k,n])=>escapeHtml(k.replace(/belarra|garoa|iratzea|pinudia|hostozabala/g,x=>fuelNames[x]||x))+" ("+n+")").join("; "):"ez da aldaketarik hauteman lagindutako ibilbideetan"}.</div>`
+    ? `<div style="margin-top:9px;padding:8px;background:#f1f6f2;border-left:3px solid #527c63;border-radius:5px;font-size:11px"><b>2024ko Baso Inbentarioa · estaldura</b><br>${inventorySampler.stats.classified} lagin sailkatuta · ${inventorySampler.stats.unknown} sailkatu gabe (ordezko erregaia: ${escapeHtml(fu.n)}).<br><span style="color:#65736b">Diagnostikoa: ${inventorySampler.stats.featureHits} laginek inbentarioko poligonoa dute; hutsik ${inventorySampler.stats.noFeature}, atributu ezezagunak ${inventorySampler.stats.unmapped}. LiDAR 2012 estaldura: ${inventorySampler.stats.lidarMatched} lagin parekatuta / ${inventorySampler.stats.lidarMissing} gabe; poligonoak (altuera/biomasa/adarrak): ${inventorySampler.stats.lidarHeightPolygons}/${inventorySampler.stats.lidarMassPolygons}/${inventorySampler.stats.lidarBranchPolygons}. Inbentarioko poligonoak: ${inventorySampler.stats.inventoryPolygons}.<br>${inventorySampler.stats.sampleProperties.length?"Atributu-adibideak (kontsultatutako poligonoak): "+inventorySampler.stats.sampleProperties.map(p=>Object.entries(p).map(([k,v])=>k+"="+String(v)).join(", ")).join(" | "):"Ez da atributurik jaso."}</span><br><b>Erregai-aldaketak:</b> ${fuelCounts.size?[...fuelCounts.entries()].map(([k,n])=>escapeHtml(k.replace(/belarra|garoa|iratzea|pinudia|hostozabala/g,x=>fuelNames[x]||x))+" ("+n+")").join("; "):"ez da aldaketarik hauteman lagindutako ibilbideetan"}.</div>`
     : (inventoryNote?`<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px">${escapeHtml(inventoryNote)}</div>`:"");
   const wxTable=manual?"":`<div style="margin-top:10px;overflow-x:auto"><b style="font-size:12px">Aurreikusitako meteorologia denbora-tarteka</b><table style="width:100%;min-width:430px;border-collapse:collapse;font-size:11px;margin-top:5px"><thead><tr><th style="text-align:left;padding:4px;border-bottom:1px solid #d8dfda">Aldagaia</th>${times.map(t=>`<th style="padding:4px;border-bottom:1px solid #d8dfda">${t} min</th>`).join("")}</tr></thead><tbody>${[
     ["Haizea",w=>`${Math.round(w.spd)} km/h ${fsCard(w.dir)}`],
