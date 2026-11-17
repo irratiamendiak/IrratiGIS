@@ -3571,22 +3571,36 @@ async function fsMeteo(){
 
 function fsFuelFromInventoryProperties(p){
   p=p||{};
-  const norm=v=>String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[_-]+/g," ").replace(/\s+/g," ").trim();
-  const use=norm([p.TIPES_es,p.TIPES,p.tipo,p.TYPE].find(v=>norm(v))||"");
-  if(/^(herbazal|prado)$/.test(use)||/^prado con (setos|sebes)/.test(use)) return "fm1";
-  if(/^matorral$/.test(use)) return "fm5";
-  if(/pastizal|mixto|mezcla/.test(use)) return null;
-  if(/helechal|helecho/.test(use)) return "fm5";
-  // Mixed pasture/shrub, generic forest, plantations without species, and
-  // eucalyptus are deliberately unresolved: these fields do not describe
-  // the surface fuel bed or its load/continuity.
-  const species=norm([p.SP1_es,p.SP2_es,p.SP3_es,p.SP1,p.SP2,p.SP3].filter(Boolean).join(" "));
+  const norm=v=>String(v??"").toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").replace(/[_-]+/g," ").replace(/\\s+/g," ").trim();
+  // PMTiles conserva los nombres originales de GeoEuskadi, que pueden variar
+  // en mayúsculas/minúsculas según la exportación. Resolver campos sin depender
+  // de la capitalización ni de la variante _es / ES.
+  const fields=Object.entries(p);
+  const key=v=>norm(v).replace(/\\s+/g,"");
+  const get=names=>{
+    const wanted=new Set(names.map(key));
+    const entry=fields.find(([k,v])=>wanted.has(key(k))&&v!==null&&v!==undefined&&String(v).trim()!=="");
+    return entry?entry[1]:"";
+  };
+  const use=norm(get(["TIPES_es","TIPES_ES","TIPES_E","TIPES","tipo","tipo_es","TYPE","USO","USO_ES","FORMACION","FORMACION_ES"]));
+  if(/^(herbazal|prado|pastizal)$/.test(use)||/^prado con (setos|sebes)/.test(use)) return "fm1";
+  if(/matorral|brezal|argomal|tojal|landazuri/.test(use)) return "fm5";
+  if(/helechal|helecho|iratze/.test(use)) return "fm5";
+  if(/pastizal.*(matorral|arbust)|mixto|mezcla/.test(use)) return null;
+  if(/(conifera|pinar|pinudi|abetal|alerzal)/.test(use)) return "fm8";
+  if(/(frondosa|hayedo|pagadi|robledal|castanar|bosque caducifolio)/.test(use)) return "fm9";
+  // Las especies del inventario se publican como SP1/SP2/SP3; algunas
+  // exportaciones añaden el sufijo lingüístico o cambian su capitalización.
+  const species=norm(fields
+    .filter(([k,v])=>/^sp[123](es|eu|fr)?$/.test(key(k))||/^especie[123](es|eu|fr)?$/.test(key(k)))
+    .map(([,v])=>v).filter(Boolean).join(" "));
   if(!species) return null;
   const conifer=/pinus|pino|picea|larix|alerce|cryptomeria|pseudotsuga|douglas|chamaecyparis|conifer|abeto|sequoia|secoya/.test(species);
   const broadleaf=/fagus|haya|quercus|roble|castanea|castan|fraxinus|fresno|alnus|aliso|betula|abedul|salix|sauce|populus|chopo|platanus|platano|robinia|acacia|frondosa|frondosas/.test(species);
   if(conifer===broadleaf) return null;
   return conifer?"fm8":"fm9";
 }
+
 /* Muestreador espacial independiente del mapa visible.
    Carga el PMTiles del Inventario 2024 en un MapLibre auxiliar centrado en el incendio,
    de modo que las consultas no dependan de que la capa esté activada ni del encuadre del usuario. */
