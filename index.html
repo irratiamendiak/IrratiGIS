@@ -974,26 +974,65 @@ try{
           const el=L.DomUtil.create("div","leaflet-bar ir3d-nav-control");
           el.setAttribute("role","group");
           el.setAttribute("aria-label","Controles orbitales del relieve 3D");
-          el.innerHTML='<div class="ir3d-earth-compass"><button type="button" data-act="rotate-left" title="Girar a la izquierda" aria-label="Girar a la izquierda">↶</button><div class="ir3d-compass-dial"><span class="ir3d-compass-n">N</span><span class="ir3d-compass-needle">▲</span></div><button type="button" data-act="rotate-right" title="Girar a la derecha" aria-label="Girar a la derecha">↷</button></div><div class="ir3d-earth-actions"><button type="button" data-act="tilt-up" title="Inclinar la cámara" aria-label="Inclinar"><span>↗</span>Inclinar</button><button type="button" data-act="tilt-down" title="Vista cenital" aria-label="Vista cenital"><span>↘</span>Cenital</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar"><span>＋</span>Zoom</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar"><span>－</span>Zoom</button><button type="button" data-act="north" title="Orientar al norte" aria-label="Orientar al norte"><span>🧭</span>Norte</button><button type="button" data-act="exaggeration" title="Cambiar exageración del relieve" aria-label="Exageración del relieve"><span>⛰</span>Relieve 1×</button></div><div class="ir3d-nav-caption">Arrastrar: desplazar · botón derecho: orbitar · rueda: zoom</div>';
+          el.innerHTML='<div class="ir3d-earth-compass"><button type="button" data-act="rotate-left" title="Girar a la izquierda" aria-label="Girar a la izquierda">↶</button><div class="ir3d-compass-dial"><span class="ir3d-compass-n">N</span><span class="ir3d-compass-needle">▲</span></div><button type="button" data-act="rotate-right" title="Girar a la derecha" aria-label="Girar a la derecha">↷</button></div><div class="ir3d-earth-actions"><button type="button" data-act="tilt-up" title="Inclinar la cámara" aria-label="Inclinar"><span>↗</span>Inclinar</button><button type="button" data-act="tilt-down" title="Vista cenital" aria-label="Vista cenital"><span>↘</span>Cenital</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar"><span>＋</span>Zoom</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar"><span>－</span>Zoom</button><button type="button" data-act="north" title="Orientar al norte" aria-label="Orientar al norte"><span>🧭</span>Norte</button><button type="button" data-act="exaggeration" title="Cambiar exageración del relieve" aria-label="Exageración del relieve"><span>⛰</span>Relieve 1×</button></div><div class="ir3d-nav-caption">Arrastrar: mover · botón derecho: orbitar · brújula: girar · mantener pulsado: inclinar y zoom</div>';
           L.DomEvent.disableClickPropagation(el);
           L.DomEvent.disableScrollPropagation(el);
+          // Mandos continuos: mantener pulsado produce movimiento fluido, no saltos.
+          let holdFrame=0,holdAction=null,holdTime=0;
+          const stopHold=()=>{
+            if(holdFrame)cancelAnimationFrame(holdFrame);
+            holdFrame=0;holdAction=null;holdTime=0;
+          };
+          const tickHold=now=>{
+            if(!holdAction)return;
+            const activeGl=lidarRelief3D.getMaplibreMap();
+            if(!activeGl||!activeGl.isStyleLoaded()){stopHold();return;}
+            const dt=Math.min(40,Math.max(0,now-holdTime));holdTime=now;
+            const act=holdAction;
+            if(act==="rotate-left"||act==="rotate-right"){
+              activeGl.setBearing(activeGl.getBearing()+(act==="rotate-left"?-1:1)*dt*0.055);
+            }else if(act==="tilt-up"||act==="tilt-down"){
+              activeGl.setPitch(Math.max(0,Math.min(85,activeGl.getPitch()+(act==="tilt-up"?1:-1)*dt*0.038)));
+            }else if(act==="zoom-in"||act==="zoom-out"){
+              activeGl.setZoom(Math.max(0,Math.min(22,activeGl.getZoom()+(act==="zoom-in"?1:-1)*dt*0.00125)));
+            }
+            holdFrame=requestAnimationFrame(tickHold);
+          };
+          el.querySelectorAll("button[data-act]").forEach(btn=>{
+            if(!["rotate-left","rotate-right","tilt-up","tilt-down","zoom-in","zoom-out"].includes(btn.dataset.act))return;
+            btn.addEventListener("pointerdown",ev=>{
+              ev.preventDefault();ev.stopPropagation();stopHold();
+              holdAction=btn.dataset.act;holdTime=performance.now();
+              try{btn.setPointerCapture(ev.pointerId);}catch(_){}
+              holdFrame=requestAnimationFrame(tickHold);
+            });
+            ["pointerup","pointercancel","lostpointercapture"].forEach(type=>btn.addEventListener(type,stopHold));
+          });
+          // La rosa de orientación también funciona como joystick: arrastrar
+          // alrededor del centro fija el rumbo de la cámara en tiempo real.
+          const dial=el.querySelector(".ir3d-compass-dial");
+          let dialPointer=null;
+          const setDialBearing=ev=>{
+            if(dialPointer!==ev.pointerId)return;
+            const r=dial.getBoundingClientRect(),dx=ev.clientX-(r.left+r.width/2),dy=ev.clientY-(r.top+r.height/2);
+            const bearing=(Math.atan2(dx,-dy)*180/Math.PI+360)%360;
+            const activeGl=lidarRelief3D.getMaplibreMap();
+            if(activeGl&&activeGl.isStyleLoaded())activeGl.setBearing(bearing);
+          };
+          dial.addEventListener("pointerdown",ev=>{
+            ev.preventDefault();ev.stopPropagation();dialPointer=ev.pointerId;
+            try{dial.setPointerCapture(ev.pointerId);}catch(_){}
+            setDialBearing(ev);
+          });
+          dial.addEventListener("pointermove",setDialBearing);
+          ["pointerup","pointercancel","lostpointercapture"].forEach(type=>dial.addEventListener(type,()=>{dialPointer=null;}));
           el.addEventListener("click",ev=>{
             const b=ev.target.closest("button[data-act]");
             if(!b)return;
-            // Resolver la instancia activa en cada pulsación: el plugin puede
-            // reconstruir MapLibre al retirar y reactivar el relieve.
             const activeGl=lidarRelief3D.getMaplibreMap();
             if(!activeGl||!activeGl.isStyleLoaded())return;
             const act=b.dataset.act;
-            const pitch=activeGl.getPitch(), bearing=activeGl.getBearing();
-            if(act==="tilt-up")activeGl.easeTo({pitch:Math.min(75,pitch+10),duration:250});
-            if(act==="tilt-down")activeGl.easeTo({pitch:Math.max(0,pitch-10),duration:250});
-            if(act==="rotate-left")activeGl.easeTo({bearing:bearing-15,duration:250});
-            if(act==="rotate-right")activeGl.easeTo({bearing:bearing+15,duration:250});
-            if(act==="north")activeGl.easeTo({bearing:0,duration:300});
-            if(act==="reset")activeGl.easeTo({pitch:50,bearing:0,duration:350});
-            if(act==="zoom-in")activeGl.zoomIn({duration:250});
-            if(act==="zoom-out")activeGl.zoomOut({duration:250});
+            if(act==="north")activeGl.easeTo({bearing:0,duration:450});
             if(act==="exaggeration"){
               const values=[1,1.5,2];
               const current=Number(lidarRelief3D._terrainExaggeration)||1;
@@ -1009,6 +1048,18 @@ try{
         lidarRelief3D._ir3dControl=nav;
       }
     }catch(err){console.warn("Controles orbitales del relieve 3D:",err);}
+    // Habilitar explícitamente todos los gestos de cámara de MapLibre.
+    // El plugin Leaflet puede reconstruir el mapa, así que se configura cada instancia.
+    try{
+      gl.dragPan.enable();
+      gl.dragRotate.enable();
+      gl.scrollZoom.enable();
+      gl.doubleClickZoom.enable();
+      gl.boxZoom.enable();
+      gl.keyboard.enable();
+      gl.touchZoomRotate.enable();
+      gl.touchZoomRotate.enableRotation();
+    }catch(err){console.warn("Gestos de navegación 3D:",err);}
     gl.on("error",e=>console.warn("MapLibre 3D:",e&&e.error?e.error:e));
     // Tras mover la cámara, fuerza a MapLibre a recalcular el tamaño y repintar.
     // Es especialmente importante para el canvas WebGL embebido en el overlay Leaflet.
