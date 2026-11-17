@@ -2337,7 +2337,16 @@ function fsSync3D(){
     fsGroup.eachLayer(layer=>{
       if(layer instanceof L.Polygon){
         const rings=layer.getLatLngs();
-        const ring=arr=>arr.map(p=>[p.lng,p.lat]);
+        // Leaflet almacena anillos sin repetir el primer vértice al final;
+        // GeoJSON/MapLibre exige anillos cerrados para dibujar los perímetros.
+        const ring=arr=>{
+          const out=arr.map(p=>[p.lng,p.lat]);
+          if(out.length){
+            const first=out[0],last=out[out.length-1];
+            if(first[0]!==last[0]||first[1]!==last[1])out.push(first.slice());
+          }
+          return out;
+        };
         const coords=Array.isArray(rings[0])&&rings[0][0] instanceof L.LatLng
           ?[ring(rings[0]),...rings.slice(1).map(ring)]
           :rings.map(poly=>poly.map(ring));
