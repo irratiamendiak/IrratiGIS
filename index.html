@@ -3588,12 +3588,21 @@ function fsFuelFromInventoryProperties(p){
   if(/(conifera|pinar|pinudi|abetal|alerzal)/.test(use)) return "fm8";
   if(/(frondosa|hayedo|pagadi|robledal|castanar|bosque caducifolio)/.test(use)) return "fm9";
   // SP1/SP2/SP3 pueden llegar con sufijos de idioma y separadores variables.
-  const species=norm(fields
-    .filter(([k,v])=>{
-      const key=String(k??"").toLowerCase().replace(/[^a-z0-9]/g,"");
-      return /^sp[123](?:es|eu|fr)?$/.test(key)||/^especie[123](?:es|eu|fr)?$/.test(key);
-    })
-    .map(([,v])=>String(v??"").trim()).filter(Boolean).join(" "));
+  const speciesEntries=fields.filter(([k])=>{
+    const key=String(k??"").toLowerCase().replace(/[^a-z0-9]/g,"");
+    return /^sp[123](?:es|eu|fr)?$/.test(key)||/^especie[123](?:es|eu|fr)?$/.test(key);
+  }).map(([,v])=>String(v??"").trim()).filter(Boolean);
+  const species=norm(speciesEntries.join(" "));
+  // Códigos oficiales IFN de plantaciones variadas: 960=frondosas,
+  // 961=coníferas y 962=mezcla. No tratar el código como texto de especie.
+  const codes=fields.filter(([k])=>/^sp[123]$/.test(String(k??"").toLowerCase().replace(/[^a-z0-9]/g,"")))
+    .map(([,v])=>Number(v)).filter(Number.isFinite);
+  const officialBroadleaf=codes.includes(960)||/plantaciones de frondosas variadas/.test(species);
+  const officialConifer=codes.includes(961)||/plantaciones de coniferas variadas/.test(species);
+  const officialMixed=codes.includes(962)||/plantaciones de frondosas y coniferas variadas/.test(species);
+  if(officialMixed||(officialBroadleaf&&officialConifer)) return null;
+  if(officialBroadleaf) return "fm9";
+  if(officialConifer) return "fm8";
   if(!species) return null;
   const conifer=/pinus|pino|picea|larix|alerce|cryptomeria|pseudotsuga|douglas|chamaecyparis|conifer|abeto|sequoia|secoya/.test(species);
   const broadleaf=/fagus|haya|quercus|roble|castanea|castan|fraxinus|fresno|alnus|aliso|betula|abedul|salix|sauce|populus|chopo|platanus|platano|robinia|acacia|frondosa|frondosas/.test(species);
