@@ -940,6 +940,9 @@ try{
     // El plugin puede crear otra instancia GL al retirar y volver a añadir la capa:
     // enlazar los eventos a la instancia real, no a un booleano global.
     if(lidarRelief3D._fireClickMap!==gl){
+      if(lidarRelief3D._fireDomClickHandler){
+        try{map.getContainer().removeEventListener("click",lidarRelief3D._fireDomClickHandler,true);}catch(_){}
+      }
       if(lidarRelief3D._fireClickMap&&lidarRelief3D._fireClickHandler){
         try{lidarRelief3D._fireClickMap.off("click",lidarRelief3D._fireClickHandler);}catch(_){}
         try{lidarRelief3D._fireClickMap.off("style.load",lidarRelief3D._fireStyleHandler);}catch(_){}
