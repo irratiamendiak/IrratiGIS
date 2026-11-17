@@ -3602,59 +3602,48 @@ function fsFuelFromInventoryProperties(p){
   return conifer?"fm8":"fm9";
 }
 
-/* Muestreador espacial independiente del mapa visible.
-   Carga el PMTiles del Inventario 2024 en un MapLibre auxiliar centrado en el incendio,
-   de modo que las consultas no dependan de que la capa esté activada ni del encuadre del usuario. */
+/* Muestreador sobre la capa PMTiles original del visor.
+   Evita crear un segundo MapLibre oculto: la consulta se hace sobre los tiles
+   que ya está renderizando inventarioForestalLayer. */
 const fsInventoryFuelCache=new Map();
 async function fsCreateInventoryFuelSampler(ignition){
   const fallback=FS_FUELS[fsCfg.fuel], cache=fsInventoryFuelCache;
-  const result={map:null,container:null,cache,fallback,stats:{classified:0,unknown:0,noFeature:0,unmapped:0,outsideViewport:0,featureHits:0,transitions:0,sampleProperties:[]}};
-  const div=document.createElement("div");
-  div.style.cssText="position:fixed;left:-2000px;top:0;width:1024px;height:1024px;opacity:.01;pointer-events:none;z-index:-1";
-  document.body.appendChild(div);
-  result.container=div;
-  const style={
-    version:8,
-    sources:{forestal:{type:"vector",url:"pmtiles://https://pub-997427d08539450780c6722ce7d23750.r2.dev/neatogeo_forestal_gipuzkoa%281%29.pmtiles"}},
-    layers:[{id:"forestal-poligonos",type:"fill",source:"forestal","source-layer":"forestal_gipuzkoa_2024",
-      paint:{"fill-color":"#75a982","fill-opacity":0.01,"fill-outline-color":"#39734b"}}]
-  };
-  const gl=new maplibregl.Map({container:div,style,center:[ignition.lng,ignition.lat],zoom:11,interactive:false,attributionControl:false,logoPosition:"bottom-right"});
+  const result={map:null,container:null,ownsMap:false,cache,fallback,stats:{classified:0,unknown:0,noFeature:0,unmapped:0,outsideViewport:0,featureHits:0,transitions:0,sampleProperties:[]}};
+  if(!map.hasLayer(inventarioForestalLayer)) map.addLayer(inventarioForestalLayer);
+  const gl=inventarioForestalLayer.getMaplibreMap();
+  if(!gl) throw new Error("La capa original del Inventario Forestal no tiene un mapa MapLibre activo.");
   result.map=gl;
-  try{
-    await new Promise((resolve,reject)=>{
-      let done=false;
-      const finish=(err)=>{if(done)return;done=true;clearTimeout(timer);err?reject(err):resolve();};
-      const timer=setTimeout(()=>finish(new Error("Tiempo agotado cargando el Inventario Forestal 2024.")),20000);
-      gl.once("load",()=>{gl.resize();gl.once("idle",()=>finish());});
-      gl.on("error",e=>{if(!gl.isStyleLoaded()) finish(e.error||new Error("No se pudo cargar el inventario PMTiles."));});
-    });
-    if(!gl.getLayer("forestal-poligonos")) throw new Error("No se ha cargado la capa vectorial del inventario.");
-  }catch(err){
-    try{gl.remove();}catch(_){}
-    try{div.remove();}catch(_){}
-    throw err;
-  }
+  await new Promise((resolve,reject)=>{
+    let done=false;
+    const finish=err=>{if(done)return;done=true;clearTimeout(timer);err?reject(err):resolve();};
+    const timer=setTimeout(()=>finish(new Error("Tiempo agotado esperando los polígonos del Inventario Forestal 2024.")),20000);
+    const ready=()=>{
+      if(!gl.isStyleLoaded()||!gl.getLayer("forestal-poligonos")) return false;
+      return typeof gl.isSourceLoaded!=="function"||gl.isSourceLoaded("forestal");
+    };
+    if(ready()){finish();return;}
+    gl.once("idle",()=>ready()?finish():finish(new Error("La capa PMTiles no terminó de cargar sus teselas.")));
+    gl.on("error",e=>{if(!gl.isStyleLoaded())finish(e.error||new Error("Error cargando la capa PMTiles del inventario."));});
+  });
   const counted=new Set();
   const fuelAt=(lat,lon)=>{
-    // Cuadrícula de caché de ~80-100 m: evita repetir consultas en cada paso temporal.
-    const key="inventory-v3:"+lat.toFixed(3)+","+lon.toFixed(3);
+    const key="inventory-v4:"+lat.toFixed(3)+","+lon.toFixed(3);
     let value=cache.get(key);
     if(!value){
       const px=gl.project([lon,lat]);
       let features=[],reason="no-feature";
-      const inside=px.x>=0&&px.y>=0&&px.x<1024&&px.y<1024;
+      const canvas=gl.getCanvas(), width=canvas.clientWidth||canvas.width, height=canvas.clientHeight||canvas.height;
+      const inside=px.x>=0&&px.y>=0&&px.x<width&&px.y<height;
       if(inside) features=gl.queryRenderedFeatures(px,{layers:["forestal-poligonos"]})||[];
       else reason="outside-viewport";
       let mapped=null;
-      for(const f of features){
-        const k=fsFuelFromInventoryProperties(f.properties||{});
-        if(k){mapped=k;break;}
+      for(const feature of features){
+        const candidate=fsFuelFromInventoryProperties(feature.properties||{});
+        if(candidate){mapped=candidate;break;}
       }
       if(features.length&&!mapped) reason="unmapped";
-      if(features.length&&result.stats.sampleProperties.length<3){
+      if(features.length&&result.stats.sampleProperties.length<3)
         result.stats.sampleProperties.push(Object.fromEntries(Object.entries(features[0].properties||{}).slice(0,12)));
-      }
       value=mapped?{key:mapped,fuel:FS_FUELS[mapped],source:"inventory",featureCount:features.length}:
         {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback",reason,featureCount:features.length};
       cache.set(key,value);
@@ -3662,7 +3651,7 @@ async function fsCreateInventoryFuelSampler(ignition){
     if(!counted.has(key)){
       counted.add(key);
       if(value.source==="inventory") result.stats.classified++;
-      else {
+      else{
         result.stats.unknown++;
         if(value.reason==="outside-viewport") result.stats.outsideViewport++;
         else if(value.reason==="unmapped") result.stats.unmapped++;
