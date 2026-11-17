@@ -38,12 +38,15 @@ input[type=file]{position:absolute;left:-9999px}
 .badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#e8f5ed;color:#176b43;font-size:12px;font-weight:800}
 .badge.blue{background:#e8f2f8;color:#175f8f}
 #map{height:62vh;min-height:430px;border-radius:13px;background:#e7ece9}
-.ir3d-nav-control{background:#fff;border:1px solid rgba(0,0,0,.22);border-radius:8px;box-shadow:0 1px 5px rgba(0,0,0,.35);padding:5px}
-.ir3d-nav-grid{display:grid;grid-template-columns:repeat(4,38px);gap:3px}
-.ir3d-nav-grid button{min-height:36px;height:36px;padding:0;border:0;border-radius:5px;background:#f3f6f4;color:#173d2b;font:700 19px/1 system-ui;cursor:pointer}
-.ir3d-nav-grid button:hover{background:#dcebe2}
-.ir3d-nav-caption{text-align:center;font:700 9px/1.4 system-ui;color:#40564a;padding-top:3px;white-space:nowrap}
-@media(max-width:520px){.ir3d-nav-grid{grid-template-columns:repeat(4,34px)}.ir3d-nav-grid button{min-height:34px;height:34px}.ir3d-nav-caption{font-size:8px}}
+.ir3d-nav-control{width:218px;max-width:calc(100vw - 34px);background:#fff;border:1px solid rgba(0,0,0,.22);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.28);padding:7px}
+.ir3d-nav-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.ir3d-nav-grid button{display:flex;align-items:center;justify-content:flex-start;gap:7px;min-height:34px;height:34px;padding:4px 8px;border:1px solid #e0e8e2;border-radius:7px;background:#f5f8f6;color:#173d2b;font:600 11px/1.1 system-ui;cursor:pointer;text-align:left;white-space:nowrap}
+.ir3d-nav-grid button span{font-size:17px;line-height:1}
+.ir3d-nav-grid button:hover,.ir3d-nav-grid button:focus-visible{background:#dcebe2;border-color:#91b39e;outline:2px solid transparent}
+.ir3d-nav-grid button[data-act="reset"]{background:#e8f2f8;border-color:#c9dce8}
+.ir3d-nav-grid button[data-act="exaggeration"]{background:#edf4ef}
+.ir3d-nav-caption{text-align:left;font:10px/1.45 system-ui;color:#40564a;padding:7px 2px 1px;white-space:normal;border-top:1px solid #e8eee9;margin-top:6px}
+@media(max-width:520px){.ir3d-nav-control{width:194px}.ir3d-nav-grid button{font-size:10px;min-height:32px;height:32px}.ir3d-nav-caption{font-size:9px}}
 
 .layers-note,.footer{font-size:12px;color:var(--muted)}
 .details{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
@@ -948,7 +951,7 @@ try{
           const el=L.DomUtil.create("div","leaflet-bar ir3d-nav-control");
           el.setAttribute("role","group");
           el.setAttribute("aria-label","Controles orbitales del relieve 3D");
-          el.innerHTML='<div class="ir3d-nav-grid"><button type="button" data-act="tilt-down" title="Vista más cenital" aria-label="Vista más cenital">▽</button><button type="button" data-act="zoom-in" title="Acercar" aria-label="Acercar">＋</button><button type="button" data-act="tilt-up" title="Inclinar cámara" aria-label="Inclinar cámara">△</button><button type="button" data-act="rotate-left" title="Girar a la izquierda" aria-label="Girar a la izquierda">↶</button><button type="button" data-act="reset" title="Restablecer vista" aria-label="Restablecer vista">⌂</button><button type="button" data-act="rotate-right" title="Girar a la derecha" aria-label="Girar a la derecha">↷</button><button type="button" data-act="zoom-out" title="Alejar" aria-label="Alejar">－</button><button type="button" data-act="exaggeration" title="Cambiar exageración del relieve" aria-label="Cambiar exageración del relieve">⛰ 1×</button></div><div class="ir3d-nav-caption">Botón derecho: girar · rueda: zoom · capas 2D ocultas en vista orbital</div>';
+          el.innerHTML='<div class="ir3d-nav-grid"><button type="button" data-act="rotate-left" title="Girar la vista a la izquierda" aria-label="Girar a la izquierda"><span>↶</span>Girar izq.</button><button type="button" data-act="rotate-right" title="Girar la vista a la derecha" aria-label="Girar a la derecha"><span>↷</span>Girar der.</button><button type="button" data-act="tilt-down" title="Ver más desde arriba" aria-label="Vista más cenital"><span>▽</span>Más cenital</button><button type="button" data-act="tilt-up" title="Inclinar la cámara" aria-label="Inclinar cámara"><span>△</span>Inclinar</button><button type="button" data-act="zoom-in" title="Acercar el terreno" aria-label="Acercar"><span>＋</span>Acercar</button><button type="button" data-act="zoom-out" title="Alejar el terreno" aria-label="Alejar"><span>－</span>Alejar</button><button type="button" data-act="reset" title="Volver a la vista inicial" aria-label="Restablecer vista"><span>⌂</span>Vista inicial</button><button type="button" data-act="exaggeration" title="Cambiar exageración vertical del relieve" aria-label="Cambiar exageración del relieve"><span>⛰</span>Relieve 1×</button></div><div class="ir3d-nav-caption"><b>Ratón:</b> arrastrar para desplazar · botón derecho + arrastrar para orbitar · rueda para zoom</div>';
           L.DomEvent.disableClickPropagation(el);
           L.DomEvent.disableScrollPropagation(el);
           el.addEventListener("click",ev=>{
@@ -969,7 +972,7 @@ try{
               const next=values[(values.indexOf(current)+1)%values.length];
               lidarRelief3D._terrainExaggeration=next;
               try{gl.setTerrain({source:"global-dem",exaggeration:next});}catch(err){console.warn("Exageración del relieve:",err);}
-              b.textContent="⛰ "+next+"×";
+              b.innerHTML="<span>⛰</span>Relieve "+next+"×";
             }
           });
           return el;
