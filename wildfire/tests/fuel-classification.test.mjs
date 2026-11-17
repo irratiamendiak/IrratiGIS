@@ -92,3 +92,34 @@ test("the fuel source selector keeps inventory and manual Rothermel, with no WMS
   assert.doesNotMatch(html, /value="wms"|FS_FOREST_WMS|Kanpoko baso-WMSa/);
   assert.doesNotMatch(html, /function fsCover\(/);
 });
+
+function extractFunctions(...names) {
+  return names.map(name => extractFunction(name)).join("\n");
+}
+
+test("point inspection returns every overlapping inventory polygon in selection order", () => {
+  const finders = vm.runInNewContext(
+    extractFunctions("fsForestContains", "fsForestFindAll", "fsForestFind") +
+    "\n({fsForestFindAll,fsForestFind})"
+  );
+  const ring = [[0,0],[1,0],[1,1],[0,1],[0,0]];
+  const first = { OBJECTID: 10, _SOURCE_LAYER: 55 };
+  const second = { OBJECTID: 20, _SOURCE_LAYER: 58 };
+  const index = {
+    cell: 0.02,
+    buckets: new Map([["25,25", [0,1]]]),
+    polygons: [
+      { rings:[ring], minX:0, minY:0, maxX:1, maxY:1, attributes:first },
+      { rings:[ring], minX:0, minY:0, maxX:1, maxY:1, attributes:second }
+    ]
+  };
+  const all = finders.fsForestFindAll(index, 0.5, 0.5);
+  assert.deepEqual(Array.from(all, p => p.OBJECTID), [10,20]);
+  assert.equal(finders.fsForestFind(index, 0.5, 0.5).OBJECTID, 10);
+});
+
+test("the requested pasture point is included in the visible inventory diagnostic", () => {
+  assert.match(html, /43\.01751711033769,-2\.1399951424709918/);
+  assert.match(html, /Puntuaren diagnostiko zehatza/);
+  assert.match(html, /fsForestFindAll\(index,lat,lon\)/);
+});
