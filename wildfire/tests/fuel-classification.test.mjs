@@ -54,10 +54,15 @@ test("mixed, ambiguous and incomplete inventory features remain unresolved", () 
 
 
 test("2024 inventory codes use O1-O3 dominance and keep equal mixed stands unresolved", () => {
-  assert.equal(classifier({
+  const atlanticStand = {
     TIPES_ES: "Bosque", SP1: 982, SP1_ES: "Bosque mixto atlántico", O1: 10,
     SP2: 960, SP2_ES: "Plantaciones variadas de frondosas", O2: 5
-  }), "fm10");
+  };
+  // A dominant SP=982 code alone is not evidence of an FM10 fuel bed.
+  assert.equal(classifier(atlanticStand), null);
+  assert.equal(classifier(atlanticStand, { LEYENDA_HEIGHT: "40-60", LEYENDA_MASS: "20-40" }), "fm10");
+  assert.equal(classifier(atlanticStand, { LEYENDA_HEIGHT: "20-40", LEYENDA_MASS: "20-40" }), null);
+  assert.equal(classifier(atlanticStand, { LEYENDA_HEIGHT: "40-60", LEYENDA_MASS: "0-20" }), null);
   assert.equal(classifier({
     TIPES_ES: "Bosque", SP1: 982, SP1_ES: "Bosque mixto atlántico", O1: 5,
     SP2: 960, SP2_ES: "Plantaciones variadas de frondosas", O2: 5
