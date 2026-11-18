@@ -5,19 +5,19 @@ on:
     branches: [main]
     types: [opened, synchronize, reopened]
   push:
-    branches: [opt/wildfire-weather-cache]
+    branches: [opt/wildfire-weather-cache, fix/3d-fire-overlay-click-lifecycle]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: wildfire-preview
+  group: wildfire-preview-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(fromJSON('["feature/wildfire-mdt-provider","opt/wildfire-weather-cache","i18n/simulator-panel-euskera"]'), github.event.pull_request.head.ref)) || (github.event_name == 'push' && github.ref_name == 'opt/wildfire-weather-cache')
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(fromJSON('["feature/wildfire-mdt-provider","opt/wildfire-weather-cache","i18n/simulator-panel-euskera","fix/3d-fire-overlay-click-lifecycle"]'), github.event.pull_request.head.ref)) || (github.event_name == 'push' && contains(fromJSON('["opt/wildfire-weather-cache","fix/3d-fire-overlay-click-lifecycle"]'), github.ref_name))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR branch
@@ -53,7 +53,7 @@ jobs:
           npx --yes wrangler@latest pages deploy . \
             --project-name irratigis-wildfire-preview \
             --branch pr-24 \
-            --commit-message "IrratiGIS wildfire simulator preview PR #24" | tee /tmp/pages-deploy.log
+            --commit-message "IrratiGIS wildfire simulator preview PR #29 (CORS-compatible origin pr-24)" | tee /tmp/pages-deploy.log
           DEPLOY_URL=$(grep -Eo 'https://[A-Za-z0-9.-]+\.pages\.dev' /tmp/pages-deploy.log | tail -n 1)
           if [ -z "$DEPLOY_URL" ]; then
             echo "::error::Wrangler did not report a Pages deployment URL."

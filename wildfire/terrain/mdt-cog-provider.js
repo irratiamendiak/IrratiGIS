@@ -12,31 +12,32 @@
       const origin = image.getOrigin(), resolution = image.getResolution();
       return [(x-origin[0])/resolution[0], (y-origin[1])/resolution[1]];
     }
+    async function stage(label, task) {
+      try { return await task(); }
+      catch (error) {
+        const detail = error && error.message ? error.message : String(error);
+        throw new Error("MDT LiDAR · " + label + ": " + detail +
+          ". Comprueba que el COG responda a peticiones HTTP Range y que CORS permita este dominio.");
+      }
+    }
     async function open() {
       if (!url) throw new Error("No se ha configurado la URL del MDT provincial.");
       if (!root.GeoTIFF || typeof root.GeoTIFF.fromUrl !== "function") throw new Error("No se ha podido cargar el lector GeoTIFF.");
-      // GeoTIFF.js usa FetchSource por defecto. Forzar XHR puede convertir
-      // errores CORS/Range de R2 en el mensaje opaco "Request failed".
-      let tiff;
-      try {
-        tiff = await root.GeoTIFF.fromUrl(url);
-      } catch (error) {
-        const detail = error && error.message ? error.message : String(error);
-        throw new Error("No se pudo abrir el COG MDT por HTTP Range (" + detail +
-          "). Comprueba CORS para este dominio y que el servidor admita solicitudes GET con Range.");
-      }
-      const count = await tiff.getImageCount();
+      // GeoTIFF.js usa FetchSource. El servidor COG debe permitir HTTP Range
+      // y exponer Content-Range/Accept-Ranges mediante CORS.
+      const tiff = await stage("apertura del archivo remoto", () => root.GeoTIFF.fromUrl(url));
+      const count = await stage("lectura del directorio TIFF", () => tiff.getImageCount());
       const candidates = [];
       for (let i=0; i<count; i++) {
-        const base = await tiff.getImage(i);
+        const base = await stage("lectura de imagen " + i, () => tiff.getImage(i));
         candidates.push(base);
         // COG overviews are commonly stored as SubIFDs, not as top-level IFDs.
         // GeoTIFF.js exposes those through getOverviewCount()/getOverview().
         if (typeof base.getOverviewCount === "function" && typeof base.getOverview === "function") {
           let overviewCount = 0;
-          try { overviewCount = await base.getOverviewCount(); } catch (_) {}
+          overviewCount = await stage("lectura de overviews de imagen " + i, () => base.getOverviewCount());
           for (let j=0; j<overviewCount; j++) {
-            try { candidates.push(await base.getOverview(j)); } catch (_) {}
+            candidates.push(await stage("lectura del overview " + j + " de imagen " + i, () => base.getOverview(j)));
           }
         }
       }
@@ -105,20 +106,49 @@
         return {resolutionM:sourceResolution,width:windowInfo.width,height:windowInfo.height,
           cells:windowInfo.width*windowInfo.height,reused:true};
       }
-      raster=await image.readRasters({window:[x0,y0,x1,y1],samples:[0],interleave:true});
+      raster=await stage("descarga de píxeles del área solicitada", () => image.readRasters({window:[x0,y0,x1,y1],samples:[0],interleave:true}));
       windowInfo={x0,y0,x1,y1,width:x1-x0,height:y1-y0};
       return {resolutionM:sourceResolution,width:windowInfo.width,height:windowInfo.height,
         cells:windowInfo.width*windowInfo.height,reused:false};
     }
     function sample(x,y) {
       if(!image||!raster||!windowInfo) return NaN;
-      const p=pixelOf(x,y), fx=p[0]-.5-windowInfo.x0, fy=p[1]-.5-windowInfo.y0;
+      const p=pixelOf(x,y);
+      // No interpolar ni buscar vecinos fuera de la extensión geográfica real
+      // del COG, aunque la ventana local tenga píxeles válidos cerca del borde.
+      if(!p.every(Number.isFinite)||p[0]<0||p[1]<0||
+         p[0]>=image.getWidth()||p[1]>=image.getHeight()) return NaN;
+      const fx=p[0]-.5-windowInfo.x0, fy=p[1]-.5-windowInfo.y0;
+      if(fx<-.5||fy<-.5||fx>windowInfo.width-.5||fy>windowInfo.height-.5) return NaN;
       const ix=Math.floor(fx),iy=Math.floor(fy),ax=fx-ix,ay=fy-iy;
-      if(ix<0||iy<0||ix+1>=windowInfo.width||iy+1>=windowInfo.height) return NaN;
-      const at=(col,row)=>{const v=Number(raster[row*windowInfo.width+col]);return Number.isFinite(v)&&(noData===null||v!==noData)?v:NaN;};
-      const a=at(ix,iy),b=at(ix+1,iy),c=at(ix,iy+1),d=at(ix+1,iy+1);
-      if(![a,b,c,d].every(Number.isFinite)) return NaN;
-      return a*(1-ax)*(1-ay)+b*ax*(1-ay)+c*(1-ax)*ay+d*ax*ay;
+      const at=(col,row)=>{
+        if(col<0||row<0||col>=windowInfo.width||row>=windowInfo.height) return NaN;
+        const v=Number(raster[row*windowInfo.width+col]);
+        if(!Number.isFinite(v)) return NaN;
+        if(noData!==null && (Number.isNaN(noData)?Number.isNaN(v):v===noData)) return NaN;
+        return v;
+      };
+      // Interpolar con los píxeles válidos. En MDT LiDAR pueden existir
+      // celdas NoData aisladas (vegetación/agua/bordes); exigir siempre los
+      // cuatro vecinos hacía fallar incluso la ignición aunque el COG y su
+      // cobertura estuvieran correctamente cargados.
+      const corners=[
+        [ix,iy,(1-ax)*(1-ay)],
+        [ix+1,iy,ax*(1-ay)],
+        [ix,iy+1,(1-ax)*ay],
+        [ix+1,iy+1,ax*ay]
+      ];
+      let weighted=0,weight=0;
+      for(const [col,row,w] of corners){
+        if(w<=1e-9) continue;
+        const v=at(col,row);
+        if(Number.isFinite(v)){weighted+=v*w;weight+=w;}
+      }
+      if(weight>1e-9) return weighted/weight;
+      // Si el píxel consultado es NoData y no hay vecinos con peso
+      // válido para interpolar, conservar NoData. No sustituirlo por una
+      // elevación cercana: falsearía la altitud de la ignición y las pendientes.
+      return NaN;
     }
     return {open,canLoadBounds,loadBounds,sample,get resolutionM(){return sourceResolution;},get loadedBounds(){return windowInfo?{...windowInfo}:null;}};
   }
