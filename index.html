@@ -3459,23 +3459,29 @@ async function fsMeteo(){
   return {at,now,hours,m0,sh,sun:sunAt(sh),rain:{h24:sum(24),d3:sum(72),d7:sum(168),d14:sum(336),src:rainSrc,err:netErr},src:"Open-Meteo, historial de 14 días y previsión horaria"};
 }
 
+/* Combustible nulo: usos del suelo que el fuego no cruza (agua, urbano, viales, escombreras). El motor los trata con velocidad 0. */
+const FS_NOFUEL={id:0,n:"Erregairik gabe",loads:[0,0,0,0],sav:[1500,109,30,1500],depth:1,Mx:.12,w:0,cls:[1,0,0],sig:1,beta:0,depthM:.3048,Rmax:0,waf:.3,sun:1};
+/* Correspondencia Mapa Forestal 2024 (Gipuzkoa) -> modelos de Anderson. Usos y especies según el documento GIPUZKOA2024.
+   Hipótesis de trabajo pendientes de validar en campo; no describe carga ni continuidad reales del combustible de superficie. */
 function fsFuelFromInventoryProperties(p){
   p=p||{};
   const norm=v=>String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[_-]+/g," ").replace(/\s+/g," ").trim();
   const use=norm([p.TIPES_es,p.TIPES,p.tipo,p.TYPE].find(v=>norm(v))||"");
-  if(/^(herbazal|prado)$/.test(use)||/^prado con (setos|sebes)/.test(use)) return "fm1";
+  if(/^(agua|estuarios?|artificial|autopistas?|mineria)/.test(use)) return "nb";
+  if(/^(herbazal|prados?|agricola|pastizal)$/.test(use)||/^prados? con (setos|sebes)/.test(use)) return "fm1";
+  if(/^pastizal matorral/.test(use)) return "fm2";
   if(/^matorral$/.test(use)) return "fm5";
-  if(/pastizal|mixto|mezcla/.test(use)) return null;
   if(/helechal|helecho/.test(use)) return "fm5";
-  // Mixed pasture/shrub, generic forest and plantations without species
-  // are deliberately unresolved (eucalyptus counts as broadleaf): these fields do not describe
-  // the surface fuel bed or its load/continuity.
-  const species=norm([p.SP1_es,p.SP2_es,p.SP3_es,p.SP1,p.SP2,p.SP3].filter(Boolean).join(" "));
-  if(!species) return null;
-  const conifer=/pinus|pino|picea|larix|alerce|cryptomeria|pseudotsuga|douglas|chamaecyparis|conifer|abeto|sequoia|secoya/.test(species);
-  const broadleaf=/fagus|haya|quercus|roble|castanea|castan|fraxinus|fresno|alnus|aliso|betula|abedul|salix|sauce|populus|chopo|platanus|platano|robinia|acacia|eucalipto|eucalyptus|frondosa|frondosas/.test(species);
-  if(conifer===broadleaf) return null;
-  return conifer?"fm8":"fm9";
+  if(/galeria/.test(use)) return "fm9";
+  if(/mezcla/.test(use)) return null;
+  const CONIFER=/pinus|pino|picea|larix|alerce|cr[iy]ptomeria|pseudotsuga|douglas|chamaecyparis|conifer|abeto|sequoia|secoya|secuoya/;
+  const BROAD=/fagus|haya|quercus|roble|castanea|castan|fraxinus|fresno|alnus|aliso|betula|abedul|salix|sauce|populus|chopo|platanus|platano|robinia|acacia|eucal[iy]pt|frondosa|bosque mixto|ribera|cantil/;
+  const classify=t=>{const c=CONIFER.test(t),b=BROAD.test(t);return c===b?null:(c?"fm8":"fm9");};
+  /* Especie dominante: se usa la primera especie clasificable (SP1, luego SP2, SP3); antes una mezcla conífera+frondosa se descartaba. */
+  const list=[[p.SP1_es,p.SP1],[p.SP2_es,p.SP2],[p.SP3_es,p.SP3]].map(a=>norm(a.find(v=>norm(v))||""));
+  for(const t of list){ if(!t) continue; const k=classify(t); if(k) return k; }
+  if(/mixto|ribera|cantil/.test(use)) return "fm9";
+  return null;
 }
 /* Muestreador espacial independiente del mapa visible.
    Carga el PMTiles del Inventario 2024 en un MapLibre auxiliar centrado en el incendio,
@@ -3528,7 +3534,7 @@ async function fsCreateInventoryFuelSampler(ignition){
       }
       let label="";
       if(features.length&&!mapped){ reason="unmapped"; const p0=features[0].properties||{}; label=[p0.TIPES_es||p0.TIPES||p0.tipo||p0.TYPE||"?",p0.SP1_es||p0.SP1||""].filter(Boolean).join(" · "); }
-      value=mapped?{key:mapped,fuel:FS_FUELS[mapped],source:"inventory",featureCount:features.length}:
+      value=mapped?{key:mapped,fuel:mapped==="nb"?FS_NOFUEL:FS_FUELS[mapped],source:"inventory",featureCount:features.length}:
         {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback",reason,label,featureCount:features.length};
       cache.set(key,value);
     }
