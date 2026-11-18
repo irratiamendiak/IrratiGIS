@@ -12,31 +12,32 @@
       const origin = image.getOrigin(), resolution = image.getResolution();
       return [(x-origin[0])/resolution[0], (y-origin[1])/resolution[1]];
     }
+    async function stage(label, task) {
+      try { return await task(); }
+      catch (error) {
+        const detail = error && error.message ? error.message : String(error);
+        throw new Error("MDT LiDAR · " + label + ": " + detail +
+          ". Comprueba que el COG responda a peticiones HTTP Range y que CORS permita este dominio.");
+      }
+    }
     async function open() {
       if (!url) throw new Error("No se ha configurado la URL del MDT provincial.");
       if (!root.GeoTIFF || typeof root.GeoTIFF.fromUrl !== "function") throw new Error("No se ha podido cargar el lector GeoTIFF.");
-      // GeoTIFF.js usa FetchSource por defecto. Forzar XHR puede convertir
-      // errores CORS/Range de R2 en el mensaje opaco "Request failed".
-      let tiff;
-      try {
-        tiff = await root.GeoTIFF.fromUrl(url);
-      } catch (error) {
-        const detail = error && error.message ? error.message : String(error);
-        throw new Error("No se pudo abrir el COG MDT por HTTP Range (" + detail +
-          "). Comprueba CORS para este dominio y que el servidor admita solicitudes GET con Range.");
-      }
-      const count = await tiff.getImageCount();
+      // GeoTIFF.js usa FetchSource. El servidor COG debe permitir HTTP Range
+      // y exponer Content-Range/Accept-Ranges mediante CORS.
+      const tiff = await stage("apertura del archivo remoto", () => root.GeoTIFF.fromUrl(url));
+      const count = await stage("lectura del directorio TIFF", () => tiff.getImageCount());
       const candidates = [];
       for (let i=0; i<count; i++) {
-        const base = await tiff.getImage(i);
+        const base = await stage("lectura de imagen " + i, () => tiff.getImage(i));
         candidates.push(base);
         // COG overviews are commonly stored as SubIFDs, not as top-level IFDs.
         // GeoTIFF.js exposes those through getOverviewCount()/getOverview().
         if (typeof base.getOverviewCount === "function" && typeof base.getOverview === "function") {
           let overviewCount = 0;
-          try { overviewCount = await base.getOverviewCount(); } catch (_) {}
+          overviewCount = await stage("lectura de overviews de imagen " + i, () => base.getOverviewCount());
           for (let j=0; j<overviewCount; j++) {
-            try { candidates.push(await base.getOverview(j)); } catch (_) {}
+            candidates.push(await stage("lectura del overview " + j + " de imagen " + i, () => base.getOverview(j)));
           }
         }
       }
@@ -105,7 +106,7 @@
         return {resolutionM:sourceResolution,width:windowInfo.width,height:windowInfo.height,
           cells:windowInfo.width*windowInfo.height,reused:true};
       }
-      raster=await image.readRasters({window:[x0,y0,x1,y1],samples:[0],interleave:true});
+      raster=await stage("descarga de píxeles del área solicitada", () => image.readRasters({window:[x0,y0,x1,y1],samples:[0],interleave:true}));
       windowInfo={x0,y0,x1,y1,width:x1-x0,height:y1-y0};
       return {resolutionM:sourceResolution,width:windowInfo.width,height:windowInfo.height,
         cells:windowInfo.width*windowInfo.height,reused:false};
