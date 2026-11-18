@@ -3546,9 +3546,18 @@ function fsFuelFromInventoryProperties(p,lidar){
   const codes=ranked.map(x=>x.code).filter(Number.isFinite);
   const speciesText=ranked.map(x=>x.species).join(" ");
   const atlanticMixed=codes.includes(982)||/bosque mixto atlantico|atlantiar baso mixtoa/.test(use+" "+speciesText);
-  if(atlanticMixed && (!top||top.code===982||!Number.isFinite(top.occupancy))) return "fm10";
-
   const dominant=top?.code;
+  // SP=982 describes a broad natural-forest group, not its surface fuel bed.
+  // Do not infer FM10 from the species code alone: require LiDAR evidence for
+  // both understory height (>=40 cm) and dry biomass (>=20 t/ha).
+  const atlanticDominant=atlanticMixed&&(!top||dominant===982||!Number.isFinite(top.occupancy));
+  if(atlanticDominant){
+    const shrubHeight=fsFuelLidarRange(get(lidar,["LEYENDA_HEIGHT"]));
+    const shrubMass=fsFuelLidarRange(get(lidar,["LEYENDA_MASS"]));
+    return shrubHeight&&shrubMass&&shrubHeight.min>=40&&shrubHeight.max>=40&&
+      shrubMass.min>=20&&shrubMass.max>=20 ? "fm10" : null;
+  }
+
   const broadleaf=dominant===960||/plantaciones de frondosas variadas/.test(speciesText);
   const conifer=dominant===961||/plantaciones de coniferas variadas/.test(speciesText);
   const mixed=dominant===962||/plantaciones de frondosas y coniferas variadas/.test(speciesText);
