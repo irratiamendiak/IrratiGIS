@@ -1,3 +1,11 @@
+/* CAMBIOS (auditoría nov-2026) respecto a la versión anterior:
+ *  1. SAV característico ponderado por SUPERFICIE (sum w·σ² / sum w·σ), como en Rothermel/Albini. Antes se ponderaba por carga,
+ *     lo que daba σ muy bajo en modelos mixtos (p. ej. FM6: 493 en vez de 1564 ft-1) y alteraba velocidad, viento y pendiente.
+ *  2. Densidad aparente y razón de empaquetado con la carga SECA (w0), no con la carga neta.
+ *  3. Límite de viento efectivo de Rothermel (U_ef <= 0,9·I_R). Antes la velocidad crecía sin tope con vientos fuertes.
+ *  4. La inversión del viento efectivo para la relación largo/ancho incluye ahora el factor (β/βop)^-E.
+ * Pendiente por hacer: tratar el combustible vivo con su propia humedad (hoy se trata como muerto seco: sobreestima FM2/4/5/7).
+ */
 /* IrratiGIS wildfire spread engine.
  * Rothermel (1972) surface-fire spread equations with the Anderson (1982) 13 fuel models.
  * Internal Rothermel calculations use the original US customary units; public rates are m/min.
@@ -41,8 +49,13 @@
     const totalLoad = netLoads.reduce((a,b)=>a+b,0);
     const surfaceArea = netLoads.reduce((a,w,i)=>a+w*(Number(sav[i])||0),0);
     if (!(totalLoad > 0) || !(surfaceArea > 0)) return { rate: 0, phiW: 0, phiS: 0, sigma: 0, beta: 0 };
-    const sigma = surfaceArea / totalLoad; // ft-1
-    const rhoBulk = totalLoad / depth; // lb/ft3
+    // Rothermel: SAV característico ponderado por superficie (w0*sigma^2 / w0*sigma), y densidad aparente con carga SECA (w0), no neta.
+    const rawLoads = loads.map(v => Math.max(0, Number(v) || 0));
+    const rawLoad = rawLoads.reduce((a,b)=>a+b,0);
+    const rawArea = rawLoads.reduce((a,w,i)=>a+w*(Number(sav[i])||0),0);
+    const rawArea2 = rawLoads.reduce((a,w,i)=>a+w*Math.pow(Number(sav[i])||0,2),0);
+    const sigma = rawArea2 / rawArea; // ft-1
+    const rhoBulk = rawLoad / depth; // lb/ft3
     const beta = rhoBulk / RHO_PARTICLE;
     const betaOp = 3.348 * Math.pow(sigma, -0.8189);
     const A = 133 * Math.pow(sigma, -0.7913);
@@ -104,10 +117,13 @@
     const delta = (downwind - upslope) * RAD;
     const X = phiS + phiW * Math.cos(delta);
     const Y = phiW * Math.sin(delta);
-    const phiE = Math.hypot(X, Y);
+    let phiE = Math.hypot(X, Y);
+    const betaRatio = beta / (3.348 * Math.pow(sigma, -0.8189));
+    const phiMax = C * Math.pow(0.9 * base.reaction, B) * Math.pow(betaRatio, -E); // Rothermel: U_efectivo <= 0.9 I_R
+    if (phiE > phiMax) phiE = phiMax;
     const head = phiE < 1e-6 ? downwind : (upslope + Math.atan2(Y, X) / RAD + 360) % 360;
     const rateFtMin = base.rate * (1 + phiE);
-    const effectiveWindFtMin = phiE > 0 ? Math.pow(phiE / C, 1 / B) : 0;
+    const effectiveWindFtMin = phiE > 0 ? Math.pow(phiE / (C * Math.pow(betaRatio, -E)), 1 / B) : 0;
     const effectiveWindMph = effectiveWindFtMin / 88;
     const LB = Math.min(8, 0.936 * Math.exp(0.2566 * effectiveWindMph) +
       0.461 * Math.exp(-0.1548 * effectiveWindMph) - 0.397);
