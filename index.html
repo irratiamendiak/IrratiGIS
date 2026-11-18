@@ -3467,13 +3467,13 @@ function fsFuelFromInventoryProperties(p){
   if(/^matorral$/.test(use)) return "fm5";
   if(/pastizal|mixto|mezcla/.test(use)) return null;
   if(/helechal|helecho/.test(use)) return "fm5";
-  // Mixed pasture/shrub, generic forest, plantations without species, and
-  // eucalyptus are deliberately unresolved: these fields do not describe
+  // Mixed pasture/shrub, generic forest and plantations without species
+  // are deliberately unresolved (eucalyptus counts as broadleaf): these fields do not describe
   // the surface fuel bed or its load/continuity.
   const species=norm([p.SP1_es,p.SP2_es,p.SP3_es,p.SP1,p.SP2,p.SP3].filter(Boolean).join(" "));
   if(!species) return null;
   const conifer=/pinus|pino|picea|larix|alerce|cryptomeria|pseudotsuga|douglas|chamaecyparis|conifer|abeto|sequoia|secoya/.test(species);
-  const broadleaf=/fagus|haya|quercus|roble|castanea|castan|fraxinus|fresno|alnus|aliso|betula|abedul|salix|sauce|populus|chopo|platanus|platano|robinia|acacia|frondosa|frondosas/.test(species);
+  const broadleaf=/fagus|haya|quercus|roble|castanea|castan|fraxinus|fresno|alnus|aliso|betula|abedul|salix|sauce|populus|chopo|platanus|platano|robinia|acacia|eucalipto|eucalyptus|frondosa|frondosas/.test(species);
   if(conifer===broadleaf) return null;
   return conifer?"fm8":"fm9";
 }
