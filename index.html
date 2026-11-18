@@ -3483,7 +3483,7 @@ function fsFuelFromInventoryProperties(p){
 const fsInventoryFuelCache=new Map();
 async function fsCreateInventoryFuelSampler(ignition){
   const fallback=FS_FUELS[fsCfg.fuel], cache=fsInventoryFuelCache;
-  const result={map:null,container:null,cache,fallback,stats:{classified:0,unknown:0,noFeature:0,unmapped:0,outsideViewport:0,featureHits:0,transitions:0}};
+  const result={map:null,container:null,cache,fallback,stats:{classified:0,unknown:0,noFeature:0,unmapped:0,outsideViewport:0,featureHits:0,transitions:0,unmappedTypes:{}}};
   const div=document.createElement("div");
   div.style.cssText="position:fixed;left:-2000px;top:0;width:1024px;height:1024px;opacity:.01;pointer-events:none;z-index:-1";
   document.body.appendChild(div);
@@ -3526,9 +3526,10 @@ async function fsCreateInventoryFuelSampler(ignition){
         const k=fsFuelFromInventoryProperties(f.properties||{});
         if(k){mapped=k;break;}
       }
-      if(features.length&&!mapped) reason="unmapped";
+      let label="";
+      if(features.length&&!mapped){ reason="unmapped"; const p0=features[0].properties||{}; label=[p0.TIPES_es||p0.TIPES||p0.tipo||p0.TYPE||"?",p0.SP1_es||p0.SP1||""].filter(Boolean).join(" · "); }
       value=mapped?{key:mapped,fuel:FS_FUELS[mapped],source:"inventory",featureCount:features.length}:
-        {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback",reason,featureCount:features.length};
+        {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback",reason,label,featureCount:features.length};
       cache.set(key,value);
     }
     if(!counted.has(key)){
@@ -3537,7 +3538,7 @@ async function fsCreateInventoryFuelSampler(ignition){
       else {
         result.stats.unknown++;
         if(value.reason==="outside-viewport") result.stats.outsideViewport++;
-        else if(value.reason==="unmapped") result.stats.unmapped++;
+        else if(value.reason==="unmapped"){ result.stats.unmapped++; result.stats.unmappedTypes[value.label]=(result.stats.unmappedTypes[value.label]||0)+1; }
         else result.stats.noFeature++;
       }
       result.stats.featureHits+=value.featureCount||0;
@@ -3958,7 +3959,7 @@ async function fsRun(){
     ? `<div style="margin-top:9px;padding:8px;background:#eef4f8;border-left:3px solid #527c9b;border-radius:5px;font-size:11px"><b>Haizearen doikuntza · Gipuzkoako baso-egitura</b><br>Kontsultatutako geruzak: 2024ko baso-produktibitatea (goi-altuera, dentsitatea eta azalera basimetrikoa) + 2012ko LiDAR lehen adarraren altuera. Kargatutako poligonoak: ${windSampler.stats.forestPolygons} (2024) eta ${windSampler.stats.lidarPolygons} (LiDAR). Babes partzialaren zantzuak dituzten laginak: ${windSampler.stats.sheltered}; zantzu nahikorik gabe: ${windSampler.stats.notSheltered}; hautagai-poligono edo datu parekaturik gabe: ${windSampler.stats.missing}.<br>Iturriak: <a href="https://www.geo.euskadi.eus/geoeuskadi/rest/services/W26GIS/AGRICULTURA_CAS/MapServer/259" target="_blank" rel="noopener">2024ko baso-egitura</a> · <a href="https://www.geo.euskadi.eus/geoeuskadi/rest/services/W26GIS/AGRICULTURA_CAS/MapServer/14" target="_blank" rel="noopener">2012ko LiDAR lehen adarraren altuera</a>.<br>Egitura-adierazleek atalasea betetzen dutenean, WAF 0,3 aplikatzen da (babes partziala); gainerakoetan erregai-ereduaren doikuntza mantentzen da. Ez da babes osoa aplikatzen, geruza hauek ez baitute adaburuen estaldura zuzenean neurtzen. Lehen adarraren altuera 2012ko LiDAR datua da, eta baliteke ondorengo aldaketak ez islatzea.</div>`
     : `<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px"><b>Baso-egituraren doikuntza ez dago erabilgarri</b><br>${escapeHtml(windSamplerError||"Ezin izan dira baso-geruzak kontsultatu.")} Erregai-ereduaren doikuntza estandarra mantendu da; ez da baso-dentsitaterik asmatu.</div>`;
   const fuelNote=inventorySampler
-    ? `<div style="margin-top:9px;padding:8px;background:#f1f6f2;border-left:3px solid #527c63;border-radius:5px;font-size:11px"><b>2024ko Baso Inbentarioa · estaldura</b><br>${inventorySampler.stats.classified} lagin sailkatuta · ${inventorySampler.stats.unknown} sailkatu gabe (ordezko erregaia: ${escapeHtml(fu.n)}).<br><b>Erregai-aldaketak:</b> ${fuelCounts.size?[...fuelCounts.entries()].map(([k,n])=>escapeHtml(k.replace(/belarra|garoa|iratzea|pinudia|hostozabala/g,x=>fuelNames[x]||x))+" ("+n+")").join("; "):"ez da aldaketarik hauteman lagindutako ibilbideetan"}.</div>`
+    ? `<div style="margin-top:9px;padding:8px;background:#f1f6f2;border-left:3px solid #527c63;border-radius:5px;font-size:11px"><b>2024ko Baso Inbentarioa · estaldura</b><br>${inventorySampler.stats.classified} lagin sailkatuta · ${inventorySampler.stats.unknown} sailkatu gabe (ordezko erregaia: ${escapeHtml(fu.n)}).<br><span style="color:#555">Sailkatu gabeen zergatia: bistaratze-leihotik kanpo ${inventorySampler.stats.outsideViewport} · poligonorik gabe ${inventorySampler.stats.noFeature} · mapeatu gabeko mota ${inventorySampler.stats.unmapped}${(()=>{const e=Object.entries(inventorySampler.stats.unmappedTypes||{}).sort((a,b)=>b[1]-a[1]).slice(0,6);return e.length?" — nagusiak: "+e.map(([k,n])=>escapeHtml(k)+" ("+n+")").join("; "):"";})()}</span><br><b>Erregai-aldaketak:</b> ${fuelCounts.size?[...fuelCounts.entries()].map(([k,n])=>escapeHtml(k.replace(/belarra|garoa|iratzea|pinudia|hostozabala/g,x=>fuelNames[x]||x))+" ("+n+")").join("; "):"ez da aldaketarik hauteman lagindutako ibilbideetan"}.</div>`
     : (inventoryNote?`<div style="margin-top:9px;padding:8px;background:#fff6e8;border-left:3px solid #c98a00;border-radius:5px;font-size:11px">${escapeHtml(inventoryNote)}</div>`:"");
   const wxTable=manual?"":`<div style="margin-top:10px;overflow-x:auto"><b style="font-size:12px">Aurreikusitako meteorologia denbora-tarteka</b><table style="width:100%;min-width:430px;border-collapse:collapse;font-size:11px;margin-top:5px"><thead><tr><th style="text-align:left;padding:4px;border-bottom:1px solid #d8dfda">Aldagaia</th>${times.map(t=>`<th style="padding:4px;border-bottom:1px solid #d8dfda">${t} min</th>`).join("")}</tr></thead><tbody>${[
     ["Haizea",w=>`${Math.round(w.spd)} km/h ${fsCard(w.dir)}`],
