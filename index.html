@@ -3486,12 +3486,14 @@ function fsFuelFromInventoryProperties(p){
 /* Muestreador espacial independiente del mapa visible.
    Carga el PMTiles del Inventario 2024 en un MapLibre auxiliar centrado en el incendio,
    de modo que las consultas no dependan de que la capa esté activada ni del encuadre del usuario. */
+/* El PMTiles generaliza y descarta polígonos pequeños a zoom bajo (a zoom 11 faltaba ~85 % de las celdas). Se muestrea a zoom 13, donde el teselado conserva los rodales. */
+const FS_INV_ZOOM=13, FS_INV_SIZE=1536;
 const fsInventoryFuelCache=new Map();
 async function fsCreateInventoryFuelSampler(ignition){
   const fallback=FS_FUELS[fsCfg.fuel], cache=fsInventoryFuelCache;
   const result={map:null,container:null,cache,fallback,stats:{classified:0,unknown:0,noFeature:0,unmapped:0,outsideViewport:0,featureHits:0,transitions:0,unmappedTypes:{}}};
   const div=document.createElement("div");
-  div.style.cssText="position:fixed;left:-2000px;top:0;width:1024px;height:1024px;opacity:.01;pointer-events:none;z-index:-1";
+  div.style.cssText="position:fixed;left:-2000px;top:0;width:"+FS_INV_SIZE+"px;height:"+FS_INV_SIZE+"px;opacity:.01;pointer-events:none;z-index:-1";
   document.body.appendChild(div);
   result.container=div;
   const style={
@@ -3500,7 +3502,7 @@ async function fsCreateInventoryFuelSampler(ignition){
     layers:[{id:"forestal-poligonos",type:"fill",source:"forestal","source-layer":"forestal_gipuzkoa_2024",
       paint:{"fill-color":"#75a982","fill-opacity":0.01,"fill-outline-color":"#39734b"}}]
   };
-  const gl=new maplibregl.Map({container:div,style,center:[ignition.lng,ignition.lat],zoom:11,interactive:false,attributionControl:false,logoPosition:"bottom-right"});
+  const gl=new maplibregl.Map({container:div,style,center:[ignition.lng,ignition.lat],zoom:FS_INV_ZOOM,interactive:false,attributionControl:false,logoPosition:"bottom-right"});
   result.map=gl;
   try{
     await new Promise((resolve,reject)=>{
@@ -3519,13 +3521,16 @@ async function fsCreateInventoryFuelSampler(ignition){
   const counted=new Set();
   const fuelAt=(lat,lon)=>{
     // Cuadrícula de caché de ~80-100 m: evita repetir consultas en cada paso temporal.
-    const key=fsCfg.fuel+"@"+lat.toFixed(3)+","+lon.toFixed(3);
+    const key=fsCfg.fuel+"@z"+FS_INV_ZOOM+"@"+lat.toFixed(3)+","+lon.toFixed(3);
     let value=cache.get(key);
     if(!value){
       const px=gl.project([lon,lat]);
       let features=[],reason="no-feature";
-      const inside=px.x>=0&&px.y>=0&&px.x<1024&&px.y<1024;
-      if(inside) features=gl.queryRenderedFeatures(px,{layers:["forestal-poligonos"]})||[];
+      const inside=px.x>=3&&px.y>=3&&px.x<FS_INV_SIZE-3&&px.y<FS_INV_SIZE-3;
+      if(inside){
+        features=gl.queryRenderedFeatures(px,{layers:["forestal-poligonos"]})||[];
+        if(!features.length) features=gl.queryRenderedFeatures([[px.x-3,px.y-3],[px.x+3,px.y+3]],{layers:["forestal-poligonos"]})||[];
+      }
       else reason="outside-viewport";
       let mapped=null;
       for(const f of features){
