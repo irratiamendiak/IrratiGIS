@@ -3617,7 +3617,8 @@ async function fsCreateInventoryFuelSampler(ignition,radiusM){
     if(lidar){sample.LIDAR_SOTOBOSQUE_CM=lidar.height?.LEYENDA||"—";sample.LIDAR_BIOMASA_T_HA=lidar.mass?.LEYENDA||"—";sample.LIDAR_PRIMERA_RAMA_M=lidar.branch?.LEYENDA||"—";}
     result.stats.sampleProperties.push(sample);
   };
-  for(const polygon of index.polygons){recordSample(polygon.attributes,null);if(result.stats.sampleProperties.length>=3) break;}
+  // Los ejemplos del diagnóstico deben proceder de puntos realmente muestreados,
+  // con sus valores LiDAR asociados; no de polígonos sin consultar.
   const inspectAt=(lat,lon)=>{
     const matches=fsForestFindAll(index,lat,lon);
     const lidarData={
@@ -3673,7 +3674,15 @@ async function fsCreateInventoryFuelSampler(ignition,radiusM){
         {key:"respaldo:"+fsCfg.fuel,fuel:fallback,source:"fallback",reason,featureCount,properties,lidarData,hasLidar};
       cache.set(key,value);
     }
-    recordSample(value.properties,value.lidarData);
+    if(value.properties && result.stats.sampleProperties.length<3){
+      const sample=Object.fromEntries(Object.entries(value.properties).filter(([k,v])=>k!=="_SOURCE_LAYER"&&v!==null&&v!==undefined&&String(v)!=="").slice(0,22));
+      sample.SOURCE_LAYER=value.properties._SOURCE_LAYER;
+      sample.FM_ASIGNADO=value.key;
+      sample.LIDAR_SOTOBOSQUE_CM=value.lidarData?.height?.LEYENDA||"—";
+      sample.LIDAR_BIOMASA_T_HA=value.lidarData?.mass?.LEYENDA||"—";
+      sample.LIDAR_PRIMERA_RAMA_M=value.lidarData?.branch?.LEYENDA||"—";
+      result.stats.sampleProperties.push(sample);
+    }
     if(!counted.has(key)){
       counted.add(key);
       if(value.source==="inventory"){
