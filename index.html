@@ -2518,6 +2518,24 @@ function fsSimulate(fu,met,sc,fuelAt,durationMinutes=FS_T,windAt){
     bearingStepDegrees:3, terrainStepMinutes:1
   });
 }
+/* Línea de diagnóstico en el punto de ignición: combustible, pendiente, humedad y velocidad del frente, para poder comprobar cada simulación. */
+function fsIgnitionNote(rays,met,fu,windSampler){
+  try{
+    if(!rays||!rays.length) return "";
+    const key=rays[0].pts[0][4];
+    if(key==="nb") return "";
+    const f=String(key).indexOf("respaldo:")===0?FS_FUELS[String(key).slice(9)]:(FS_FUELS[key]||fu);
+    const ter=fsTerrain(fsIgn.lat,fsIgn.lng);
+    if(!f||!ter) return "";
+    const t=FS_DT, w=met.at(t), m=Math.max(2,fsMoistAt(w,f,ter,met.sun(t)));
+    const site=windSampler&&windSampler.windAt?windSampler.windAt(fsIgn.lat,fsIgn.lng,f,ter,t):null;
+    const b=fsEngine.behavior(f,ter.tan,ter.asp,w.dir,w.spd,m,site);
+    const n1=x=>fsDec((+x).toFixed(1)), n0=x=>fsDec((+x).toFixed(0)), n2=x=>fsDec((+x).toFixed(2));
+    const slopePct=ter.tan*100, slopeDeg=Math.atan(ter.tan)*180/Math.PI;
+    const origin=String(key).indexOf("respaldo:")===0?" (ordezko erregaia)":"";
+    return `<div style="margin-top:9px;padding:8px;background:#f4f4f1;border-left:3px solid #777;border-radius:5px;font-size:11px"><b>Abiapuntua · egiaztapena</b><br>Erregaia: ${escapeHtml(f.n||key)}${origin} · Malda: %${n0(slopePct)} (${n0(slopeDeg)}°; behera doan norabidea ${n0(ter.asp)}°) · Erregai finaren hezetasuna: %${n1(m)}<br>Aurrealdearen abiadura: ${n1(b.Rh||0)} m/min (oinarrizkoa, haizerik eta maldarik gabe: ${n2(b.baseRate||0)} m/min; haizearen faktorea φw ${n1(b.phiW||0)} · maldarena φs ${n1(b.phiS||0)}) · Haizea: ${n0(w.spd)} km/h, ${n0(w.dir)}°-tik${b.windAdjustment?` · WAF ${n2(b.windAdjustment)}`:""}</div>`;
+  }catch(e){ console.warn("fsIgnitionNote",e); return ""; }
+}
 /* Aviso cuando la humedad del combustible supera la de extinción (la velocidad pasa a 0) o el punto cae en un uso sin combustible. */
 function fsStallNote(rays,met,fu){
   try{
@@ -4010,7 +4028,7 @@ async function fsRun(){
   perf["Tiempo total"]=performance.now()-perfStart;
   const perfRows=Object.entries(perf).map(([name,ms])=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:2px 0;border-bottom:1px solid #e8ece9"><span>${escapeHtml(name)}</span><b>${(ms/1000).toFixed(2)} s</b></div>`).join("");
   const perfHtml=`<details style="margin-top:9px;padding:7px 9px;background:#f5f7f5;border-radius:5px;font-size:11px"><summary style="cursor:pointer;font-weight:700">Diagnóstico de tiempos · ${(perf["Tiempo total"]/1000).toFixed(2)} s</summary><div style="margin-top:6px">${perfRows}</div></details>`;
-  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"eskuzkoa":"aurreikusitakoa"} · hartutako azalera</b>${table}${fsStallNote(rays,met,fu)}${lidarNote}${windNoteHtml}${fuelNote}${wxTable}${perfHtml}
+  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"eskuzkoa":"aurreikusitakoa"} · hartutako azalera</b>${table}${fsIgnitionNote(rays,met,fu,windSampler)}${fsStallNote(rays,met,fu)}${lidarNote}${windNoteHtml}${fuelNote}${wxTable}${perfHtml}
     <div style="font-size:10px;color:#65736b;margin-top:8px">${source}. Lau perimetroek 30, 60, 90 eta 120 minutu adierazten dituzte; koloreak eta marra-motak denbora-tarte bakoitza bereizten dute. Aldatu meteorologia-hautatzailea aurreikuspenaren eta eskuzko moduaren artean; eskuzko moduan haizearen, tenperaturaren eta hezetasunaren eremuak erabiltzen dira.</div>
   </div>`);
   fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0:null,met,farBg:null,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
