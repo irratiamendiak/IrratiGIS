@@ -2518,6 +2518,32 @@ function fsSimulate(fu,met,sc,fuelAt,durationMinutes=FS_T,windAt){
     bearingStepDegrees:3, terrainStepMinutes:1
   });
 }
+/* Aviso cuando la humedad del combustible supera la de extinción (la velocidad pasa a 0) o el punto cae en un uso sin combustible. */
+function fsStallNote(rays,met,fu){
+  try{
+    if(!rays||!rays.length) return "";
+    const fuelOf=k=>k==="nb"?FS_NOFUEL:(String(k).indexOf("respaldo:")===0?FS_FUELS[String(k).slice(9)]:(FS_FUELS[k]||fu));
+    const keys=new Set([rays[0].pts[0][4]]);
+    const counts=new Map();
+    for(const r of rays){ const k=r.pts[r.pts.length-1][4]; counts.set(k,(counts.get(k)||0)+1); }
+    let top=null; for(const [k,n] of counts) if(!top||n>top[1]) top=[k,n];
+    if(top) keys.add(top[0]);
+    const ter=fsTerrain(fsIgn.lat,fsIgn.lng)||{tan:0,asp:0};
+    const lines=[];
+    for(const k of keys){
+      if(k==="nb"){ lines.push("Sutearen abiapuntua erregairik gabeko erabileran dago (ura, hiri-eremua, bidea edo antzekoa): ereduak ez du hedapenik kalkulatzen."); continue; }
+      const f=fuelOf(k); if(!f||!(f.Mx>0)) continue;
+      const mx=f.Mx*100; let t0=null, m0=0;
+      for(let t=0;t<=FS_T;t+=FS_DT){
+        const m=fsMoistAt(met.at(t),f,ter,met.sun(t));
+        if(m>=mx){ t0=t; m0=m; break; }
+      }
+      if(t0!==null) lines.push(`${t0===0?"Hasieratik":t0+". minututik aurrera"}, erregai finaren hezetasuna (%${fsDec(m0.toFixed(0))}) itzaltze-hezetasuna (%${fsDec(mx.toFixed(0))}) baino handiagoa da (${escapeHtml(f.n||k)}). Erregai horretan sua ez da hedatzen eta azalerak ez du gehiago egiten.`);
+    }
+    if(!lines.length) return "";
+    return `<div style="margin-top:9px;padding:8px;background:#fdecec;border-left:3px solid #b23b3b;border-radius:5px;font-size:11px"><b>⚠️ Hedapena gelditzen da</b><br>${lines.join("<br>")}</div>`;
+  }catch(e){ console.warn("fsStallNote",e); return ""; }
+}
 const fsPerim=(rays,t)=>rays.map(r=>{ const p=r.pts[t/FS_DT]; return [p[2],p[3]]; });
 function fsHa(pts){
   const o=pts[0], k=111320*Math.cos(o[0]*fsRad); let s=0;
@@ -3984,7 +4010,7 @@ async function fsRun(){
   perf["Tiempo total"]=performance.now()-perfStart;
   const perfRows=Object.entries(perf).map(([name,ms])=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:2px 0;border-bottom:1px solid #e8ece9"><span>${escapeHtml(name)}</span><b>${(ms/1000).toFixed(2)} s</b></div>`).join("");
   const perfHtml=`<details style="margin-top:9px;padding:7px 9px;background:#f5f7f5;border-radius:5px;font-size:11px"><summary style="cursor:pointer;font-weight:700">Diagnóstico de tiempos · ${(perf["Tiempo total"]/1000).toFixed(2)} s</summary><div style="margin-top:6px">${perfRows}</div></details>`;
-  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"eskuzkoa":"aurreikusitakoa"} · hartutako azalera</b>${table}${lidarNote}${windNoteHtml}${fuelNote}${wxTable}${perfHtml}
+  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"eskuzkoa":"aurreikusitakoa"} · hartutako azalera</b>${table}${fsStallNote(rays,met,fu)}${lidarNote}${windNoteHtml}${fuelNote}${wxTable}${perfHtml}
     <div style="font-size:10px;color:#65736b;margin-top:8px">${source}. Lau perimetroek 30, 60, 90 eta 120 minutu adierazten dituzte; koloreak eta marra-motak denbora-tarte bakoitza bereizten dute. Aldatu meteorologia-hautatzailea aurreikuspenaren eta eskuzko moduaren artean; eskuzko moduan haizearen, tenperaturaren eta hezetasunaren eremuak erabiltzen dira.</div>
   </div>`);
   fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0:null,met,farBg:null,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
