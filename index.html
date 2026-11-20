@@ -2518,6 +2518,87 @@ function fsSimulate(fu,met,sc,fuelAt,durationMinutes=FS_T,windAt){
     bearingStepDegrees:3, terrainStepMinutes:1
   });
 }
+/* --- Contraste con un perímetro real (KML / GeoJSON): solapamiento, área y dirección de avance --- */
+let fsReal=null, fsRealMin=45, fsCmp=null;
+function fsParseRealPerimeter(text,name){
+  const t=String(text||"").trim(), rings=[];
+  const clean=a=>a.filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1]));
+  if(t.charAt(0)==="{"||t.charAt(0)==="["){
+    const addPoly=c=>{ if(c&&c[0]&&c[0].length>=3) rings.push(clean(c[0].map(p=>[+p[1],+p[0]]))); };
+    const walk=o=>{ if(!o) return;
+      if(o.type==="FeatureCollection") (o.features||[]).forEach(walk);
+      else if(o.type==="Feature") walk(o.geometry);
+      else if(o.type==="Polygon") addPoly(o.coordinates);
+      else if(o.type==="MultiPolygon") (o.coordinates||[]).forEach(addPoly);
+      else if(o.type==="GeometryCollection") (o.geometries||[]).forEach(walk); };
+    walk(JSON.parse(t));
+  }else{
+    const pr=/<Polygon[\s>][\s\S]*?<\/Polygon>/gi; let m;
+    while((m=pr.exec(t))){
+      const c=/<outerBoundaryIs>[\s\S]*?<coordinates>([\s\S]*?)<\/coordinates>/i.exec(m[0]);
+      if(!c) continue;
+      const ring=clean(c[1].trim().split(/\s+/).map(x=>x.split(",")).filter(a=>a.length>=2).map(a=>[+a[1],+a[0]]));
+      if(ring.length>=3) rings.push(ring);
+    }
+  }
+  if(!rings.length) throw new Error("Ez da poligonorik aurkitu. Erabili KML edo GeoJSON (WGS84).");
+  if(rings.some(r=>r.some(p=>Math.abs(p[0])>90||Math.abs(p[1])>180))) throw new Error("Koordenatuak ez dira WGS84 (lon/lat). Esportatu KML edo GeoJSON gisa.");
+  return {name,rings};
+}
+/* Fracción del perímetro real que cubre el simulado (rasterizado de 2 m sobre la envolvente del real). */
+function fsRasterOverlap(sim,realRings){
+  let la0=1e9,la1=-1e9,lo0=1e9,lo1=-1e9;
+  for(const r of realRings) for(const p of r){ if(p[0]<la0)la0=p[0]; if(p[0]>la1)la1=p[0]; if(p[1]<lo0)lo0=p[1]; if(p[1]>lo1)lo1=p[1]; }
+  const mLat=111320, mLon=111320*Math.cos((la0+la1)/2*fsRad);
+  const w=(lo1-lo0)*mLon, h=(la1-la0)*mLat;
+  const step=Math.max(2,Math.sqrt(w*h/160000)), nx=Math.max(1,Math.ceil(w/step)), ny=Math.max(1,Math.ceil(h/step));
+  let real=0, inter=0;
+  for(let iy=0;iy<ny;iy++){ const lat=la0+(iy+.5)*step/mLat;
+    for(let ix=0;ix<nx;ix++){ const pt=[lat,lo0+(ix+.5)*step/mLon];
+      let inReal=false; for(const rr of realRings){ if(fsIn(pt,rr)){ inReal=true; break; } }
+      if(!inReal) continue; real++;
+      if(fsIn(pt,sim)) inter++; } }
+  return real?inter/real:0;
+}
+function fsCentroid(ring){
+  const o=ring[0], k=111320*Math.cos(o[0]*fsRad); let A=0,cx=0,cy=0;
+  for(let i=0;i<ring.length;i++){ const a=ring[i], b=ring[(i+1)%ring.length];
+    const x1=(a[1]-o[1])*k, y1=(a[0]-o[0])*111320, x2=(b[1]-o[1])*k, y2=(b[0]-o[0])*111320, cr=x1*y2-x2*y1;
+    A+=cr; cx+=(x1+x2)*cr; cy+=(y1+y2)*cr; }
+  A/=2; if(!A) return o; cx/=6*A; cy/=6*A;
+  return [o[0]+cy/111320, o[1]+cx/k];
+}
+function fsBD(a,p){ const k=111320*Math.cos(a.lat*fsRad), e=(p[1]-a.lng)*k, n=(p[0]-a.lat)*111320; let b=Math.atan2(e,n)/fsRad; if(b<0) b+=360; return {b,d:Math.hypot(e,n)}; }
+function fsCompare(rays){
+  fsCmp=null;
+  if(!fsReal||!rays||!rays.length||!fsIgn) return null;
+  const tt=Math.min(FS_T,Math.max(FS_DT,Math.round(fsRealMin/FS_DT)*FS_DT));
+  const sim=fsPerim(rays,tt), simHa=fsHa(sim), realHa=fsReal.rings.reduce((a,r)=>a+fsHa(r),0);
+  if(!(realHa>0)||!(simHa>0)) return null;
+  const cov=fsRasterOverlap(sim,fsReal.rings), interHa=cov*realHa;
+  const cs=fsBD(fsIgn,fsCentroid(sim)), cr=fsBD(fsIgn,fsCentroid(fsReal.rings[0]));
+  fsCmp={tt,sim,simHa,realHa,interHa,cov,prec:interHa/simHa,iou:interHa/(simHa+realHa-interHa),cs,cr};
+  return fsCmp;
+}
+function fsDrawReal(rays){
+  if(!fsReal) return;
+  fsReal.rings.forEach(r=>L.polygon(r,{color:"#111",weight:3,opacity:.95,dashArray:"1 4",fillColor:"#111",fillOpacity:.08})
+    .bindTooltip(`Benetako perimetroa · ${fsHa(r).toFixed(1)} ha`,{sticky:true}).addTo(fsGroup));
+  const c=fsCompare(rays);
+  if(c) L.polygon(c.sim,{color:"#d6336c",weight:3,opacity:.95,fillColor:"#d6336c",fillOpacity:.10})
+    .bindTooltip(`Simulazioa · ${c.tt} min · ${c.simHa.toFixed(1)} ha`,{sticky:true}).addTo(fsGroup);
+}
+function fsCompareNote(){
+  if(!fsReal) return "";
+  const box=h=>`<div style="margin-top:9px;padding:8px;background:#fff6f9;border-left:3px solid #d6336c;border-radius:5px;font-size:11px"><b>Benetako sutearekin alderatzea</b><br>${h}</div>`;
+  const c=fsCmp;
+  if(!c) return box("Perimetroa kargatuta dago baina ezin izan da alderatu. Kalkulatu simulazioa edo egiaztatu poligonoa.");
+  const n1=x=>fsDec((+x).toFixed(1)), n0=x=>fsDec((+x).toFixed(0)), pc=x=>n0(x*100)+" %";
+  return box(`Erre den denbora: ${c.tt} min · Benetako azalera: <b>${n1(c.realHa)} ha</b> · Simulatua: <b>${n1(c.simHa)} ha</b> (×${fsDec((c.simHa/c.realHa).toFixed(2))} benetakoa)<br>`+
+    `Gainjartzea (IoU): <b>${pc(c.iou)}</b> · Benetakoaren estaldura: ${pc(c.cov)} · Simulazioaren zehaztasuna: ${pc(c.prec)}<br>`+
+    `Hedapen-norabidea (abiapuntutik zentroidera): benetakoa ${n0(c.cr.b)}° ${fsCard(c.cr.b)} (${n0(c.cr.d)} m) · simulatua ${n0(c.cs.b)}° ${fsCard(c.cs.b)} (${n0(c.cs.d)} m)<br>`+
+    `<span style="color:#65736b">Simulazioak ez du itzalketa modelatzen eta azalera denboraren karratuaren antzekoa da: erre den denbora ongi zehaztu behar da. IoU 100 % = perimetro berdinak; 0 % = ez dira gainjartzen.</span>`);
+}
 /* Línea de diagnóstico en el punto de ignición: combustible, pendiente, humedad y velocidad del frente, para poder comprobar cada simulación. */
 function fsIgnitionNote(rays,met,fu,windSampler){
   try{
@@ -3811,6 +3892,11 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div class="fs-man" style="display:none;${row}">Haizea <input type="number" class="fs-dir" min="0" max="360" step="5" value="${fsCfg.dir}" style="width:50px">° · <input type="number" class="fs-spd" min="0" max="100" value="${fsCfg.spd}" style="width:44px"> km/h · T <input type="number" class="fs-t" min="-10" max="45" value="${fsCfg.temp}" style="width:42px">°C · HR <input type="number" class="fs-rh" min="5" max="100" value="${fsCfg.rh}" style="width:42px">%</div>`+
    `<div style="${row}"><b>Erregaien hezetasuna</b></div>`+
    `<div style="${row}">Erregai fin hila <select class="fs-mm"><option value="calc">Iragarpena (Open-Meteo: tenperatura, hezetasuna, euria eta eguzkia)</option><option value="inst">Tenperatura eta hezetasuna soilik (+ eguzkia)</option><option value="ffmcnet">Sareko FFMCa (% 50 tenperatura/hezetasunaren bidez)</option><option value="ffmc">Eskuzko FFMCa (% 50 tenperatura/hezetasunaren bidez)</option><option value="man">eskuzkoa</option></select> <span class="fs-mff" style="display:none">FFMC <input type="number" class="fs-ffmc" min="30" max="99" step="0.5" value="${fsCfg.ffmc}" style="width:52px"></span> <span class="fs-msl" style="display:none"><input type="range" class="fs-m" min="3" max="25" value="${fsCfg.moist}" style="width:80px;vertical-align:middle"> <b class="fs-mv">${fsCfg.moist}%</b></span></div>`+
+   `<div style="font-weight:800;margin:8px 0 5px;padding-bottom:4px;border-bottom:1px solid #dce5df">2. Benetako sutearekin alderatzea (aukerakoa)</div>`+
+   `<div style="${row}"><b>Abiapuntua (lat, lng)</b> <input type="text" class="fs-ign-xy" placeholder="43.086488, -2.365535" style="width:150px"> <button type="button" class="fs-ign-set" style="${bs}background:#d9480f">Ezarri</button></div>`+
+   `<div style="${row}"><b>Benetako perimetroa</b> <input type="file" class="fs-real-file" accept=".kml,.geojson,.json" style="max-width:100%"></div>`+
+   `<div style="${row}">Askatasunez erre den denbora <input type="number" class="fs-real-min" min="2" max="120" step="1" value="${fsRealMin}" style="width:50px"> min <button type="button" class="fs-real-clr" style="${bs}background:#65736b">Kendu perimetroa</button></div>`+
+   `<div class="fs-real-status" style="font-size:10px;color:#65736b;margin:-2px 0 6px">KML edo GeoJSON poligonoa kargatu (WGS84). Simulazioa erre den denbora horretan alderatzen da.</div>`+
    `<div class="fs-out" style="color:#65736b">Sakatu «Markatu hasiera» eta egin klik mapan. Ondoren, aukeratu hedapen aurreikusia edo eskuzkoa.</div>`;
   const q=s=>fsPanel.querySelector(s), rerun=()=>{ if(fsIgn) fsRun(); }, num=(e,lo,hi,d)=>Math.min(hi,Math.max(lo,Number(e.target.value)||d));
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
@@ -3837,6 +3923,25 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
     const g=e.target.closest&&e.target.closest("[data-fs-gif]"); if(g){ fsMakeGif(g); return; }
     const bt=e.target.closest&&e.target.closest("[data-fs-bt]"); if(bt) fsBacktest(bt);
   });
+  const realStatus=()=>{ q(".fs-real-status").textContent=fsReal?`✔ ${fsReal.name} · ${fsReal.rings.length} poligono · ${fsDec(fsReal.rings.reduce((a,r)=>a+fsHa(r),0).toFixed(1))} ha`:"KML edo GeoJSON poligonoa kargatu (WGS84). Simulazioa erre den denbora horretan alderatzen da."; };
+  q(".fs-real-file").onchange=async e=>{
+    const f=e.target.files&&e.target.files[0]; if(!f) return;
+    try{
+      fsReal=fsParseRealPerimeter(await f.text(),f.name); fsCmp=null; realStatus();
+      try{ map.fitBounds(L.latLngBounds(fsReal.rings[0]).pad(.4)); }catch(_){}
+      if(fsIgn) fsRun(); else { fsGroup.clearLayers(); fsDrawReal(null); fsSync3D(); }
+    }catch(err){ fsReal=null; fsCmp=null; q(".fs-real-status").textContent="⚠️ "+(err.message||String(err)); }
+  };
+  q(".fs-real-min").onchange=e=>{ fsRealMin=num(e,2,120,45); rerun(); };
+  q(".fs-real-clr").onclick=()=>{ fsReal=null; fsCmp=null; q(".fs-real-file").value=""; realStatus(); if(fsIgn) fsRun(); else { fsGroup.clearLayers(); fsSync3D(); } };
+  q(".fs-ign-set").onclick=()=>{
+    const m=String(q(".fs-ign-xy").value).match(/-?\d+(?:[.,]\d+)?/g);
+    const lat=m&&m.length>=2?parseFloat(m[0].replace(",",".")):NaN, lng=m&&m.length>=2?parseFloat(m[1].replace(",",".")):NaN;
+    if(!(Math.abs(lat)<=90&&Math.abs(lng)<=180)){ alert("Idatzi lat, lng formatuan (adib. 43.086488, -2.365535)."); return; }
+    fsIgn=L.latLng(lat,lng); fsArmed=false; map.getContainer().style.cursor="";
+    try{ map.setView(fsIgn,Math.max(map.getZoom(),16)); }catch(_){}
+    fsRun();
+  };
   q(".fs-set").onclick=()=>{ fsArmed=true; map.getContainer().style.cursor="crosshair"; $("message").textContent="Sute-simulazioa: egin klik mapan hasiera-puntua markatzeko."; };
   q(".fs-clr").onclick=()=>{ fsGroup.clearLayers(); fsSync3D(); fsIgn=null; fsLast=null; fsBusy++; q(".fs-out").textContent="Sakatu «Markatu hasiera» eta egin klik mapan."; fsPanel.querySelector(".fs-prof-slot").innerHTML=`<div style="font-weight:700;color:#52645a">📈 Hedapenaren, maldaren eta Campbell-en grafikoa</div><div style="font-size:11px;color:#65736b">Hasiera-puntua markatu eta simulazioa kalkulatu ondoren agertuko da.</div>`; };
 }
@@ -3980,6 +4085,7 @@ async function fsRun(){
       }).bindTooltip(`${manual?"Eskuzkoa":"Aurreikusitakoa"} · ${t} min · ${areas[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup);
       fsSync3D();
     }
+    fsDrawReal(rays); fsSync3D();
     perf["Dibujo de perímetros y 3D"]=performance.now()-renderStarted;
   }catch(err){
     if(inventorySampler){
@@ -4028,7 +4134,7 @@ async function fsRun(){
   perf["Tiempo total"]=performance.now()-perfStart;
   const perfRows=Object.entries(perf).map(([name,ms])=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:2px 0;border-bottom:1px solid #e8ece9"><span>${escapeHtml(name)}</span><b>${(ms/1000).toFixed(2)} s</b></div>`).join("");
   const perfHtml=`<details style="margin-top:9px;padding:7px 9px;background:#f5f7f5;border-radius:5px;font-size:11px"><summary style="cursor:pointer;font-weight:700">Diagnóstico de tiempos · ${(perf["Tiempo total"]/1000).toFixed(2)} s</summary><div style="margin-top:6px">${perfRows}</div></details>`;
-  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"eskuzkoa":"aurreikusitakoa"} · hartutako azalera</b>${table}${fsIgnitionNote(rays,met,fu,windSampler)}${fsStallNote(rays,met,fu)}${lidarNote}${windNoteHtml}${fuelNote}${wxTable}${perfHtml}
+  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"eskuzkoa":"aurreikusitakoa"} · hartutako azalera</b>${table}${fsCompareNote()}${fsIgnitionNote(rays,met,fu,windSampler)}${fsStallNote(rays,met,fu)}${lidarNote}${windNoteHtml}${fuelNote}${wxTable}${perfHtml}
     <div style="font-size:10px;color:#65736b;margin-top:8px">${source}. Lau perimetroek 30, 60, 90 eta 120 minutu adierazten dituzte; koloreak eta marra-motak denbora-tarte bakoitza bereizten dute. Aldatu meteorologia-hautatzailea aurreikuspenaren eta eskuzko moduaren artean; eskuzko moduan haizearen, tenperaturaren eta hezetasunaren eremuak erabiltzen dira.</div>
   </div>`);
   fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,b0:null,met,farBg:null,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
