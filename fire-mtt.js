@@ -1,6 +1,8 @@
 /* ============================================================
-   IrratiGIS · fire-mtt.js  (v6)
+   IrratiGIS · fire-mtt.js  (v7)
    Sute-hedapena: Minimum Travel Time (MTT, Finney 2002 estiloa).
+   v7: ERREGAI-MODUA (aukerakoa): gelaxka bakoitzean Rothermel (engine.js) + Gipuzkoako Baso Inbentarioa
+       (erregai-eredua) + erregai finaren hezetasuna. R0/K_SLOPE/KW ez dira erabiltzen modu horretan.
    - Abiadura lokala: elipse bidezko eredua (Anderson 1983 L/B + Richards fokua),
      haizea + malda bektore bakar batean batuta (gelaxka bakoitzean).
    - Lur-eredua: AWS Terrarium (berdin Campbell geruzak).
@@ -85,6 +87,79 @@
     return { Rh, Ec, Hx, Hy, Rmin: CFG.RMIN * R0 };
   }
 
+  /* ---------- ERREGAI-MODUA: Rothermel gelaxka bakoitzean (alferra: bisitatutako gelaxkak soilik) ----------
+     codes: Uint8Array (gelaxka → fuels indizea); fuels: erregai-objektuen taula (0 = ordezkoa);
+     E: IrratiWildfireEngine; moisture: % (erregai fin hila); wind: {fromDeg, speed(km/h, 10 m)} */
+  function makeRothermelFields(elev, W, H, res, wind, moisture, codes, fuels, E) {
+    const n = W * H;
+    const Rh = new Float32Array(n), Ec = new Float32Array(n), Hx = new Float32Array(n), Hy = new Float32Array(n), Rm = new Float32Array(n);
+    const have = new Uint8Array(n);
+    const Z = (x, y) => elev[Math.min(H - 1, Math.max(0, y)) * W + Math.min(W - 1, Math.max(0, x))];
+    function ensure(k) {
+      if (have[k]) return; have[k] = 1;
+      const y = (k / W) | 0, x = k - y * W;
+      const a = Z(x - 1, y - 1), b = Z(x, y - 1), c = Z(x + 1, y - 1),
+            d = Z(x - 1, y),                      f = Z(x + 1, y),
+            g = Z(x - 1, y + 1), h = Z(x, y + 1), i = Z(x + 1, y + 1);
+      const dzdx = ((c + 2 * f + i) - (a + 2 * d + g)) / (8 * res);
+      const dzdy = ((g + 2 * h + i) - (a + 2 * b + c)) / (8 * res);
+      let gx = dzdx, gy = -dzdy;                       // maldan gora: (E, N)
+      let tan = Math.hypot(gx, gy);
+      if (tan > CFG.TAN_MAX) { gx *= CFG.TAN_MAX / tan; gy *= CFG.TAN_MAX / tan; tan = CFG.TAN_MAX; }
+      const asp = ((Math.atan2(-gx, -gy) / RAD) + 360) % 360;   // maldan behera doan norabidea (azimutea)
+      const fuel = fuels[codes[k]] || fuels[0];
+      const bh = E.behavior(fuel, tan, asp, wind.fromDeg, wind.speed, moisture, null);
+      const rh = bh && bh.Rh > 0 ? bh.Rh : 0;
+      Rh[k] = rh; Ec[k] = rh > 0 ? bh.e : 0;
+      const hd = (rh > 0 ? bh.head : 0) * RAD; Hx[k] = Math.sin(hd); Hy[k] = Math.cos(hd);
+      Rm[k] = rh > 0 ? CFG.RMIN * (bh.baseRate || 0) : 0;
+    }
+    return { Rh, Ec, Hx, Hy, RminArr: Rm, ensure, have };
+  }
+  /* Poligonoak (lon/lat, GeoJSON) kodeen sareta batean errasterizatu (even-odd, zuloak barne). toGrid: [lon,lat] → [x,y] sareta-koordenatuak */
+  function fillFeatureCodes(codes, W, H, geom, code, toGrid) {
+    const polys = geom && geom.type === "Polygon" ? [geom.coordinates] : geom && geom.type === "MultiPolygon" ? geom.coordinates : [];
+    for (const poly of polys) {
+      const rings = poly.map(r => r.map(toGrid));
+      let ymin = Infinity, ymax = -Infinity;
+      for (const r of rings) for (const p of r) { if (p[1] < ymin) ymin = p[1]; if (p[1] > ymax) ymax = p[1]; }
+      const y0 = Math.max(0, Math.ceil(ymin)), y1 = Math.min(H - 1, Math.floor(ymax));
+      for (let y = y0; y <= y1; y++) {
+        const xs = [];
+        for (const r of rings) for (let i = 0; i < r.length - 1; i++) {
+          const a = r[i], b = r[i + 1];
+          if ((a[1] > y) !== (b[1] > y)) xs.push(a[0] + (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]));
+        }
+        if (xs.length < 2) continue;
+        xs.sort((p, q) => p - q);
+        for (let k = 0; k + 1 < xs.length; k += 2) {
+          const x0 = Math.max(0, Math.ceil(xs[k])), x1 = Math.min(W - 1, Math.floor(xs[k + 1]));
+          for (let x = x0; x <= x1; x++) codes[y * W + x] = code;
+        }
+      }
+    }
+  }
+  /* Elipse teorikoa Rothermel-ekin (lur laua, erregai bakarra) */
+  function theoreticalEllipseRothermel(lat, lon, wind, fuel, moisture, Tmin, E) {
+    const bh = E.behavior(fuel, 0, 0, wind.fromDeg, wind.speed, moisture, null);
+    if (!(bh && bh.Rh > 0)) return { pts: [], head: 0, Rh: 0, e: 0, lb: 1 };
+    const hd = bh.head * RAD, hx = Math.sin(hd), hy = Math.cos(hd), pts = [];
+    for (let a = 0; a <= 360; a += 5) {
+      const th = a * RAD, r = rateAt(bh.Rh, bh.e, Math.cos(th)) * Tmin;
+      const ux = hx * Math.cos(th) - hy * Math.sin(th), uy = hy * Math.cos(th) + hx * Math.sin(th);
+      pts.push([lon + (r * ux) / (111320 * Math.cos(lat * RAD)), lat + (r * uy) / 111320]);
+    }
+    return { pts, head: bh.Rh * Tmin, Rh: bh.Rh, e: bh.e, lb: bh.LB };
+  }
+  /* Hezetasun-oreka (Simard) → erregai fin hila (%), Suteen bilakaera-ren modu berean (EMC·1.03) */
+  function fineFuelMoisture(T, RH) {
+    const F = T * 9 / 5 + 32; let e;
+    if (RH < 10) e = 0.03229 + 0.281073 * RH - 0.000578 * RH * F;
+    else if (RH < 50) e = 2.22749 + 0.160107 * RH - 0.014784 * F;
+    else e = 21.0606 + 0.005565 * RH * RH - 0.00035 * RH * F - 0.483199 * RH;
+    return Math.min(30, Math.max(2, e)) * 1.03;
+  }
+
   /* ---------- Gutxieneko-denbora bidea (Dijkstra, 32 auzokide) ---------- */
   let NB = [];
   function buildNeighbors(radius) {
@@ -136,7 +211,7 @@
       }
     }
     const { Rh, Ec, Hx, Hy } = F;
-    const Rmin = F.Rmin || 0;
+    const Rmin = F.Rmin || 0, RminArr = F.RminArr || null, ens = F.ensure || null;
     const NBN = NB.length;
     t[src] = 0; push(0, src);
     let visited = 0;
@@ -147,16 +222,19 @@
       if (k > Tmax) break;
       done[i] = 1; visited++;
       const x = i % W, y = (i / W) | 0;
+      if (ens) ens(i);
       const Rhi = Rh[i], Ei = Ec[i], hxi = Hx[i], hyi = Hy[i];
+      if (ens && !(Rhi > 0)) continue;          // erregairik gabe / hezetasuna > itzaltzekoa: ez da hedatzen
       for (let q = 0; q < NBN; q++) {
         const nb = NB[q];
         const nx = x + nb.ox, ny = y + nb.oy;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const j = ny * W + nx;
         if (done[j]) continue;
+        if (ens) { ens(j); if (!(Rh[j] > 0)) continue; }
         const ci = nb.ux * hxi + nb.uy * hyi;
         const cj = nb.ux * Hx[j] + nb.uy * Hy[j];
-        const ri = Math.max(Rmin, rateAt(Rhi, Ei, ci)), rj = Math.max(Rmin, rateAt(Rh[j], Ec[j], cj));
+        const ri = Math.max(RminArr ? RminArr[i] : Rmin, rateAt(Rhi, Ei, ci)), rj = Math.max(RminArr ? RminArr[j] : Rmin, rateAt(Rh[j], Ec[j], cj));
         const dist = nb.d * res;
         const nt = k + 0.5 * dist * (1 / ri + 1 / rj);
         if (nt < t[j]) { t[j] = nt; push(nt, j); }
@@ -328,15 +406,17 @@
 
   // Kalibrazioa R0-rik gabe: R0=1 m/min-ekin kalkulatu (T = R0·T metrotan).
   // combos: [{K, fromDeg, speed}] → {runs (laburpena), sel (onena, t-rekin)}
-  function calibrateSweep(elev, W, H, res, src, mask, combos) {
+  function calibrateSweep(elev, W, H, res, src, mask, combos, opts) {
     const runs = []; let sel = null;
+    const mk = opts && opts.mk, Tlim = opts && opts.Tmax ? opts.Tmax : Infinity;
     for (const cb of combos) {
-      CFG.K_SLOPE = cb.K;
-      const F = buildFields(elev, W, H, res, { fromDeg: cb.fromDeg, speed: cb.speed }, 1);
-      const m = mtt(W, H, F, src, Infinity, res);
+      let F;
+      if (mk) F = mk(cb); else { CFG.K_SLOPE = cb.K; F = buildFields(elev, W, H, res, { fromDeg: cb.fromDeg, speed: cb.speed }, 1); }
+      const m = mtt(W, H, F, src, Tlim, res);
       let Tedge = Infinity;
       for (let x = 0; x < W; x++) Tedge = Math.min(Tedge, m.t[x], m.t[(H - 1) * W + x]);
       for (let y = 0; y < H; y++) Tedge = Math.min(Tedge, m.t[y * W], m.t[y * W + W - 1]);
+      if (!isFinite(Tedge) || Tedge > Tlim) Tedge = Tlim;
       const { curve, R } = calibrationCurve(m.t, mask, Tedge, 720);
       let best = curve[0]; for (const c of curve) if (c.iou > best.iou) best = c;
       const am = curve.find(c => c.A >= R) || null;
@@ -349,7 +429,7 @@
     return { runs, sel };
   }
 
-  const core = { calibrateSweep, rasterizeRing, calibrationCurve, CFG, buildNeighbors, setNeighbors: (r) => { NB = buildNeighbors(r); }, lbRatio, eccentricity, rateAt, buildFields, mtt, contourLoops, polygonAreaPx,
+  const core = { makeRothermelFields, fillFeatureCodes, theoreticalEllipseRothermel, fineFuelMoisture, calibrateSweep, rasterizeRing, calibrationCurve, CFG, buildNeighbors, setNeighbors: (r) => { NB = buildNeighbors(r); }, lbRatio, eccentricity, rateAt, buildFields, mtt, contourLoops, polygonAreaPx,
                  chooseDomain, theoreticalEllipse, lonLatToGlobalPx, globalPxToLonLat, groundRes };
   if (typeof module !== "undefined" && module.exports) { module.exports = core; }
   if (typeof window === "undefined") return;
@@ -371,7 +451,9 @@
     calc: "Kalkulatu", clear: "Garbitu", toTrack: "Perimetroa trackera",
     note: "Eredu sinplifikatua eta kalibratu gabea (malda + haizea, erregai uniformea). Erreferentzia gisa soilik.",
     needPoint: "Lehenik markatu sua hasteko puntua.",
-    wait: "Kalkulatzen…", demLoading: "Lur-eredua kargatzen…",
+    wait: "Kalkulatzen…", demLoading: "Lur-eredua kargatzen…", fuelLoading: "Baso Inbentarioa (erregaiak) kargatzen…",
+    fuelOn: "Erregaia: inbentarioa + Rothermel (hezetasuna)", moist: "Erregai fin hilaren hezetasuna (%)", fb: "Ordezko erregaia (poligonorik gabe)",
+    noteFuel: "Erregai-modua: Baso Inbentarioko estaldura → Anderson eredua (hipotesi-taula) + Rothermel gelaxka bakoitzean; hezetasuna uniformea (euri-historiarik gabe). Lur-eredua: AWS Terrarium (ez LiDAR).",
     adv: "Parametro aurreratuak", ref: "Erreferentzia (GeoJSON)", cal: "Kalibratu (iraupena automatikoa, IoU)", sweep: "K_SLOPE automatikoki aztertu (0–40)", sweepW: "Haizea ere aztertu (±60°, 0–2× abiadura)"
   };
 
@@ -384,12 +466,12 @@
   async function fetchWind(lat, lon) {
     const u = "https://api.open-meteo.com/v1/forecast?" + new URLSearchParams({
       latitude: lat.toFixed(4), longitude: lon.toFixed(4),
-      current: "wind_speed_10m,wind_direction_10m", wind_speed_unit: "kmh", timezone: "auto"
+      current: "wind_speed_10m,wind_direction_10m,temperature_2m,relative_humidity_2m", wind_speed_unit: "kmh", timezone: "auto"
     });
     const r = await fetch(u); if (!r.ok) throw new Error("Open-Meteo " + r.status);
     const j = await r.json(); const c = j.current;
     if (!c) throw new Error("Open-Meteo: datu gabe");
-    return { fromDeg: Number(c.wind_direction_10m), speed: Number(c.wind_speed_10m) };
+    return { fromDeg: Number(c.wind_direction_10m), speed: Number(c.wind_speed_10m), T: Number(c.temperature_2m), RH: Number(c.relative_humidity_2m) };
   }
 
   function loadTile(z, x, y) {
@@ -402,6 +484,7 @@
   }
 
   async function loadDEM(z, gx0, gy0, W, H) {
+    if (typeof window !== "undefined" && typeof window.__fmDemLoader === "function") return window.__fmDemLoader(z, gx0, gy0, W, H);   // probetarako ataka
     const tx0 = Math.floor(gx0 / 256), tx1 = Math.floor((gx0 + W - 1) / 256);
     const ty0 = Math.floor(gy0 / 256), ty1 = Math.floor((gy0 + H - 1) / 256);
     const nx = tx1 - tx0 + 1, ny = ty1 - ty0 + 1;
@@ -424,6 +507,57 @@
     return { elev, missing };
   }
 
+  /* ---------- ERREGAI-MODUA: erregaiak eta motorra (index.html-eko globalak) ---------- */
+  function getEngine() { return (typeof window !== "undefined" && window.IrratiWildfireEngine) || null; }
+  function getFuelApi() {
+    try {
+      if (typeof FS_FUELS === "undefined" || typeof fsCreateInventoryFuelSampler !== "function" || typeof fsFuelFromInventoryProperties !== "function") return null;
+      const size = typeof FS_INV_SIZE !== "undefined" ? FS_INV_SIZE : 1536, zoom = typeof FS_INV_ZOOM !== "undefined" ? FS_INV_ZOOM : 13;
+      return {
+        FUELS: FS_FUELS, NOFUEL: typeof FS_NOFUEL !== "undefined" ? FS_NOFUEL : null,
+        fromProps: fsFuelFromInventoryProperties, create: fsCreateInventoryFuelSampler,
+        coverM: (lat) => 0.46 * size * 78271.517 * Math.cos(lat * RAD) / Math.pow(2, zoom)
+      };
+    } catch (_) { return null; }
+  }
+  async function fetchInventory(api, ll) {
+    const sm = await api.create({ lat: ll.lat, lng: ll.lng });
+    try {
+      await new Promise(r => setTimeout(r, 80));
+      return sm.map.queryRenderedFeatures({ layers: ["forestal-poligonos"] }) || [];
+    } finally {
+      try { sm.map.remove(); } catch (_) {}
+      try { sm.container.remove(); } catch (_) {}
+    }
+  }
+  async function buildFuelGrid(api, ll, dom, gx0, gy0, W, H, fbKey) {
+    const fb = api.FUELS[fbKey] || api.FUELS.fm5;
+    const fuels = [fb], keys = ["ordezkoa " + fbKey], idx = new Map();
+    const codes = new Uint8Array(W * H);
+    const feats = await fetchInventory(api, ll);
+    const memo = new Map(); let mapped = 0;
+    const toGrid = (p) => { const g = lonLatToGlobalPx(p[0], p[1], dom.z); return [g[0] - gx0 - 0.5, g[1] - gy0 - 0.5]; };
+    for (const f of feats) {
+      const p = f.properties || {};
+      const mk = [p.TIPES_es, p.TIPES, p.tipo, p.TYPE, p.SP1_es, p.SP1, p.SP2_es, p.SP2, p.SP3_es, p.SP3].join("|");
+      let key = memo.get(mk); if (key === undefined) { key = api.fromProps(p); memo.set(mk, key); }
+      if (!key) continue;
+      const fuel = key === "nb" ? api.NOFUEL : api.FUELS[key]; if (!fuel) continue;
+      let c = idx.get(key); if (c === undefined) { c = fuels.length; fuels.push(fuel); keys.push(key); idx.set(key, c); }
+      mapped++;
+      fillFeatureCodes(codes, W, H, f.geometry, c, toGrid);
+    }
+    let inDom = 0, fbCells = 0; const R = dom.Rpx, cx = R, cy = R;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if ((x - cx) * (x - cx) + (y - cy) * (y - cy) > R * R) continue;
+      inDom++; if (codes[y * W + x] === 0) fbCells++;
+    }
+    const info = feats.length
+      ? `Inbentarioa: ${feats.length} poligono (${mapped} erregai-ereduarekin) · ordezko erregaia (${fbKey}) eremuaren %${Math.round(100 * fbCells / Math.max(1, inDom))}an (poligonorik gabe edo sailkatu gabe)`
+      : "⚠️ Ez da inbentario-poligonorik lortu: eremu osoa ordezko erregaiarekin (" + fbKey + ")";
+    return { codes, fuels, keys, info };
+  }
+
   function clearResult() {
     if (layer) { layer.clearLayers(); }
     lastRing = null;
@@ -442,6 +576,11 @@
     const Tmin = Math.max(1, num("fmDur", 60));
     const R0 = Math.max(0.05, num("fmR0", 2));
     const calib = !!(ref && $("fmCal").checked);
+    const fuelOn = !!($("fmFuelOn") && $("fmFuelOn").checked);
+    const moisture = Math.max(1, num("fmMoist", 8));
+    const fbKey = ($("fmFb") && $("fmFb").value) || "fm5";
+    const api = fuelOn ? getFuelApi() : null, EN = fuelOn ? getEngine() : null;
+    if (fuelOn && (!api || !EN)) { setMsg("⚠️ Erregai-modua ez dago erabilgarri (Baso Inbentarioa edo Rothermel motorra falta dira). Desmarkatu «Erregaia» aukera."); return; }
     clearResult();
     $("fmRun").disabled = true; setMsg(S.demLoading);
     try {
@@ -451,25 +590,34 @@
         ref.ring.forEach(p => { RdomMin = Math.max(RdomMin, Math.hypot((p[0] - ll.lng) * kx, (p[1] - ll.lat) * ky)); });
         RdomMin = RdomMin * 1.3 + 150;
       }
-      const dom = chooseDomain(ll.lat, calib ? 0 : Tmin, R0, wind.speed, RdomMin);
+      let dom;
+      if (fuelOn) dom = chooseDomain(ll.lat, 0, R0, wind.speed, Math.min(api.coverM(ll.lat), Math.max(RdomMin, 500, 45 * Tmin)));
+      else dom = chooseDomain(ll.lat, calib ? 0 : Tmin, R0, wind.speed, RdomMin);
       const [gxS, gyS] = lonLatToGlobalPx(ll.lng, ll.lat, dom.z);
       const sx = Math.round(gxS), sy = Math.round(gyS);
       const W = 2 * dom.Rpx + 1, H = W;
       const gx0 = sx - dom.Rpx, gy0 = sy - dom.Rpx;
       const { elev, missing } = await loadDEM(dom.z, gx0, gy0, W, H);
+      let codes = null, fuels = null, fuelKeys = null, fuelInfo = "";
+      if (fuelOn) {
+        setMsg(S.fuelLoading);
+        const fg = await buildFuelGrid(api, ll, dom, gx0, gy0, W, H, fbKey);
+        codes = fg.codes; fuels = fg.fuels; fuelKeys = fg.keys; fuelInfo = fg.info;
+      }
       setMsg(S.wait);
       await new Promise(r => setTimeout(r, 30));
       const t0 = performance.now();
       const src = dom.Rpx * W + dom.Rpx;
       const cellHa = dom.res * dom.res / 1e4;
-      let t, visited, Tshow = Tmin, calTxt = "";
+      let t, visited, Tshow = Tmin, calTxt = "", warnTxt = "";
       if (calib) {
         const ringG = ref.ring.map(p => { const g = lonLatToGlobalPx(p[0], p[1], dom.z); return [g[0] - gx0 - 0.5, g[1] - gy0 - 0.5]; });
         const mask = rasterizeRing(ringG, W, H);
-        const sweepK = $("fmSweep").checked, sweepW = $("fmSweepW").checked;
+        const sweepK = !fuelOn && $("fmSweep").checked, sweepW = $("fmSweepW").checked;
+        const calOpts = fuelOn ? { mk: (cb) => makeRothermelFields(elev, W, H, dom.res, { fromDeg: cb.fromDeg, speed: cb.speed }, moisture, codes, fuels, EN), Tmax: Math.max(4 * Tmin, 120) } : undefined;
         const Ks = sweepK ? [0, 5, 10, 15, 20, 30, 40] : [CFG.K_SLOPE];
         const w0 = { fromDeg: wind.fromDeg, speed: wind.speed };
-        const r1 = calibrateSweep(elev, W, H, dom.res, src, mask, Ks.map(K => ({ K, fromDeg: w0.fromDeg, speed: w0.speed })));
+        const r1 = calibrateSweep(elev, W, H, dom.res, src, mask, Ks.map(K => ({ K, fromDeg: w0.fromDeg, speed: w0.speed })), calOpts);
         let sel = r1.sel; const kRuns = r1.runs; let wRuns = [];
         if (sweepW) {
           const wc = [];
@@ -477,18 +625,18 @@
             if (mult === 0 && off !== 0) continue;
             wc.push({ K: sel.K, fromDeg: (w0.fromDeg + off + 360) % 360, speed: w0.speed * mult });
           }
-          const r2 = calibrateSweep(elev, W, H, dom.res, src, mask, wc);
+          const r2 = calibrateSweep(elev, W, H, dom.res, src, mask, wc, calOpts);
           wRuns = r2.runs; if (r2.sel.best.iou > sel.best.iou) sel = r2.sel;
         }
         CFG.K_SLOPE = sel.K; wind.fromDeg = sel.fromDeg; wind.speed = sel.speed;
         if (sweepK) $("fmKs").value = sel.K;
         if (sweepW) { $("fmWdir").value = Math.round(sel.fromDeg); $("fmWspd").value = Math.round(sel.speed * 10) / 10; }
         t = sel.t; visited = sel.visited; Tshow = Math.max(1, sel.best.T);
-        const tMin = (m) => Math.round(m / R0);
+        const tMin = (m) => Math.round(m / (fuelOn ? 1 : R0));
         calTxt = `<br>Erreferentzia: <strong>${(sel.R * cellHa).toFixed(1)} ha</strong>` +
-          `<br>IoU onena: <strong>${sel.best.iou.toFixed(2)}</strong> · R0·T = ${Math.round(sel.best.T)} m (R0=${R0} → T = ${tMin(sel.best.T)} min) · eredua ${(sel.best.A * cellHa).toFixed(1)} ha` +
+          `<br>IoU onena: <strong>${sel.best.iou.toFixed(2)}</strong> · ${fuelOn ? "T = " + Math.round(sel.best.T) + " min" : "R0·T = " + Math.round(sel.best.T) + " m (R0=" + R0 + " → T = " + tMin(sel.best.T) + " min)"} · eredua ${(sel.best.A * cellHa).toFixed(1)} ha` +
           `<br>Errealaren %${Math.round(100 * sel.best.I / sel.R)} estalita · modeloaren %${Math.round(100 * (1 - sel.best.I / sel.best.A))} kanpoan` +
-          `<br>Azalera berdina: ${sel.am ? "R0·T = " + Math.round(sel.am.T) + " m (T = " + tMin(sel.am.T) + " min) · IoU " + sel.am.iou.toFixed(2) + " · estalita %" + Math.round(100 * sel.am.I / sel.R) : "— ez da lortu domeinuan"}` +
+          `<br>Azalera berdina: ${sel.am ? (fuelOn ? "T = " + Math.round(sel.am.T) + " min" : "R0·T = " + Math.round(sel.am.T) + " m (T = " + tMin(sel.am.T) + " min)") + " · IoU " + sel.am.iou.toFixed(2) + " · estalita %" + Math.round(100 * sel.am.I / sel.R) : "— ez da lortu domeinuan"}` +
           (sel.best.T >= sel.Tcap * 0.98 ? "<br>⚠️ IoU gehienezkoa domeinuaren ertzean: emaitza mugatua" : "");
         if (sweepK) calTxt += "<br>K_SLOPE: " + kRuns.map(r => r.K + "→" + r.best.iou.toFixed(2)).join(" · ");
         if (sweepW) {
@@ -499,12 +647,14 @@
         }
         calTxt += `<br>Hautatua: K_SLOPE = ${sel.K} · haizea ${Math.round(sel.fromDeg)}° · ${sel.speed.toFixed(1)} km/h`;
         const r0imp = sel.best.T / Tmin;
-        calTxt += `<br>Hedapen aktiboa ${Math.round(Tmin)} min bada → R0 ≈ <strong>${r0imp.toFixed(1)} m/min</strong>` +
+        if (fuelOn) calTxt += `<br>Erregai-moduan «Iraupena» = ${Math.round(Tmin)} min jarri duzu; eredu fisikoak <strong>${Math.round(sel.best.T)} min</strong> behar ditu IoU onenerako (×${r0imp.toFixed(1)}). ×1 inguruan bada, denbora eta abiadura koherenteak dira.`;
+        else calTxt += `<br>Hedapen aktiboa ${Math.round(Tmin)} min bada → R0 ≈ <strong>${r0imp.toFixed(1)} m/min</strong>` +
           (r0imp > 30 || r0imp < 0.3 ? " ⚠️ fisikoki ez dirudi («Iraupena» = hedapen aktiboaren denbora, ez itzaltzeraino)" : "");
       } else {
-        const F = buildFields(elev, W, H, dom.res, wind, R0);
+        const F = fuelOn ? makeRothermelFields(elev, W, H, dom.res, wind, moisture, codes, fuels, EN) : buildFields(elev, W, H, dom.res, wind, R0);
         const m = mtt(W, H, F, src, Tmin, dom.res);
         t = m.t; visited = m.visited;
+        if (fuelOn) { F.ensure(src); if (!(F.Rh[src] > 0)) warnTxt = "<br>⚠️ Abiapuntuan ez dago hedapenik: erregairik gabeko erabilera edo hezetasuna ≥ itzaltze-hezetasuna."; }
       }
 
       // ---- marrazketa ----
@@ -539,18 +689,28 @@
           }
         }
       });
+      let fuelTxt = "";
+      if (fuelOn) {
+        const cnt = new Map(); let tot = 0;
+        for (let i = 0; i < t.length; i++) if (t[i] <= Tshow) { const c = codes[i]; cnt.set(c, (cnt.get(c) || 0) + 1); tot++; }
+        const parts = [...cnt.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([c, n]) => fuelKeys[c] + " %" + Math.round(100 * n / Math.max(1, tot)));
+        const stalled = fuelKeys.map((k, c) => ({ k, f: fuels[c] })).filter(o => o.k !== "nb" && o.f && o.f.Mx > 0 && moisture >= o.f.Mx * 100).map(o => o.k);
+        fuelTxt = `<br>Erregaiak (erretako eremuan): ${parts.join(" · ") || "—"} · hezetasuna %${moisture}` +
+          (stalled.length ? `<br>⚠️ Hezetasuna ≥ itzaltze-hezetasuna: ${stalled.join(", ")} (erregai horietan ez da hedatzen)` : "") +
+          `<br><span style="color:#65736b">${fuelInfo}</span>`;
+      }
       let ellTxt = "";
       if ($("fmEll").checked) {
-        const te = theoreticalEllipse(ll.lat, ll.lng, wind, calib ? 1 : R0, Tshow);
+        const te = fuelOn ? theoreticalEllipseRothermel(ll.lat, ll.lng, wind, fuels[codes[src]] || fuels[0], moisture, Tshow, EN) : theoreticalEllipse(ll.lat, ll.lng, wind, calib ? 1 : R0, Tshow);
         L.polyline(te.pts.map(p => [p[1], p[0]]), { color: "#1565c0", weight: 2, dashArray: "6 6", interactive: false }).addTo(layer);
-        ellTxt = `<br>Elipse teorikoa: aurrealdea ${Math.round(te.head)} m (L/B ${lbRatio(wind.speed * CFG.MIDFLAME).toFixed(2)})`;
+        ellTxt = `<br>Elipse teorikoa: aurrealdea ${Math.round(te.head)} m (L/B ${(fuelOn ? te.lb : lbRatio(wind.speed * CFG.MIDFLAME)).toFixed(2)})`;
       }
       lastRing = finalRing;
       $("fmToTrack").disabled = !finalRing;
       const ms = Math.round(performance.now() - t0);
       setMsg(`<strong>${areaHa.toFixed(2)} ha</strong> · perimetroa ${perimKm.toFixed(2)} km · aurrealdea ${Math.round(maxD)} m` +
-        (calib ? ` (R0·T = ${Math.round(Tshow)} m)` : "") + ellTxt + calTxt +
-        `<br><span style="color:#65736b">${visited.toLocaleString()} gelaxka · ${dom.res.toFixed(0)} m · ${ms} ms` +
+        (calib ? (fuelOn ? ` (T = ${Math.round(Tshow)} min)` : ` (R0·T = ${Math.round(Tshow)} m)`) : "") + ellTxt + fuelTxt + warnTxt + calTxt +
+        `<br><span style="color:#65736b">${visited.toLocaleString()} gelaxka · ${dom.res.toFixed(0)} m · AWS Terrarium z${dom.z} · ${ms} ms` +
         (dom.clipped ? " · ⚠️ eremua mugatu da" : "") + (missing ? " · ⚠️ " + missing + " lauza falta" : "") + "</span>");
       try {
         const bnds = layer.getBounds(); if (refLayer) bnds.extend(refLayer.getBounds());
@@ -627,6 +787,10 @@
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">' +
       '<div><label style="' + lab + '">' + S.dur + '</label><input id="fmDur" type="number" min="1" step="10" value="60" style="' + inp + '"></div>' +
       '<div><label style="' + lab + '">' + S.r0 + '</label><input id="fmR0" type="number" min="0.1" step="0.5" value="2" style="' + inp + '"></div></div>' +
+      '<label style="display:flex;gap:6px;align-items:center;margin:9px 0 0;font-size:12px;font-weight:700"><input id="fmFuelOn" type="checkbox" checked> ' + S.fuelOn + '</label>' +
+      '<div id="fmFuelRow" style="display:grid;grid-template-columns:1fr 1fr;gap:6px">' +
+      '<div><label style="' + lab + '">' + S.moist + '</label><input id="fmMoist" type="number" min="1" max="40" step="0.5" value="8" style="' + inp + '"></div>' +
+      '<div><label style="' + lab + '">' + S.fb + '</label><select id="fmFb" style="' + inp + '">' + ["fm1","fm2","fm3","fm5","fm6","fm8","fm9"].map(k => '<option value="' + k + '"' + (k === "fm5" ? " selected" : "") + '>' + k + '</option>').join("") + '</select></div></div>' +
       '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;font-weight:800;color:#65736b">' + S.adv + '</summary>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">' +
       '<div><label style="' + lab + '">K_SLOPE (km/h · tanφ)</label><input id="fmKs" type="number" min="0" step="1" value="20" style="' + inp + '"></div>' +
@@ -644,7 +808,7 @@
       '<button type="button" id="fmClear" style="' + bt + '">' + S.clear + '</button>' +
       '<button type="button" id="fmToTrack" disabled style="' + bt + ';flex-basis:100%">' + S.toTrack + '</button></div>' +
       '<div id="fmMsg" style="margin-top:9px;padding:8px;border-radius:8px;background:#f7faf8;border:1px solid #e2e8e4;font-size:12px;overflow-wrap:anywhere">—</div>' +
-      '<div style="margin-top:7px;font-size:10.5px;color:#65736b">' + S.note + '</div>';
+      '<div style="margin-top:7px;font-size:10.5px;color:#65736b">' + S.note + '<br>' + S.noteFuel + '</div>';
     mapEl.appendChild(panel);
     L.DomEvent.disableClickPropagation(panel);
     L.DomEvent.disableScrollPropagation(panel);
@@ -655,9 +819,21 @@
     $("fmAuto").onclick = async () => {
       const c = marker ? marker.getLatLng() : map.getCenter();
       setMsg("Open-Meteo…");
-      try { const w = await fetchWind(c.lat, c.lng); $("fmWdir").value = Math.round(w.fromDeg); $("fmWspd").value = Math.round(w.speed); setMsg("💨 " + Math.round(w.fromDeg) + "° · " + Math.round(w.speed) + " km/h (Open-Meteo)"); }
+      try {
+        const w = await fetchWind(c.lat, c.lng); $("fmWdir").value = Math.round(w.fromDeg); $("fmWspd").value = Math.round(w.speed);
+        let extra = "";
+        if (isFinite(w.T) && isFinite(w.RH)) { const mo = fineFuelMoisture(w.T, w.RH); $("fmMoist").value = (Math.round(mo * 10) / 10); extra = " · " + Math.round(w.T) + " °C, HR %" + Math.round(w.RH) + " → erregai fin hila ≈ %" + (Math.round(mo * 10) / 10) + " (euri-historiarik gabe)"; }
+        setMsg("💨 " + Math.round(w.fromDeg) + "° · " + Math.round(w.speed) + " km/h (Open-Meteo)" + extra);
+      }
       catch (e) { setMsg("⚠️ " + e.message); }
     };
+    const syncFuelUI = () => {
+      const on = $("fmFuelOn").checked;
+      ["fmR0", "fmKs", "fmKw", "fmSweep"].forEach(id => { const el = $(id); if (el) el.disabled = on; });
+      $("fmFuelRow").style.opacity = on ? "1" : "0.45";
+      ["fmMoist", "fmFb"].forEach(id => { $(id).disabled = !on; });
+    };
+    $("fmFuelOn").onchange = syncFuelUI; syncFuelUI();
     $("fmRef").onclick = () => $("fmRefFile").click();
     $("fmRefFile").onchange = (e) => {
       const f = e.target.files && e.target.files[0]; if (!f) return;
@@ -691,6 +867,6 @@
       }, 200);
     });
   }
-  async function init() { await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v6)."); }
+  async function init() { await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v7)."); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
