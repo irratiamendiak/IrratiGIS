@@ -1,5 +1,5 @@
 /* ============================================================
-   IrratiGIS · fire-mtt.js  (v2)
+   IrratiGIS · fire-mtt.js  (v3)
    Sute-hedapena: Minimum Travel Time (MTT, Finney 2002 estiloa).
    - Abiadura lokala: elipse bidezko eredua (Anderson 1983 L/B + Richards fokua),
      haizea + malda bektore bakar batean batuta (gelaxka bakoitzean).
@@ -324,7 +324,25 @@
     return { curve, R };
   }
 
-  const core = { rasterizeRing, calibrationCurve, CFG, buildNeighbors, setNeighbors: (r) => { NB = buildNeighbors(r); }, lbRatio, eccentricity, rateAt, buildFields, mtt, contourLoops, polygonAreaPx,
+  // Kalibrazioa R0-rik gabe: R0=1 m/min-ekin kalkulatu (T = R0·T metrotan). K bakoitzeko IoU kurba.
+  function calibrateSweep(elev, W, H, res, wind, src, mask, Ks) {
+    const runs = [];
+    for (const K of Ks) {
+      CFG.K_SLOPE = K;
+      const F = buildFields(elev, W, H, res, wind, 1);
+      const m = mtt(W, H, F, src, Infinity, res);
+      let Tedge = Infinity;
+      for (let x = 0; x < W; x++) Tedge = Math.min(Tedge, m.t[x], m.t[(H - 1) * W + x]);
+      for (let y = 0; y < H; y++) Tedge = Math.min(Tedge, m.t[y * W], m.t[y * W + W - 1]);
+      const { curve, R } = calibrationCurve(m.t, mask, Tedge, 720);
+      let best = curve[0]; for (const c of curve) if (c.iou > best.iou) best = c;
+      const am = curve.find(c => c.A >= R) || null;
+      runs.push({ K, t: m.t, visited: m.visited, Tcap: Tedge, best, am, R });
+    }
+    return runs;
+  }
+
+  const core = { calibrateSweep, rasterizeRing, calibrationCurve, CFG, buildNeighbors, setNeighbors: (r) => { NB = buildNeighbors(r); }, lbRatio, eccentricity, rateAt, buildFields, mtt, contourLoops, polygonAreaPx,
                  chooseDomain, theoreticalEllipse, lonLatToGlobalPx, globalPxToLonLat, groundRes };
   if (typeof module !== "undefined" && module.exports) { module.exports = core; }
   if (typeof window === "undefined") return;
@@ -347,7 +365,7 @@
     note: "Eredu sinplifikatua eta kalibratu gabea (malda + haizea, erregai uniformea). Erreferentzia gisa soilik.",
     needPoint: "Lehenik markatu sua hasteko puntua.",
     wait: "Kalkulatzen…", demLoading: "Lur-eredua kargatzen…",
-    adv: "Parametro aurreratuak", ref: "Erreferentzia (GeoJSON)", cal: "Kalibratu (iraupena automatikoa, IoU)"
+    adv: "Parametro aurreratuak", ref: "Erreferentzia (GeoJSON)", cal: "Kalibratu (iraupena automatikoa, IoU)", sweep: "K_SLOPE automatikoki aztertu (0–40)"
   };
 
   let map = null, panel = null, btn = null, marker = null, picking = false;
@@ -434,29 +452,27 @@
       setMsg(S.wait);
       await new Promise(r => setTimeout(r, 30));
       const t0 = performance.now();
-      const F = buildFields(elev, W, H, dom.res, wind, R0);
       const src = dom.Rpx * W + dom.Rpx;
-      const Tsearch = calib ? 1440 : Tmin;
-      const { t, visited } = mtt(W, H, F, src, Tsearch, dom.res);
-
-      // ---- kalibrazioa ----
-      let Tshow = Tmin, calTxt = "";
+      const cellHa = dom.res * dom.res / 1e4;
+      let t, visited, Tshow = Tmin, calTxt = "";
       if (calib) {
         const ringG = ref.ring.map(p => { const g = lonLatToGlobalPx(p[0], p[1], dom.z); return [g[0] - gx0 - 0.5, g[1] - gy0 - 0.5]; });
         const mask = rasterizeRing(ringG, W, H);
-        let Tedge = Infinity;
-        for (let x = 0; x < W; x++) Tedge = Math.min(Tedge, t[x], t[(H - 1) * W + x]);
-        for (let y = 0; y < H; y++) Tedge = Math.min(Tedge, t[y * W], t[y * W + W - 1]);
-        const Tcap = Math.min(Tsearch, isFinite(Tedge) ? Tedge : Tsearch);
-        const { curve, R } = calibrationCurve(t, mask, Tcap, 720);
-        let best = curve[0]; for (const c of curve) if (c.iou > best.iou) best = c;
-        const am = curve.find(c => c.A >= R) || null;
-        const cellHa = dom.res * dom.res / 1e4;
-        Tshow = Math.max(1, best.T);
-        calTxt = `<br>Erreferentzia: <strong>${(R * cellHa).toFixed(1)} ha</strong>` +
-          `<br>IoU onena: <strong>${best.iou.toFixed(2)}</strong> · T = ${Math.round(best.T)} min · eredua ${(best.A * cellHa).toFixed(1)} ha · R0·T ≈ ${Math.round(R0 * best.T)} m` +
-          `<br>Azalera berdina: ${am ? "T = " + Math.round(am.T) + " min · IoU " + am.iou.toFixed(2) : "—  ⚠️ ez da lortu (T<" + Math.round(Tcap) + " min)"}` +
-          (best.T >= Tcap - 1 ? "<br>⚠️ sua domeinuaren ertzera iritsi da: emaitza mugatua" : "");
+        const sweep = $("fmSweep").checked;
+        const runs = calibrateSweep(elev, W, H, dom.res, wind, src, mask, sweep ? [0, 5, 10, 15, 20, 30, 40] : [CFG.K_SLOPE]);
+        const sel = runs.reduce((a, b) => b.best.iou > a.best.iou ? b : a);
+        CFG.K_SLOPE = sel.K; if (sweep) $("fmKs").value = sel.K;
+        t = sel.t; visited = sel.visited; Tshow = Math.max(1, sel.best.T);
+        const tMin = (m) => Math.round(m / R0);
+        calTxt = `<br>Erreferentzia: <strong>${(sel.R * cellHa).toFixed(1)} ha</strong>` +
+          `<br>IoU onena: <strong>${sel.best.iou.toFixed(2)}</strong> · R0·T = ${Math.round(sel.best.T)} m (R0=${R0} → T = ${tMin(sel.best.T)} min) · eredua ${(sel.best.A * cellHa).toFixed(1)} ha` +
+          `<br>Azalera berdina: ${sel.am ? "R0·T = " + Math.round(sel.am.T) + " m (T = " + tMin(sel.am.T) + " min) · IoU " + sel.am.iou.toFixed(2) : "— ez da lortu domeinuan"}` +
+          (sel.best.T >= sel.Tcap * 0.98 ? "<br>⚠️ IoU gehienezkoa domeinuaren ertzean: emaitza mugatua" : "");
+        if (sweep) calTxt += "<br>K_SLOPE: " + runs.map(r => r.K + "→" + r.best.iou.toFixed(2)).join(" · ") + `<br>Hautatua: K_SLOPE = ${sel.K}`;
+      } else {
+        const F = buildFields(elev, W, H, dom.res, wind, R0);
+        const m = mtt(W, H, F, src, Tmin, dom.res);
+        t = m.t; visited = m.visited;
       }
 
       // ---- marrazketa ----
@@ -493,7 +509,7 @@
       });
       let ellTxt = "";
       if ($("fmEll").checked) {
-        const te = theoreticalEllipse(ll.lat, ll.lng, wind, R0, Tshow);
+        const te = theoreticalEllipse(ll.lat, ll.lng, wind, calib ? 1 : R0, Tshow);
         L.polyline(te.pts.map(p => [p[1], p[0]]), { color: "#1565c0", weight: 2, dashArray: "6 6", interactive: false }).addTo(layer);
         ellTxt = `<br>Elipse teorikoa: aurrealdea ${Math.round(te.head)} m (L/B ${lbRatio(wind.speed * CFG.MIDFLAME).toFixed(2)})`;
       }
@@ -501,7 +517,7 @@
       $("fmToTrack").disabled = !finalRing;
       const ms = Math.round(performance.now() - t0);
       setMsg(`<strong>${areaHa.toFixed(2)} ha</strong> · perimetroa ${perimKm.toFixed(2)} km · aurrealdea ${Math.round(maxD)} m` +
-        (calib ? ` (T = ${Math.round(Tshow)} min)` : "") + ellTxt + calTxt +
+        (calib ? ` (R0·T = ${Math.round(Tshow)} m)` : "") + ellTxt + calTxt +
         `<br><span style="color:#65736b">${visited.toLocaleString()} gelaxka · ${dom.res.toFixed(0)} m · ${ms} ms` +
         (dom.clipped ? " · ⚠️ eremua mugatu da" : "") + (missing ? " · ⚠️ " + missing + " lauza falta" : "") + "</span>");
       try {
@@ -588,6 +604,7 @@
       '<button type="button" id="fmRef" style="' + bt + '">' + S.ref + '</button>' +
       '<input id="fmRefFile" type="file" accept=".geojson,.json,application/json" style="display:none"></div>' +
       '<label style="display:flex;gap:6px;align-items:center;margin:7px 0 0;font-size:12px"><input id="fmCal" type="checkbox" disabled> ' + S.cal + '</label>' +
+      '<label style="display:flex;gap:6px;align-items:center;margin:5px 0 0;font-size:12px"><input id="fmSweep" type="checkbox" checked> ' + S.sweep + '</label>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">' +
       '<button type="button" id="fmRun" style="' + bt + ';background:#176b43;color:#fff">' + S.calc + '</button>' +
       '<button type="button" id="fmClear" style="' + bt + '">' + S.clear + '</button>' +
@@ -640,6 +657,6 @@
       }, 200);
     });
   }
-  async function init() { await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v2)."); }
+  async function init() { await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v3)."); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
