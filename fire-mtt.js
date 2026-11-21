@@ -1,5 +1,5 @@
 /* ============================================================
-   IrratiGIS · fire-mtt.js  (v5)
+   IrratiGIS · fire-mtt.js  (v6)
    Sute-hedapena: Minimum Travel Time (MTT, Finney 2002 estiloa).
    - Abiadura lokala: elipse bidezko eredua (Anderson 1983 L/B + Richards fokua),
      haizea + malda bektore bakar batean batuta (gelaxka bakoitzean).
@@ -451,7 +451,7 @@
         ref.ring.forEach(p => { RdomMin = Math.max(RdomMin, Math.hypot((p[0] - ll.lng) * kx, (p[1] - ll.lat) * ky)); });
         RdomMin = RdomMin * 1.3 + 150;
       }
-      const dom = chooseDomain(ll.lat, Tmin, R0, wind.speed, RdomMin);
+      const dom = chooseDomain(ll.lat, calib ? 0 : Tmin, R0, wind.speed, RdomMin);
       const [gxS, gyS] = lonLatToGlobalPx(ll.lng, ll.lat, dom.z);
       const sx = Math.round(gxS), sy = Math.round(gyS);
       const W = 2 * dom.Rpx + 1, H = W;
@@ -487,7 +487,8 @@
         const tMin = (m) => Math.round(m / R0);
         calTxt = `<br>Erreferentzia: <strong>${(sel.R * cellHa).toFixed(1)} ha</strong>` +
           `<br>IoU onena: <strong>${sel.best.iou.toFixed(2)}</strong> · R0·T = ${Math.round(sel.best.T)} m (R0=${R0} → T = ${tMin(sel.best.T)} min) · eredua ${(sel.best.A * cellHa).toFixed(1)} ha` +
-          `<br>Azalera berdina: ${sel.am ? "R0·T = " + Math.round(sel.am.T) + " m (T = " + tMin(sel.am.T) + " min) · IoU " + sel.am.iou.toFixed(2) : "— ez da lortu domeinuan"}` +
+          `<br>Errealaren %${Math.round(100 * sel.best.I / sel.R)} estalita · modeloaren %${Math.round(100 * (1 - sel.best.I / sel.best.A))} kanpoan` +
+          `<br>Azalera berdina: ${sel.am ? "R0·T = " + Math.round(sel.am.T) + " m (T = " + tMin(sel.am.T) + " min) · IoU " + sel.am.iou.toFixed(2) + " · estalita %" + Math.round(100 * sel.am.I / sel.R) : "— ez da lortu domeinuan"}` +
           (sel.best.T >= sel.Tcap * 0.98 ? "<br>⚠️ IoU gehienezkoa domeinuaren ertzean: emaitza mugatua" : "");
         if (sweepK) calTxt += "<br>K_SLOPE: " + kRuns.map(r => r.K + "→" + r.best.iou.toFixed(2)).join(" · ");
         if (sweepW) {
@@ -498,8 +499,8 @@
         }
         calTxt += `<br>Hautatua: K_SLOPE = ${sel.K} · haizea ${Math.round(sel.fromDeg)}° · ${sel.speed.toFixed(1)} km/h`;
         const r0imp = sel.best.T / Tmin;
-        calTxt += `<br>Iraupena ${Math.round(Tmin)} min bada → R0 ≈ <strong>${r0imp.toFixed(1)} m/min</strong>` +
-          (r0imp > 30 || r0imp < 0.3 ? " ⚠️ fisikoki ez dirudi (zehaztu «Iraupena» benetako denborarekin)" : "");
+        calTxt += `<br>Hedapen aktiboa ${Math.round(Tmin)} min bada → R0 ≈ <strong>${r0imp.toFixed(1)} m/min</strong>` +
+          (r0imp > 30 || r0imp < 0.3 ? " ⚠️ fisikoki ez dirudi («Iraupena» = hedapen aktiboaren denbora, ez itzaltzeraino)" : "");
       } else {
         const F = buildFields(elev, W, H, dom.res, wind, R0);
         const m = mtt(W, H, F, src, Tmin, dom.res);
@@ -690,6 +691,6 @@
       }, 200);
     });
   }
-  async function init() { await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v5)."); }
+  async function init() { await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v6)."); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
