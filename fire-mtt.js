@@ -1,5 +1,5 @@
 /* ============================================================
-   IrratiGIS · fire-mtt.js  (v4)
+   IrratiGIS · fire-mtt.js  (v5)
    Sute-hedapena: Minimum Travel Time (MTT, Finney 2002 estiloa).
    - Abiadura lokala: elipse bidezko eredua (Anderson 1983 L/B + Richards fokua),
      haizea + malda bektore bakar batean batuta (gelaxka bakoitzean).
@@ -21,7 +21,8 @@
     MAX_RADIUS_M: 12500,  // kalkulu-eremuaren gehienezko erradioa
     MAX_SIDE: 900,        // gelaxka kopurua alde bakoitzean (gehienez)
     ZOOMS: [14, 13, 12],  // Terrarium zoom-ak (fin → lodi)
-    NB_RADIUS: 3          // auzokideen erradioa (3 → 32 norabide, 2 → 16)
+    NB_RADIUS: 3,         // auzokideen erradioa (3 → 32 norabide, 2 → 16)
+    RMIN: 0.2             // abiadura minimoa norabide guztietan, R0-ren frakzio gisa (atzera/maldan behera)
   };
 
   const RAD = Math.PI / 180;
@@ -81,7 +82,7 @@
         if (U > 1e-6) { Hx[k] = ex / U; Hy[k] = ey / U; } else { Hx[k] = 0; Hy[k] = 1; }
       }
     }
-    return { Rh, Ec, Hx, Hy };
+    return { Rh, Ec, Hx, Hy, Rmin: CFG.RMIN * R0 };
   }
 
   /* ---------- Gutxieneko-denbora bidea (Dijkstra, 32 auzokide) ---------- */
@@ -135,6 +136,7 @@
       }
     }
     const { Rh, Ec, Hx, Hy } = F;
+    const Rmin = F.Rmin || 0;
     const NBN = NB.length;
     t[src] = 0; push(0, src);
     let visited = 0;
@@ -154,7 +156,7 @@
         if (done[j]) continue;
         const ci = nb.ux * hxi + nb.uy * hyi;
         const cj = nb.ux * Hx[j] + nb.uy * Hy[j];
-        const ri = rateAt(Rhi, Ei, ci), rj = rateAt(Rh[j], Ec[j], cj);
+        const ri = Math.max(Rmin, rateAt(Rhi, Ei, ci)), rj = Math.max(Rmin, rateAt(Rh[j], Ec[j], cj));
         const dist = nb.d * res;
         const nt = k + 0.5 * dist * (1 / ri + 1 / rj);
         if (nt < t[j]) { t[j] = nt; push(nt, j); }
@@ -435,6 +437,7 @@
     const ll = marker.getLatLng();
     CFG.K_SLOPE = Math.max(0, num("fmKs", 20));
     CFG.KW = Math.max(0, num("fmKw", 0.12));
+    CFG.RMIN = Math.min(1, Math.max(0, num("fmRmin", 0.2)));
     const wind = { fromDeg: ((num("fmWdir", 180) % 360) + 360) % 360, speed: Math.max(0, num("fmWspd", 10)) };
     const Tmin = Math.max(1, num("fmDur", 60));
     const R0 = Math.max(0.05, num("fmR0", 2));
@@ -494,6 +497,9 @@
               .map(r => `${Math.round(r.fromDeg)}°/${r.speed.toFixed(1)} → ${r.best.iou.toFixed(2)}`).join(" · ");
         }
         calTxt += `<br>Hautatua: K_SLOPE = ${sel.K} · haizea ${Math.round(sel.fromDeg)}° · ${sel.speed.toFixed(1)} km/h`;
+        const r0imp = sel.best.T / Tmin;
+        calTxt += `<br>Iraupena ${Math.round(Tmin)} min bada → R0 ≈ <strong>${r0imp.toFixed(1)} m/min</strong>` +
+          (r0imp > 30 || r0imp < 0.3 ? " ⚠️ fisikoki ez dirudi (zehaztu «Iraupena» benetako denborarekin)" : "");
       } else {
         const F = buildFields(elev, W, H, dom.res, wind, R0);
         const m = mtt(W, H, F, src, Tmin, dom.res);
@@ -623,7 +629,8 @@
       '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;font-weight:800;color:#65736b">' + S.adv + '</summary>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">' +
       '<div><label style="' + lab + '">K_SLOPE (km/h · tanφ)</label><input id="fmKs" type="number" min="0" step="1" value="20" style="' + inp + '"></div>' +
-      '<div><label style="' + lab + '">KW (1/(km/h))</label><input id="fmKw" type="number" min="0" step="0.01" value="0.12" style="' + inp + '"></div></div></details>' +
+      '<div><label style="' + lab + '">KW (1/(km/h))</label><input id="fmKw" type="number" min="0" step="0.01" value="0.12" style="' + inp + '"></div>' +
+      '<div><label style="' + lab + '">Rmin / R0 (0–1)</label><input id="fmRmin" type="number" min="0" max="1" step="0.05" value="0.2" style="' + inp + '"></div></div></details>' +
       '<label style="display:flex;gap:6px;align-items:center;margin:9px 0 0;font-size:12px"><input id="fmEll" type="checkbox"> ' + S.ell + '</label>' +
       '<div style="display:flex;gap:6px;margin-top:9px;align-items:center">' +
       '<button type="button" id="fmRef" style="' + bt + '">' + S.ref + '</button>' +
@@ -683,6 +690,6 @@
       }, 200);
     });
   }
-  async function init() { await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v4)."); }
+  async function init() { await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v5)."); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
