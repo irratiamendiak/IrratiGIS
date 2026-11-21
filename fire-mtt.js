@@ -1,5 +1,5 @@
 /* ============================================================
-   IrratiGIS · fire-mtt.js  (v1)
+   IrratiGIS · fire-mtt.js  (v2)
    Sute-hedapena: Minimum Travel Time (MTT, Finney 2002 estiloa).
    - Abiadura lokala: elipse bidezko eredua (Anderson 1983 L/B + Richards fokua),
      haizea + malda bektore bakar batean batuta (gelaxka bakoitzean).
@@ -254,11 +254,11 @@
   }
 
   /* ---------- Domeinua ---------- */
-  function chooseDomain(lat, Tmin, R0, windSpeed) {
+  function chooseDomain(lat, Tmin, R0, windSpeed, RdomMin) {
     const Uf = windSpeed * CFG.MIDFLAME;
     const Ubound = Uf + CFG.K_SLOPE * CFG.TAN_MAX;
     const Rbound = R0 * (1 + CFG.KW * Ubound);
-    let Rdom = Math.min(CFG.MAX_RADIUS_M, Math.max(300, 1.1 * Rbound * Tmin));
+    let Rdom = Math.min(CFG.MAX_RADIUS_M, Math.max(300, 1.1 * Rbound * Tmin, RdomMin || 0));
     let z = CFG.ZOOMS[CFG.ZOOMS.length - 1];
     for (const zz of CFG.ZOOMS) { if (2 * Rdom / groundRes(lat, zz) <= CFG.MAX_SIDE) { z = zz; break; } }
     const res = groundRes(lat, z);
@@ -286,7 +286,45 @@
     return { pts, head: Rh * Tmin, Rh, e };
   }
 
-  const core = { CFG, buildNeighbors, setNeighbors: (r) => { NB = buildNeighbors(r); }, lbRatio, eccentricity, rateAt, buildFields, mtt, contourLoops, polygonAreaPx,
+  /* ---------- Kalibrazioa: erreferentzia-perimetroarekin alderatu ---------- */
+  // ring: [[x,y],...] sareta-koordenatuetan (gelaxka zentroa = zenbaki osoa), itxia
+  function rasterizeRing(ring, W, H) {
+    const mask = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++) {
+      const xs = [];
+      for (let i = 0; i < ring.length - 1; i++) {
+        const xa = ring[i][0], ya = ring[i][1], xb = ring[i + 1][0], yb = ring[i + 1][1];
+        if ((ya > y) !== (yb > y)) xs.push(xa + (xb - xa) * (y - ya) / (yb - ya));
+      }
+      if (xs.length < 2) continue;
+      xs.sort((a, b) => a - b);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const x0 = Math.max(0, Math.ceil(xs[k])), x1 = Math.min(W - 1, Math.floor(xs[k + 1]));
+        for (let x = x0; x <= x1; x++) mask[y * W + x] = 1;
+      }
+    }
+    return mask;
+  }
+  // T bakoitzeko IoU eta azalera (gelaxka-kopurua): {curve:[{T,A,I,iou}], R}
+  function calibrationCurve(t, ref, Tmax, nb) {
+    const A = new Float64Array(nb + 1), I = new Float64Array(nb + 1);
+    const dT = Tmax / nb; let R = 0;
+    for (let i = 0; i < t.length; i++) {
+      if (ref[i]) R++;
+      const v = t[i];
+      if (!isFinite(v) || v > Tmax) continue;
+      const b = Math.min(nb, Math.ceil(v / dT));
+      A[b]++; if (ref[i]) I[b]++;
+    }
+    const curve = []; let a = 0, inter = 0;
+    for (let b = 0; b <= nb; b++) {
+      a += A[b]; inter += I[b];
+      curve.push({ T: b * dT, A: a, I: inter, iou: inter / (a + R - inter) });
+    }
+    return { curve, R };
+  }
+
+  const core = { rasterizeRing, calibrationCurve, CFG, buildNeighbors, setNeighbors: (r) => { NB = buildNeighbors(r); }, lbRatio, eccentricity, rateAt, buildFields, mtt, contourLoops, polygonAreaPx,
                  chooseDomain, theoreticalEllipse, lonLatToGlobalPx, globalPxToLonLat, groundRes };
   if (typeof module !== "undefined" && module.exports) { module.exports = core; }
   if (typeof window === "undefined") return;
@@ -308,11 +346,12 @@
     calc: "Kalkulatu", clear: "Garbitu", toTrack: "Perimetroa trackera",
     note: "Eredu sinplifikatua eta kalibratu gabea (malda + haizea, erregai uniformea). Erreferentzia gisa soilik.",
     needPoint: "Lehenik markatu sua hasteko puntua.",
-    wait: "Kalkulatzen…", demLoading: "Lur-eredua kargatzen…"
+    wait: "Kalkulatzen…", demLoading: "Lur-eredua kargatzen…",
+    adv: "Parametro aurreratuak", ref: "Erreferentzia (GeoJSON)", cal: "Kalibratu (iraupena automatikoa, IoU)"
   };
 
   let map = null, panel = null, btn = null, marker = null, picking = false;
-  let layer = null, lastRing = null;
+  let layer = null, lastRing = null, ref = null, refLayer = null;
 
   function $(id) { return document.getElementById(id); }
   function setMsg(t) { const m = $("fmMsg"); if (m) m.innerHTML = t; }
@@ -366,16 +405,27 @@
     const b = $("fmToTrack"); if (b) b.disabled = true;
   }
 
+  const num = (id, def) => { const el = $(id); const v = el ? parseFloat(el.value) : NaN; return isNaN(v) ? def : v; };
+
   async function run() {
     if (!marker) { setMsg(S.needPoint); return; }
     const ll = marker.getLatLng();
-    const wind = { fromDeg: ((Number($("fmWdir").value) % 360) + 360) % 360, speed: Math.max(0, Number($("fmWspd").value) || 0) };
-    const Tmin = Math.max(1, Number($("fmDur").value) || 60);
-    const R0 = Math.max(0.05, Number($("fmR0").value) || 2);
+    CFG.K_SLOPE = Math.max(0, num("fmKs", 20));
+    CFG.KW = Math.max(0, num("fmKw", 0.12));
+    const wind = { fromDeg: ((num("fmWdir", 180) % 360) + 360) % 360, speed: Math.max(0, num("fmWspd", 10)) };
+    const Tmin = Math.max(1, num("fmDur", 60));
+    const R0 = Math.max(0.05, num("fmR0", 2));
+    const calib = !!(ref && $("fmCal").checked);
     clearResult();
     $("fmRun").disabled = true; setMsg(S.demLoading);
     try {
-      const dom = chooseDomain(ll.lat, Tmin, R0, wind.speed);
+      let RdomMin = 0;
+      if (calib) {
+        const kx = 111320 * Math.cos(ll.lat * RAD), ky = 111320;
+        ref.ring.forEach(p => { RdomMin = Math.max(RdomMin, Math.hypot((p[0] - ll.lng) * kx, (p[1] - ll.lat) * ky)); });
+        RdomMin = RdomMin * 1.3 + 150;
+      }
+      const dom = chooseDomain(ll.lat, Tmin, R0, wind.speed, RdomMin);
       const [gxS, gyS] = lonLatToGlobalPx(ll.lng, ll.lat, dom.z);
       const sx = Math.round(gxS), sy = Math.round(gyS);
       const W = 2 * dom.Rpx + 1, H = W;
@@ -386,16 +436,39 @@
       const t0 = performance.now();
       const F = buildFields(elev, W, H, dom.res, wind, R0);
       const src = dom.Rpx * W + dom.Rpx;
-      const { t, done, visited } = mtt(W, H, F, src, Tmin, dom.res);
-      // bbox bisitatuena
-      let bx0 = W, by0 = H, bx1 = 0, by1 = 0;
-      for (let i = 0; i < done.length; i++) if (done[i]) {
+      const Tsearch = calib ? 1440 : Tmin;
+      const { t, visited } = mtt(W, H, F, src, Tsearch, dom.res);
+
+      // ---- kalibrazioa ----
+      let Tshow = Tmin, calTxt = "";
+      if (calib) {
+        const ringG = ref.ring.map(p => { const g = lonLatToGlobalPx(p[0], p[1], dom.z); return [g[0] - gx0 - 0.5, g[1] - gy0 - 0.5]; });
+        const mask = rasterizeRing(ringG, W, H);
+        let Tedge = Infinity;
+        for (let x = 0; x < W; x++) Tedge = Math.min(Tedge, t[x], t[(H - 1) * W + x]);
+        for (let y = 0; y < H; y++) Tedge = Math.min(Tedge, t[y * W], t[y * W + W - 1]);
+        const Tcap = Math.min(Tsearch, isFinite(Tedge) ? Tedge : Tsearch);
+        const { curve, R } = calibrationCurve(t, mask, Tcap, 720);
+        let best = curve[0]; for (const c of curve) if (c.iou > best.iou) best = c;
+        const am = curve.find(c => c.A >= R) || null;
+        const cellHa = dom.res * dom.res / 1e4;
+        Tshow = Math.max(1, best.T);
+        calTxt = `<br>Erreferentzia: <strong>${(R * cellHa).toFixed(1)} ha</strong>` +
+          `<br>IoU onena: <strong>${best.iou.toFixed(2)}</strong> · T = ${Math.round(best.T)} min · eredua ${(best.A * cellHa).toFixed(1)} ha · R0·T ≈ ${Math.round(R0 * best.T)} m` +
+          `<br>Azalera berdina: ${am ? "T = " + Math.round(am.T) + " min · IoU " + am.iou.toFixed(2) : "—  ⚠️ ez da lortu (T<" + Math.round(Tcap) + " min)"}` +
+          (best.T >= Tcap - 1 ? "<br>⚠️ sua domeinuaren ertzera iritsi da: emaitza mugatua" : "");
+      }
+
+      // ---- marrazketa ----
+      let bx0 = W, by0 = H, bx1 = 0, by1 = 0, maxD = 0;
+      for (let i = 0; i < t.length; i++) if (t[i] <= Tshow) {
         const x = i % W, y = (i / W) | 0;
         if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y;
+        const d = Math.hypot(x - dom.Rpx, y - dom.Rpx) * dom.res; if (d > maxD) maxD = d;
       }
       const box = { x0: bx0 - 2, y0: by0 - 2, x1: bx1 + 1, y1: by1 + 1 };
       layer = layer || L.featureGroup().addTo(map);
-      const levels = [0.25, 0.5, 0.75, 1].map(f => f * Tmin);
+      const levels = [0.25, 0.5, 0.75, 1].map(f => f * Tshow);
       const colors = ["#ffd54a", "#ffa726", "#f4511e", "#b71c1c"];
       const toLL = (p) => { const g = globalPxToLonLat(gx0 + p[0] + 0.5, gy0 + p[1] + 0.5, dom.z); return [g[1], g[0]]; };
       let finalRing = null, areaHa = 0, perimKm = 0;
@@ -418,30 +491,52 @@
           }
         }
       });
-      // elipse teorikoa
       let ellTxt = "";
       if ($("fmEll").checked) {
-        const te = theoreticalEllipse(ll.lat, ll.lng, wind, R0, Tmin);
+        const te = theoreticalEllipse(ll.lat, ll.lng, wind, R0, Tshow);
         L.polyline(te.pts.map(p => [p[1], p[0]]), { color: "#1565c0", weight: 2, dashArray: "6 6", interactive: false }).addTo(layer);
         ellTxt = `<br>Elipse teorikoa: aurrealdea ${Math.round(te.head)} m (L/B ${lbRatio(wind.speed * CFG.MIDFLAME).toFixed(2)})`;
-      }
-      // aurrealdeko distantzia (MTT): ignizioarekiko urrunena
-      let maxD = 0;
-      for (let i = 0; i < done.length; i++) if (done[i]) {
-        const x = i % W, y = (i / W) | 0;
-        const d = Math.hypot(x - dom.Rpx, y - dom.Rpx) * dom.res; if (d > maxD) maxD = d;
       }
       lastRing = finalRing;
       $("fmToTrack").disabled = !finalRing;
       const ms = Math.round(performance.now() - t0);
       setMsg(`<strong>${areaHa.toFixed(2)} ha</strong> · perimetroa ${perimKm.toFixed(2)} km · aurrealdea ${Math.round(maxD)} m` +
-        ellTxt + `<br><span style="color:#65736b">${visited.toLocaleString()} gelaxka · ${dom.res.toFixed(0)} m · ${ms} ms` +
+        (calib ? ` (T = ${Math.round(Tshow)} min)` : "") + ellTxt + calTxt +
+        `<br><span style="color:#65736b">${visited.toLocaleString()} gelaxka · ${dom.res.toFixed(0)} m · ${ms} ms` +
         (dom.clipped ? " · ⚠️ eremua mugatu da" : "") + (missing ? " · ⚠️ " + missing + " lauza falta" : "") + "</span>");
-      try { map.fitBounds(layer.getBounds(), { padding: [30, 30], maxZoom: 16 }); } catch (_) {}
+      try {
+        const bnds = layer.getBounds(); if (refLayer) bnds.extend(refLayer.getBounds());
+        map.fitBounds(bnds, { padding: [30, 30], maxZoom: 16 });
+      } catch (_) {}
     } catch (err) {
       console.error("fire-mtt:", err);
       setMsg("⚠️ " + (err.message || err));
     } finally { $("fmRun").disabled = false; }
+  }
+
+  /* ---- erreferentzia-perimetroa (GeoJSON) ---- */
+  function loadReference(geo) {
+    const feats = geo.type === "FeatureCollection" ? geo.features : [geo.type === "Feature" ? geo : { geometry: geo, properties: {} }];
+    let ring = null, pt = null, pprops = {};
+    feats.forEach(f => {
+      const g = f.geometry; if (!g) return;
+      if (!ring && g.type === "Polygon") ring = g.coordinates[0];
+      else if (!ring && g.type === "MultiPolygon") ring = g.coordinates[0][0];
+      else if (!pt && g.type === "Point") { pt = g.coordinates; pprops = f.properties || {}; }
+    });
+    if (!ring) throw new Error("GeoJSON-ak ez dauka poligonorik");
+    ref = { ring: ring.map(p => [p[0], p[1]]) };
+    if (refLayer) refLayer.clearLayers(); else refLayer = L.featureGroup().addTo(map);
+    L.polygon(ref.ring.map(p => [p[1], p[0]]), { color: "#111", weight: 2, dashArray: "2 5", fillColor: "#000", fillOpacity: 0.06, interactive: false }).addTo(refLayer);
+    if (pt) {
+      placeMarker(L.latLng(pt[1], pt[0]));
+      if (isFinite(pprops.wind_from_deg)) $("fmWdir").value = Math.round(pprops.wind_from_deg);
+      if (isFinite(pprops.wind_kmh)) $("fmWspd").value = pprops.wind_kmh;
+    }
+    $("fmCal").disabled = false; $("fmCal").checked = true;
+    map.fitBounds(refLayer.getBounds(), { padding: [30, 30] });
+    let ha = 0; try { ha = turf.area(turf.polygon([ref.ring])) / 1e4; } catch (_) {}
+    setMsg("Erreferentzia kargatuta" + (ha ? ": " + ha.toFixed(1) + " ha" : "") + (pt ? " · hasiera-puntua jarrita" : "") + ". Sakatu «Kalkulatu».");
   }
 
   function setPick(on) {
@@ -484,7 +579,15 @@
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">' +
       '<div><label style="' + lab + '">' + S.dur + '</label><input id="fmDur" type="number" min="1" step="10" value="60" style="' + inp + '"></div>' +
       '<div><label style="' + lab + '">' + S.r0 + '</label><input id="fmR0" type="number" min="0.1" step="0.5" value="2" style="' + inp + '"></div></div>' +
+      '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;font-weight:800;color:#65736b">' + S.adv + '</summary>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">' +
+      '<div><label style="' + lab + '">K_SLOPE (km/h · tanφ)</label><input id="fmKs" type="number" min="0" step="1" value="20" style="' + inp + '"></div>' +
+      '<div><label style="' + lab + '">KW (1/(km/h))</label><input id="fmKw" type="number" min="0" step="0.01" value="0.12" style="' + inp + '"></div></div></details>' +
       '<label style="display:flex;gap:6px;align-items:center;margin:9px 0 0;font-size:12px"><input id="fmEll" type="checkbox"> ' + S.ell + '</label>' +
+      '<div style="display:flex;gap:6px;margin-top:9px;align-items:center">' +
+      '<button type="button" id="fmRef" style="' + bt + '">' + S.ref + '</button>' +
+      '<input id="fmRefFile" type="file" accept=".geojson,.json,application/json" style="display:none"></div>' +
+      '<label style="display:flex;gap:6px;align-items:center;margin:7px 0 0;font-size:12px"><input id="fmCal" type="checkbox" disabled> ' + S.cal + '</label>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">' +
       '<button type="button" id="fmRun" style="' + bt + ';background:#176b43;color:#fff">' + S.calc + '</button>' +
       '<button type="button" id="fmClear" style="' + bt + '">' + S.clear + '</button>' +
@@ -497,12 +600,19 @@
     $("fmClose").onclick = () => togglePanel(false);
     $("fmPick").onclick = () => setPick(!picking);
     $("fmRun").onclick = run;
-    $("fmClear").onclick = () => { clearResult(); if (marker) { map.removeLayer(marker); marker = null; } setMsg("—"); };
+    $("fmClear").onclick = () => { clearResult(); if (marker) { map.removeLayer(marker); marker = null; } if (refLayer) { map.removeLayer(refLayer); refLayer = null; } ref = null; $("fmCal").checked = false; $("fmCal").disabled = true; setMsg("—"); };
     $("fmAuto").onclick = async () => {
       const c = marker ? marker.getLatLng() : map.getCenter();
       setMsg("Open-Meteo…");
       try { const w = await fetchWind(c.lat, c.lng); $("fmWdir").value = Math.round(w.fromDeg); $("fmWspd").value = Math.round(w.speed); setMsg("💨 " + Math.round(w.fromDeg) + "° · " + Math.round(w.speed) + " km/h (Open-Meteo)"); }
       catch (e) { setMsg("⚠️ " + e.message); }
+    };
+    $("fmRef").onclick = () => $("fmRefFile").click();
+    $("fmRefFile").onchange = (e) => {
+      const f = e.target.files && e.target.files[0]; if (!f) return;
+      const rd = new FileReader();
+      rd.onload = () => { try { loadReference(JSON.parse(rd.result)); } catch (err) { setMsg("⚠️ " + err.message); } };
+      rd.readAsText(f); e.target.value = "";
     };
     $("fmToTrack").onclick = () => {
       if (!lastRing) return;
@@ -530,6 +640,6 @@
       }, 200);
     });
   }
-  async function init() { await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v1)."); }
+  async function init() { await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v2)."); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
