@@ -1,5 +1,5 @@
 /* ============================================================
-   IrratiGIS · fire-mtt.js  (v3)
+   IrratiGIS · fire-mtt.js  (v4)
    Sute-hedapena: Minimum Travel Time (MTT, Finney 2002 estiloa).
    - Abiadura lokala: elipse bidezko eredua (Anderson 1983 L/B + Richards fokua),
      haizea + malda bektore bakar batean batuta (gelaxka bakoitzean).
@@ -324,12 +324,13 @@
     return { curve, R };
   }
 
-  // Kalibrazioa R0-rik gabe: R0=1 m/min-ekin kalkulatu (T = R0·T metrotan). K bakoitzeko IoU kurba.
-  function calibrateSweep(elev, W, H, res, wind, src, mask, Ks) {
-    const runs = [];
-    for (const K of Ks) {
-      CFG.K_SLOPE = K;
-      const F = buildFields(elev, W, H, res, wind, 1);
+  // Kalibrazioa R0-rik gabe: R0=1 m/min-ekin kalkulatu (T = R0·T metrotan).
+  // combos: [{K, fromDeg, speed}] → {runs (laburpena), sel (onena, t-rekin)}
+  function calibrateSweep(elev, W, H, res, src, mask, combos) {
+    const runs = []; let sel = null;
+    for (const cb of combos) {
+      CFG.K_SLOPE = cb.K;
+      const F = buildFields(elev, W, H, res, { fromDeg: cb.fromDeg, speed: cb.speed }, 1);
       const m = mtt(W, H, F, src, Infinity, res);
       let Tedge = Infinity;
       for (let x = 0; x < W; x++) Tedge = Math.min(Tedge, m.t[x], m.t[(H - 1) * W + x]);
@@ -337,9 +338,13 @@
       const { curve, R } = calibrationCurve(m.t, mask, Tedge, 720);
       let best = curve[0]; for (const c of curve) if (c.iou > best.iou) best = c;
       const am = curve.find(c => c.A >= R) || null;
-      runs.push({ K, t: m.t, visited: m.visited, Tcap: Tedge, best, am, R });
+      const r = { K: cb.K, fromDeg: cb.fromDeg, speed: cb.speed, visited: m.visited, Tcap: Tedge, best, am, R };
+      runs.push(r);
+      if (!sel || best.iou > sel.best.iou) { sel = r; sel.t = m.t; }
+      else if (r.t) delete r.t;
     }
-    return runs;
+    runs.forEach(r => { if (r !== sel) delete r.t; });
+    return { runs, sel };
   }
 
   const core = { calibrateSweep, rasterizeRing, calibrationCurve, CFG, buildNeighbors, setNeighbors: (r) => { NB = buildNeighbors(r); }, lbRatio, eccentricity, rateAt, buildFields, mtt, contourLoops, polygonAreaPx,
@@ -365,7 +370,7 @@
     note: "Eredu sinplifikatua eta kalibratu gabea (malda + haizea, erregai uniformea). Erreferentzia gisa soilik.",
     needPoint: "Lehenik markatu sua hasteko puntua.",
     wait: "Kalkulatzen…", demLoading: "Lur-eredua kargatzen…",
-    adv: "Parametro aurreratuak", ref: "Erreferentzia (GeoJSON)", cal: "Kalibratu (iraupena automatikoa, IoU)", sweep: "K_SLOPE automatikoki aztertu (0–40)"
+    adv: "Parametro aurreratuak", ref: "Erreferentzia (GeoJSON)", cal: "Kalibratu (iraupena automatikoa, IoU)", sweep: "K_SLOPE automatikoki aztertu (0–40)", sweepW: "Haizea ere aztertu (±60°, 0–2× abiadura)"
   };
 
   let map = null, panel = null, btn = null, marker = null, picking = false;
@@ -458,17 +463,37 @@
       if (calib) {
         const ringG = ref.ring.map(p => { const g = lonLatToGlobalPx(p[0], p[1], dom.z); return [g[0] - gx0 - 0.5, g[1] - gy0 - 0.5]; });
         const mask = rasterizeRing(ringG, W, H);
-        const sweep = $("fmSweep").checked;
-        const runs = calibrateSweep(elev, W, H, dom.res, wind, src, mask, sweep ? [0, 5, 10, 15, 20, 30, 40] : [CFG.K_SLOPE]);
-        const sel = runs.reduce((a, b) => b.best.iou > a.best.iou ? b : a);
-        CFG.K_SLOPE = sel.K; if (sweep) $("fmKs").value = sel.K;
+        const sweepK = $("fmSweep").checked, sweepW = $("fmSweepW").checked;
+        const Ks = sweepK ? [0, 5, 10, 15, 20, 30, 40] : [CFG.K_SLOPE];
+        const w0 = { fromDeg: wind.fromDeg, speed: wind.speed };
+        const r1 = calibrateSweep(elev, W, H, dom.res, src, mask, Ks.map(K => ({ K, fromDeg: w0.fromDeg, speed: w0.speed })));
+        let sel = r1.sel; const kRuns = r1.runs; let wRuns = [];
+        if (sweepW) {
+          const wc = [];
+          for (const off of [-60, -40, -20, 0, 20, 40, 60]) for (const mult of [0, 0.5, 1, 1.5, 2]) {
+            if (mult === 0 && off !== 0) continue;
+            wc.push({ K: sel.K, fromDeg: (w0.fromDeg + off + 360) % 360, speed: w0.speed * mult });
+          }
+          const r2 = calibrateSweep(elev, W, H, dom.res, src, mask, wc);
+          wRuns = r2.runs; if (r2.sel.best.iou > sel.best.iou) sel = r2.sel;
+        }
+        CFG.K_SLOPE = sel.K; wind.fromDeg = sel.fromDeg; wind.speed = sel.speed;
+        if (sweepK) $("fmKs").value = sel.K;
+        if (sweepW) { $("fmWdir").value = Math.round(sel.fromDeg); $("fmWspd").value = Math.round(sel.speed * 10) / 10; }
         t = sel.t; visited = sel.visited; Tshow = Math.max(1, sel.best.T);
         const tMin = (m) => Math.round(m / R0);
         calTxt = `<br>Erreferentzia: <strong>${(sel.R * cellHa).toFixed(1)} ha</strong>` +
           `<br>IoU onena: <strong>${sel.best.iou.toFixed(2)}</strong> · R0·T = ${Math.round(sel.best.T)} m (R0=${R0} → T = ${tMin(sel.best.T)} min) · eredua ${(sel.best.A * cellHa).toFixed(1)} ha` +
           `<br>Azalera berdina: ${sel.am ? "R0·T = " + Math.round(sel.am.T) + " m (T = " + tMin(sel.am.T) + " min) · IoU " + sel.am.iou.toFixed(2) : "— ez da lortu domeinuan"}` +
           (sel.best.T >= sel.Tcap * 0.98 ? "<br>⚠️ IoU gehienezkoa domeinuaren ertzean: emaitza mugatua" : "");
-        if (sweep) calTxt += "<br>K_SLOPE: " + runs.map(r => r.K + "→" + r.best.iou.toFixed(2)).join(" · ") + `<br>Hautatua: K_SLOPE = ${sel.K}`;
+        if (sweepK) calTxt += "<br>K_SLOPE: " + kRuns.map(r => r.K + "→" + r.best.iou.toFixed(2)).join(" · ");
+        if (sweepW) {
+          const base = wRuns.find(r => r.fromDeg === w0.fromDeg && r.speed === w0.speed);
+          calTxt += `<br>Haizea: hasierakoa ${Math.round(w0.fromDeg)}° · ${w0.speed.toFixed(1)} km/h → IoU ${base ? base.best.iou.toFixed(2) : "—"}` +
+            `<br>Top-3: ` + wRuns.slice().sort((a, b) => b.best.iou - a.best.iou).slice(0, 3)
+              .map(r => `${Math.round(r.fromDeg)}°/${r.speed.toFixed(1)} → ${r.best.iou.toFixed(2)}`).join(" · ");
+        }
+        calTxt += `<br>Hautatua: K_SLOPE = ${sel.K} · haizea ${Math.round(sel.fromDeg)}° · ${sel.speed.toFixed(1)} km/h`;
       } else {
         const F = buildFields(elev, W, H, dom.res, wind, R0);
         const m = mtt(W, H, F, src, Tmin, dom.res);
@@ -605,6 +630,7 @@
       '<input id="fmRefFile" type="file" accept=".geojson,.json,application/json" style="display:none"></div>' +
       '<label style="display:flex;gap:6px;align-items:center;margin:7px 0 0;font-size:12px"><input id="fmCal" type="checkbox" disabled> ' + S.cal + '</label>' +
       '<label style="display:flex;gap:6px;align-items:center;margin:5px 0 0;font-size:12px"><input id="fmSweep" type="checkbox" checked> ' + S.sweep + '</label>' +
+      '<label style="display:flex;gap:6px;align-items:center;margin:5px 0 0;font-size:12px"><input id="fmSweepW" type="checkbox"> ' + S.sweepW + '</label>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">' +
       '<button type="button" id="fmRun" style="' + bt + ';background:#176b43;color:#fff">' + S.calc + '</button>' +
       '<button type="button" id="fmClear" style="' + bt + '">' + S.clear + '</button>' +
@@ -657,6 +683,6 @@
       }, 200);
     });
   }
-  async function init() { await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v3)."); }
+  async function init() { await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v4)."); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
