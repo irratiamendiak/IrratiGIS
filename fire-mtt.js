@@ -1,6 +1,9 @@
 /* ============================================================
-   IrratiGIS · fire-mtt.js  (v7)
+   IrratiGIS · fire-mtt.js  (v8)
    Sute-hedapena: Minimum Travel Time (MTT, Finney 2002 estiloa).
+   v8: BIBLIOTEKA: panel propioa desaktibatuta (window.IRRATI_MTT_LEGACY=true bada, panel zaharra). «Suteen bilakaera» panelak
+       window.IrratiMTT.runIntegrated(...) erabiltzen du: MTT etapaka (eguraldia ordu-ordutik), erregaia (inbentarioa), terrenoa
+       (MDT LiDAR edo Terrarium, index.html-ko fsTerrain) eta hezetasuna (fsMoistAt) partekatuta Erradioak metodoarekin.
    v7: ERREGAI-MODUA (aukerakoa): gelaxka bakoitzean Rothermel (engine.js) + Gipuzkoako Baso Inbentarioa
        (erregai-eredua) + erregai finaren hezetasuna. R0/K_SLOPE/KW ez dira erabiltzen modu horretan.
    - Abiadura lokala: elipse bidezko eredua (Anderson 1983 L/B + Richards fokua),
@@ -243,6 +246,198 @@
     return { t, done, visited };
   }
 
+
+  /* ---------- MTT ETAPAKA: baldintzak (eguraldia/hezetasuna) tarte bakoitzean desberdinak izan daitezke ----------
+     ends: etapen amaiera-denborak (min, goranzkoak); getFields(si): etapa horretako eremuak ({Rh,Ec,Hx,Hy,RminArr,ensure}).
+     Etapa bakoitzean aurreko etapako gelaxka finkatuetatik (aurrealdea) jarraitzen du. */
+  function mttStaged(W, H, res, src, ends, getFields) {
+    const N = W * H;
+    const t = new Float64Array(N).fill(Infinity);
+    const done = new Uint8Array(N);
+    let cap = 1 << 16, size = 0;
+    let hk = new Float64Array(cap), hv = new Int32Array(cap);
+    function push(k, v) {
+      if (size === cap) {
+        cap *= 2;
+        const nk = new Float64Array(cap), nv = new Int32Array(cap);
+        nk.set(hk); nv.set(hv); hk = nk; hv = nv;
+      }
+      let i = size++;
+      while (i > 0) {
+        const p = (i - 1) >> 1;
+        if (hk[p] <= k) break;
+        hk[i] = hk[p]; hv[i] = hv[p]; i = p;
+      }
+      hk[i] = k; hv[i] = v;
+    }
+    let popK = 0, popV = 0;
+    function pop() {
+      popK = hk[0]; popV = hv[0];
+      size--;
+      if (size > 0) {
+        const k = hk[size], v = hv[size];
+        let i = 0;
+        for (;;) {
+          let c = 2 * i + 1;
+          if (c >= size) break;
+          if (c + 1 < size && hk[c + 1] < hk[c]) c++;
+          if (hk[c] >= k) break;
+          hk[i] = hk[c]; hv[i] = hv[c]; i = c;
+        }
+        hk[i] = k; hv[i] = v;
+      }
+    }
+    const NBN = NB.length;
+    let fr = [], visited = 0;
+    for (let si = 0; si < ends.length; si++) {
+      const Tend = ends[si], F = getFields(si);
+      const Rh = F.Rh, Ec = F.Ec, Hx = F.Hx, Hy = F.Hy, RminArr = F.RminArr, ens = F.ensure;
+      size = 0;
+      for (let i = 0; i < N; i++) if (!done[i]) t[i] = Infinity;    // aurreko etapako behin-behineko denborak baztertu
+      const fr2 = [];
+      // i gelaxka finkatutik auzokideak erlaxatu; true = oraindik auzokide finkatu gabeak daude
+      const floorT = si === 0 ? 0 : ends[si - 1];      // etapa honen hasiera: baldintza berriek ezin dute aurreko denborak aldatu
+      const relax = (i, k) => {
+        const x = i % W, y = (i / W) | 0;
+        ens(i);
+        const Rhi = Rh[i];
+        if (!(Rhi > 0)) return false;
+        const Ei = Ec[i], hxi = Hx[i], hyi = Hy[i];
+        let open = false;
+        for (let q = 0; q < NBN; q++) {
+          const nb = NB[q], nx = x + nb.ox, ny = y + nb.oy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const j = ny * W + nx;
+          if (done[j]) continue;
+          open = true;
+          ens(j); if (!(Rh[j] > 0)) continue;
+          const ci = nb.ux * hxi + nb.uy * hyi, cj = nb.ux * Hx[j] + nb.uy * Hy[j];
+          const ri = Math.max(RminArr[i], rateAt(Rhi, Ei, ci)), rj = Math.max(RminArr[j], rateAt(Rh[j], Ec[j], cj));
+          let nt = k + 0.5 * nb.d * res * (1 / ri + 1 / rj);
+          if (nt < floorT) nt = floorT;
+          if (nt < t[j]) { t[j] = nt; push(nt, j); }
+        }
+        return open;
+      };
+      if (si === 0) { t[src] = 0; push(0, src); }
+      else for (const i of fr) if (relax(i, t[i])) fr2.push(i);
+      while (size > 0) {
+        pop();
+        const k = popK, i = popV;
+        if (done[i]) continue;
+        if (k > Tend) break;
+        done[i] = 1; visited++;
+        if (relax(i, k)) fr2.push(i);
+      }
+      fr = fr2;
+    }
+    return { t, done, visited };
+  }
+
+  /* Gelaxka-eremuak (alferrak) integraziorako: erregaia, malda, hezetasuna eta haize-doikuntza kanpoko funtzioetatik. */
+  function makeCellFields(N, codes, fuels, E, wind, windFactor, terrOf, moistOf, siteOf, stats) {
+    const Rh = new Float32Array(N), Ec = new Float32Array(N), Hx = new Float32Array(N), Hy = new Float32Array(N), Rm = new Float32Array(N);
+    const have = new Uint8Array(N);
+    function ensure(k) {
+      if (have[k]) return; have[k] = 1;
+      const ter = terrOf(k);
+      if (!ter) { if (stats) stats.noTerrain++; return; }               // lurzorurik gabe (LiDAR estaldurarik ez): ez da hedatzen
+      const fuel = fuels[codes[k]] || fuels[0];
+      const m = Math.max(2, moistOf(fuel, ter, k));
+      const site = siteOf ? siteOf(fuel, ter, k) : null;
+      const b = E.behavior(fuel, ter.tan, ter.asp, wind.dir, wind.spd * windFactor, m, site);
+      const rh = b && b.Rh > 0 ? b.Rh : 0;
+      Rh[k] = rh; Ec[k] = rh > 0 ? b.e : 0;
+      const hd = (rh > 0 ? b.head : 0) * RAD; Hx[k] = Math.sin(hd); Hy[k] = Math.cos(hd);
+      Rm[k] = rh > 0 ? CFG.RMIN * (b.baseRate || 0) : 0;
+    }
+    return { Rh, Ec, Hx, Hy, RminArr: Rm, ensure, have };
+  }
+
+  /* Maila altuko sarrera: «Suteen bilakaera» panelak erabiltzen du (terrenoa, eguraldia, hezetasuna, erregaia partekatuta).
+     o: {lat,lng,engine,fuel,FUELS,NOFUEL,features,fuelKeyOf,times,stageMin,reachM,coverM,windFactor,
+         weatherAt(t),sunAt(t),terrainAt(lat,lon),moistureAt(w,fuel,ter,sun),windSiteAt(lat,lon,fuel,ter,t)} */
+  function runIntegrated(o) {
+    const E = o.engine, times = o.times || [30, 60, 90, 120], stageMin = o.stageMin || 15, windFactor = o.windFactor == null ? 1 : o.windFactor;
+    const Tmax = Math.max.apply(null, times);
+    const Rwant = Math.min(o.coverM || 5000, Math.max(400, o.reachM || 5000));
+    let z = 14, res = 0, Rpx = 0;
+    for (const zz of [14, 13, 12]) { z = zz; res = groundRes(o.lat, z); Rpx = Math.ceil(Rwant / res); if (2 * Rpx + 1 <= CFG.MAX_SIDE) break; }
+    if (2 * Rpx + 1 > CFG.MAX_SIDE) Rpx = (CFG.MAX_SIDE - 1) >> 1;
+    const W = 2 * Rpx + 1, H = W, N = W * H;
+    const gS = lonLatToGlobalPx(o.lng, o.lat, z), gx0 = Math.floor(gS[0]) - Rpx, gy0 = Math.floor(gS[1]) - Rpx, src = Rpx * W + Rpx;
+    const cellLL = (k) => { const y = (k / W) | 0, x = k - y * W, g = globalPxToLonLat(gx0 + x + 0.5, gy0 + y + 0.5, z); return [g[1], g[0]]; };   // [lat, lon]
+    // erregai-kodeak
+    const codes = new Uint8Array(N), fuels = [o.fuel], keys = ["ordezkoa"], idx = new Map();
+    let polys = 0;
+    if (o.features && o.features.length) {
+      const toGrid = (p) => { const g = lonLatToGlobalPx(p[0], p[1], z); return [g[0] - gx0 - 0.5, g[1] - gy0 - 0.5]; };
+      const memo = new Map();
+      for (const f of o.features) {
+        const p = f.properties || {};
+        const mk = [p.TIPES_es, p.TIPES, p.tipo, p.TYPE, p.SP1_es, p.SP1, p.SP2_es, p.SP2, p.SP3_es, p.SP3].join("|");
+        let key = memo.get(mk); if (key === undefined) { key = o.fuelKeyOf(p); memo.set(mk, key); }
+        if (!key) continue;
+        const fuel = key === "nb" ? o.NOFUEL : o.FUELS[key]; if (!fuel) continue;
+        let c = idx.get(key); if (c === undefined) { c = fuels.length; fuels.push(fuel); keys.push(key); idx.set(key, c); }
+        polys++;
+        fillFeatureCodes(codes, W, H, f.geometry, c, toGrid);
+      }
+    }
+    // malda cachea (etapen artean partekatua)
+    const tanA = new Float32Array(N), aspA = new Float32Array(N), tSt = new Uint8Array(N);
+    const terrOf = (k) => {
+      if (tSt[k] === 0) {
+        const ll = cellLL(k), ter = o.terrainAt(ll[0], ll[1]);
+        if (ter) { tanA[k] = Math.min(ter.tan, CFG.TAN_MAX * 1.5); aspA[k] = ter.asp; tSt[k] = 1; } else tSt[k] = 2;
+      }
+      return tSt[k] === 1 ? { tan: tanA[k], asp: aspA[k] } : null;
+    };
+    const stats = { noTerrain: 0 };
+    const ends = []; for (let tt = stageMin; tt <= Tmax + 1e-9; tt += stageMin) ends.push(tt);
+    const getFields = (si) => {
+      const mid = ends[si] - stageMin / 2, w = o.weatherAt(mid), sun = o.sunAt ? o.sunAt(mid) : null;
+      return makeCellFields(N, codes, fuels, E, { dir: w.dir, spd: w.spd }, windFactor, terrOf,
+        (fuel, ter) => o.moistureAt(w, fuel, ter, sun),
+        o.windSiteAt ? (fuel, ter, k) => { const ll = cellLL(k); return o.windSiteAt(ll[0], ll[1], fuel, ter, mid); } : null, stats);
+    };
+    const t0 = (typeof performance !== "undefined" ? performance.now() : Date.now());
+    const m = mttStaged(W, H, res, src, ends, getFields);
+    const ms = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
+    const t = m.t, cellHa = res * res / 1e4;
+    // bounding box eta area/perimetroak
+    const areas = {}, rings = {};
+    let bx0 = W, bx1 = 0, by0 = H, by1 = 0, clipped = false;
+    for (let i = 0; i < N; i++) if (t[i] <= Tmax) {
+      const x = i % W, y = (i / W) | 0;
+      if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y;
+    }
+    if (bx0 <= 1 || by0 <= 1 || bx1 >= W - 2 || by1 >= H - 2) clipped = true;
+    const box = { x0: bx0 - 2, y0: by0 - 2, x1: bx1 + 1, y1: by1 + 1 };
+    const toLL = (p) => { const g = globalPxToLonLat(gx0 + p[0] + 0.5, gy0 + p[1] + 0.5, z); return [g[1], g[0]]; };
+    for (const T of times) {
+      let c = 0; for (let i = 0; i < N; i++) if (t[i] <= T) c++;
+      areas[T] = c * cellHa;
+      rings[T] = contourLoops(t, W, H, T, box).filter(l => l.pts.length > 3).map(l => l.pts.map(toLL));
+    }
+    // erregai-banaketa (azken denborako eremuan)
+    const cnt = new Map(); let tot = 0;
+    for (let i = 0; i < N; i++) if (t[i] <= Tmax) { cnt.set(codes[i], (cnt.get(codes[i]) || 0) + 1); tot++; }
+    const fuelShare = [...cnt.entries()].sort((a, b) => b[1] - a[1]).map(([c, n]) => ({ key: keys[c], pct: 100 * n / Math.max(1, tot) }));
+    const stalled = keys.map((k, c) => ({ k, f: fuels[c] })).filter(q => q.k !== "nb" && q.f && q.f.Mx > 0).map(q => q.k);
+    // beste poligono baten (lat,lng) gainjartzea (IoU) sareta honetan: ring = [[lat,lon],...]
+    const iouWith = (T, ring) => {
+      if (!ring || ring.length < 3) return null;
+      const pts = ring.map(p => { const g = lonLatToGlobalPx(p[1], p[0], z); return [g[0] - gx0 - 0.5, g[1] - gy0 - 0.5]; });
+      const mask = rasterizeRing(pts, W, H);
+      let I = 0, U = 0, A = 0, B = 0;
+      for (let i = 0; i < N; i++) { const a = t[i] <= T, b = mask[i] > 0; if (a) A++; if (b) B++; if (a && b) I++; if (a || b) U++; }
+      return { iou: U ? I / U : 0, mttInRays: B ? I / B : 0, raysInMtt: A ? I / A : 0 };
+    };
+    return { times, areas, rings, W, H, res, z, gx0, gy0, Rpx, t, done: m.done, visited: m.visited, ms, clipped,
+             noTerrain: stats.noTerrain, polys, fuelShare, keys, iouWith, stageMin, ends };
+  }
+
   /* ---------- Marching squares + josketa ---------- */
   // Itzultzen du: [{pts:[[px,py],...], closed:boolean}, ...]  (px,py = sareta-koordenatuak)
   function contourLoops(t, W, H, level, box) {
@@ -429,10 +624,11 @@
     return { runs, sel };
   }
 
-  const core = { makeRothermelFields, fillFeatureCodes, theoreticalEllipseRothermel, fineFuelMoisture, calibrateSweep, rasterizeRing, calibrationCurve, CFG, buildNeighbors, setNeighbors: (r) => { NB = buildNeighbors(r); }, lbRatio, eccentricity, rateAt, buildFields, mtt, contourLoops, polygonAreaPx,
+  const core = { mttStaged, makeCellFields, runIntegrated, makeRothermelFields, fillFeatureCodes, theoreticalEllipseRothermel, fineFuelMoisture, calibrateSweep, rasterizeRing, calibrationCurve, CFG, buildNeighbors, setNeighbors: (r) => { NB = buildNeighbors(r); }, lbRatio, eccentricity, rateAt, buildFields, mtt, contourLoops, polygonAreaPx,
                  chooseDomain, theoreticalEllipse, lonLatToGlobalPx, globalPxToLonLat, groundRes };
   if (typeof module !== "undefined" && module.exports) { module.exports = core; }
   if (typeof window === "undefined") return;
+  window.IrratiMTT = core;
   window.IrratiFireMTT = { core };
 
   /* =========================================================
@@ -867,6 +1063,9 @@
       }, 200);
     });
   }
-  async function init() { await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v7)."); }
+  async function init() {
+    if (window.IRRATI_MTT_LEGACY !== true) { console.log("IrratiGIS fire-mtt listo (v8): biblioteka; panel propioa desaktibatuta (MTT «Suteen bilakaera» panelean)."); return; }
+    await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v8, panel zaharra).");
+  }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
