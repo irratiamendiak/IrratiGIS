@@ -10,7 +10,7 @@
 <script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
 <script src="auth.js?v=20261111-production" defer></script>
 <script src="gis-tools.js?v=25" defer></script>
-<script src="fire-mtt.js?v=8" defer></script>
+<script src="fire-mtt.js?v=9" defer></script>
 <style>
 :root{--bg:#f4f7f5;--panel:#fff;--ink:#16231c;--muted:#65736b;--green:#176b43;--line:#dce5df;--blue:#175f8f}
 *{box-sizing:border-box}
@@ -2302,6 +2302,8 @@ Object.values(FS_FUELS).forEach(f=>{
 });
 const fsCfg={fuel:"fm5",moistMode:"calc",startH:0,ffmc:85,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
 let fsAlgo="rays";   // hedapen-algoritmoa: "rays" (erradioak) | "mtt" | "both"
+let fsBand=false;    // zalantza-tartea (hezetasuna ± eta haizea ±)
+const FS_BAND={dm:3,wf:0.3};   // hezetasuna ±3 puntu, haizea ±%30
 let fsIgn=null, fsBusy=0, fsLast=null, fsFlat=false;
 let fsTerrainSource="mdt", fsTerrainSamples={mdt:0,terrarium:0};
 let fsFuelSource="";
@@ -3815,6 +3817,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div style="${row}">Erregai fin hila <select class="fs-mm"><option value="calc">Iragarpena (Open-Meteo: tenperatura, hezetasuna, euria eta eguzkia)</option><option value="inst">Tenperatura eta hezetasuna soilik (+ eguzkia)</option><option value="ffmcnet">Sareko FFMCa (% 50 tenperatura/hezetasunaren bidez)</option><option value="ffmc">Eskuzko FFMCa (% 50 tenperatura/hezetasunaren bidez)</option><option value="man">eskuzkoa</option></select> <span class="fs-mff" style="display:none">FFMC <input type="number" class="fs-ffmc" min="30" max="99" step="0.5" value="${fsCfg.ffmc}" style="width:52px"></span> <span class="fs-msl" style="display:none"><input type="range" class="fs-m" min="3" max="25" value="${fsCfg.moist}" style="width:80px;vertical-align:middle"> <b class="fs-mv">${fsCfg.moist}%</b></span></div>`+
    `<div style="${row}"><b>Hedapen-algoritmoa</b> <select class="fs-algo"><option value="rays">Erradioak (ohikoa)</option><option value="mtt">MTT (iristeko denbora minimoa)</option><option value="both">Biak (alderatzeko)</option></select></div>`+
    `<div style="font-size:10px;color:#65736b;margin:-2px 0 5px">Beste sarrera guztiak (ordua, eguraldia, hezetasuna, terrenoa, erregaia) berdinak dira. MTT-k eguraldi-aldaketak ordu-ordutik jarraitzen ditu perimetro osoan; erradioek ez.</div>`+
+   `<label style="display:flex;gap:6px;align-items:center;margin:2px 0 6px;font-size:12px"><input type="checkbox" class="fs-band"> <span><b>Zalantza-tartea</b> (hezetasuna ±3 puntu, haizea ±%30)</span></label>`+
    `<div class="fs-out" style="color:#65736b">Sakatu «Markatu hasiera» eta egin klik mapan. Ondoren, aukeratu hedapen aurreikusia edo eskuzkoa.</div>`;
   const q=s=>fsPanel.querySelector(s), rerun=()=>{ if(fsIgn) fsRun(); }, num=(e,lo,hi,d)=>Math.min(hi,Math.max(lo,Number(e.target.value)||d));
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
@@ -3830,6 +3833,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-start-at").min=q(".fs-start-at").value;
   q(".fs-start-at").onchange=e=>{ const t=new Date(e.target.value).getTime(), delta=(t-Date.now())/3600000; if(!Number.isFinite(t)||delta<0||delta>72){ e.target.value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16); fsCfg.startH=0; alert("Aukeratu hemendik 72 ordura arteko ordu bat."); } else fsCfg.startH=delta; rerun(); };
   q(".fs-now").onclick=()=>{ q(".fs-start-at").value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16); fsCfg.startH=0; rerun(); };
+  q(".fs-band").onchange=e=>{ fsBand=!!e.target.checked; rerun(); };
   q(".fs-algo").onchange=e=>{ fsAlgo=e.target.value==="mtt"?"mtt":e.target.value==="both"?"both":"rays"; rerun(); };
   q(".fs-mm").onchange=e=>{ fsCfg.moistMode=e.target.value; q(".fs-msl").style.display=fsCfg.moistMode==="man"?"inline":"none"; q(".fs-mff").style.display=fsCfg.moistMode==="ffmc"?"inline":"none"; rerun(); };
   q(".fs-ffmc").onchange=e=>{ fsCfg.ffmc=num(e,30,99,85); rerun(); };
@@ -3901,9 +3905,10 @@ async function fsBacktest(btn){
 /* --- exekuzioa --- */
 const fsDec=s=>s.replace(/(\d)\.(\d)(?![^<]*>)/g,"$1,$2");   // komaz erakutsi dezimalak (etiketen barruko atributuak ukitu gabe)
 /* --- MTT (iristeko denbora minimoa) «Suteen bilakaera» panelean: sarrera berberak, propagazio-metodo desberdina --- */
-function fsRunMTT(rays,fu,met,inventorySampler,windSampler){
+function fsRunMTT(rays,fu,met,inventorySampler,windSampler,sc){
+  sc=sc||{wf:1,dm:0};
   const api=window.IrratiMTT;
-  if(!api||!api.runIntegrated) throw new Error("fire-mtt.js (v8) ez dago kargatuta; egiaztatu index.html-eko script-etiketa (fire-mtt.js?v=8).");
+  if(!api||!api.runIntegrated) throw new Error("fire-mtt.js (v9) ez dago kargatuta; egiaztatu index.html-eko script-etiketa (fire-mtt.js?v=9).");
   let maxD=0; for(const r of rays){ const d=r.pts[r.pts.length-1][1]; if(d>maxD) maxD=d; }
   let feats=null;
   if(inventorySampler){ try{ feats=inventorySampler.map.queryRenderedFeatures({layers:["forestal-poligonos"]})||[]; }catch(_){ feats=null; } }
@@ -3911,7 +3916,7 @@ function fsRunMTT(rays,fu,met,inventorySampler,windSampler){
   return api.runIntegrated({
     lat:fsIgn.lat, lng:fsIgn.lng, engine:fsEngine, fuel:fu, FUELS:FS_FUELS, NOFUEL:FS_NOFUEL,
     features:feats, fuelKeyOf:fsFuelFromInventoryProperties,
-    times:[30,60,90,120], stageMin:15,
+    times:[30,60,90,120], stageMin:15, windFactor:sc.wf, moistureDelta:sc.dm,
     reachM:Math.max(400,maxD*1.6+200), coverM:feats?cover:6000,
     weatherAt:t=>met.at(t), sunAt:t=>met.sun(t),
     terrainAt:(lat,lon)=>fsTerrain(lat,lon),
@@ -3941,6 +3946,39 @@ function fsMttHtml(mttRes,mttError,rays,times,raysAreas){
     `<div style="margin-top:5px;color:#65736b">${mttRes.W}×${mttRes.H} gelaxka · ${mttRes.res.toFixed(0)} m · ${mttRes.stageMin} min-ko etapak (eguraldia etapa bakoitzean) · ${(mttRes.ms/1000).toFixed(1)} s<br>Erregaiak (erretako eremuan): ${share||"—"}</div>`+
     (warn?`<div style="margin-top:5px">${warn}</div>`:"")+
     `<div style="margin-top:5px;color:#65736b">Erradioek abiapuntutik erradialki aurreratzen dute; haizea edo hezetasuna aldatzean ez dute perimetro osotik berrabiarazten. MTT-k bai (Huygens), eta lurzorua eta erregai-aldaketak hobeto jarraitzen ditu.</div>`);
+}
+/* --- Zalantza-tartea: bi muturreko eszenatokiak (hezeagoa + haize ahulagoa / lehorragoa + haize indartsuagoa) --- */
+function fsBandRun(rays,fu,met,inventorySampler,windSampler){
+  const fuelAt=inventorySampler&&inventorySampler.fuelAt, windAt=windSampler&&windSampler.windAt, T=[30,60,90,120];
+  const lo={wf:1-FS_BAND.wf,dm:FS_BAND.dm}, hi={wf:1+FS_BAND.wf,dm:-FS_BAND.dm};
+  const rLo=fsSimulate(fu,met,lo,fuelAt,FS_T,windAt), rHi=fsSimulate(fu,met,hi,fuelAt,FS_T,windAt);
+  const out={times:T,rays:{lo:T.map(t=>fsHa(fsPerim(rLo,t))),hi:T.map(t=>fsHa(fsPerim(rHi,t))),perLo:fsPerim(rLo,FS_T),perHi:fsPerim(rHi,FS_T)}};
+  if(fsAlgo!=="rays"){
+    try{
+      const mLo=fsRunMTT(rays,fu,met,inventorySampler,windSampler,lo), mHi=fsRunMTT(rHi,fu,met,inventorySampler,windSampler,hi);
+      out.mtt={lo:T.map(t=>mLo.areas[t]),hi:T.map(t=>mHi.areas[t]),ringsLo:mLo.rings[FS_T]||[],ringsHi:mHi.rings[FS_T]||[]};
+    }catch(e){ out.mttError=e.message||String(e); }
+  }
+  return out;
+}
+function fsBandHtml(band,bandError,times,raysAreas,mttRes){
+  const box=(bg,bd,x)=>`<div style="margin-top:9px;padding:8px;background:${bg};border-left:3px solid ${bd};border-radius:5px;font-size:11px">${x}</div>`;
+  if(bandError) return box("#fff6e8","#c98a00",`<b>Zalantza-tartea ez da kalkulatu</b><br>${escapeHtml(bandError)}`);
+  if(!band) return "";
+  const f1=n=>fsDec((+n).toFixed(1)), td='style="text-align:center;padding:3px;border-bottom:1px solid #edf0ed"', th='style="text-align:center;padding:3px;border-bottom:1px solid #dfe5e0"';
+  const mk=(label,lo,hi,cen)=>{
+    const row=(n,fn)=>`<tr><td style="padding:3px;border-bottom:1px solid #edf0ed">${n}</td>${times.map((t,i)=>`<td ${td}>${fn(i)}</td>`).join("")}</tr>`;
+    const rel=(v,c)=>c>0?"×"+fsDec((v/c).toFixed(2)):"—";
+    return `<div style="margin-top:6px"><b>${label}</b></div><table style="width:100%;border-collapse:collapse"><thead><tr><th ${th}></th>${times.map(t=>`<th ${th}>${t} min</th>`).join("")}</tr></thead><tbody>`+
+      row("Baxuena (ha)",i=>f1(lo[i]))+row("Erdikoa (ha)",i=>f1(cen[i]))+row("Altuena (ha)",i=>f1(hi[i]))+
+      row("Tartea (erdikoarekiko)",i=>rel(lo[i],cen[i])+" – "+rel(hi[i],cen[i]))+`</tbody></table>`;
+  };
+  let body="";
+  if(fsAlgo!=="mtt") body+=mk("Erradioak",band.rays.lo,band.rays.hi,times.map(t=>raysAreas[t]));
+  if(band.mtt&&mttRes&&fsAlgo!=="rays") body+=mk("MTT",band.mtt.lo,band.mtt.hi,times.map(t=>mttRes.areas[t]));
+  if(band.mttError) body+=`<div style="margin-top:5px">⚠️ MTT tartea ez da kalkulatu: ${escapeHtml(band.mttError)}</div>`;
+  return box("#f1f6f2","#527c63",`<b>Zalantza-tartea</b> (hezetasuna ±${FS_BAND.dm} puntu · haizea ±%${Math.round(FS_BAND.wf*100)})`+body+
+    `<div style="margin-top:6px;color:#65736b">Bi muturreko eszenatokiak: hezeagoa + haize ahulagoa (baxuena) eta lehorragoa + haize indartsuagoa (altuena). Mapan, 120 minutuko bi perimetro puntuduak. <b>Ez da konfiantza-tarte estatistikoa</b>: erregaiaren esleipena, haizearen tokiko aldaketak, itzalketa eta ereduaren beste erroreak ez daude barne.</div>`);
 }
 async function fsRun(){
   if(!fsIgn) return;
@@ -4008,13 +4046,17 @@ async function fsRun(){
     90:{color:"#2878b5",dash:"12 4 2 4",weight:2.5},
     120:{color:"#238b45",dash:"",weight:3}
   };
-  let rays, mttRes=null, mttError="";
+  let rays, mttRes=null, mttError="", bandRes=null, bandError="";
   const areas={}, raysAreas={};
   try{
     rays=await fsTimed("Cálculo de propagación",Promise.resolve().then(()=>fsSimulate(fu,met,null,inventorySampler&&inventorySampler.fuelAt,FS_T,windSampler&&windSampler.windAt)));
     if(fsAlgo!=="rays"){
       try{ mttRes=await fsTimed("MTT",Promise.resolve().then(()=>fsRunMTT(rays,fu,met,inventorySampler,windSampler))); }
       catch(e){ mttError=e.message||String(e); console.warn("MTT:",e); }
+    }
+    if(fsBand){
+      try{ bandRes=await fsTimed("Zalantza-tartea",Promise.resolve().then(()=>fsBandRun(rays,fu,met,inventorySampler,windSampler))); }
+      catch(e){ bandError=e.message||String(e); console.warn("Zalantza-tartea:",e); }
     }
     if(inventorySampler){
       try{inventorySampler.map.remove();}catch(_){}
@@ -4038,6 +4080,12 @@ async function fsRun(){
         }).bindTooltip(`MTT · ${t} min · ${mttRes.areas[t].toFixed(1)} ha`,{sticky:true}).addTo(fsGroup));
         if(fsAlgo==="mtt") areas[t]=mttRes.areas[t];
       }
+      fsSync3D();
+    }
+    if(bandRes){
+      const env=(pts,tip)=>L.polygon(pts,{color:"#5c6b73",weight:1.6,opacity:.9,dashArray:"1 5",fill:false}).bindTooltip(tip,{sticky:true}).addTo(fsGroup);
+      if(fsAlgo!=="mtt"){ env(bandRes.rays.perLo,"Baxuena · 120 min (erradioak)"); env(bandRes.rays.perHi,"Altuena · 120 min (erradioak)"); }
+      else if(bandRes.mtt){ bandRes.mtt.ringsLo.forEach(r=>env(r,"Baxuena · 120 min (MTT)")); bandRes.mtt.ringsHi.forEach(r=>env(r,"Altuena · 120 min (MTT)")); }
       fsSync3D();
     }
     perf["Dibujo de perímetros y 3D"]=performance.now()-renderStarted;
@@ -4088,10 +4136,10 @@ async function fsRun(){
   perf["Tiempo total"]=performance.now()-perfStart;
   const perfRows=Object.entries(perf).map(([name,ms])=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:2px 0;border-bottom:1px solid #e8ece9"><span>${escapeHtml(name)}</span><b>${(ms/1000).toFixed(2)} s</b></div>`).join("");
   const perfHtml=`<details style="margin-top:9px;padding:7px 9px;background:#f5f7f5;border-radius:5px;font-size:11px"><summary style="cursor:pointer;font-weight:700">Diagnóstico de tiempos · ${(perf["Tiempo total"]/1000).toFixed(2)} s</summary><div style="margin-top:6px">${perfRows}</div></details>`;
-  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"eskuzkoa":"aurreikusitakoa"} · hartutako azalera${fsAlgo==="mtt"&&mttRes?" · MTT":fsAlgo==="both"&&mttRes?" · erradioak":""}</b>${table}${fsMttHtml(mttRes,mttError,rays,times,raysAreas)}${fsIgnitionNote(rays,met,fu,windSampler)}${fsStallNote(rays,met,fu)}${lidarNote}${windNoteHtml}${fuelNote}${wxTable}${perfHtml}
+  out.innerHTML=fsDec(`<div class="fs-sum"><b>Hedapena ${manual?"eskuzkoa":"aurreikusitakoa"} · hartutako azalera${fsAlgo==="mtt"&&mttRes?" · MTT":fsAlgo==="both"&&mttRes?" · erradioak":""}</b>${table}${fsMttHtml(mttRes,mttError,rays,times,raysAreas)}${fsBandHtml(bandRes,bandError,times,raysAreas,mttRes)}${fsIgnitionNote(rays,met,fu,windSampler)}${fsStallNote(rays,met,fu)}${lidarNote}${windNoteHtml}${fuelNote}${wxTable}${perfHtml}
     <div style="font-size:10px;color:#65736b;margin-top:8px">${source}. Lau perimetroek 30, 60, 90 eta 120 minutu adierazten dituzte; koloreak eta marra-motak denbora-tarte bakoitza bereizten dute. Aldatu meteorologia-hautatzailea aurreikuspenaren eta eskuzko moduaren artean; eskuzko moduan haizearen, tenperaturaren eta hezetasunaren eremuak erabiltzen dira.</div>
   </div>`);
-  fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,mtt:mttRes,b0:null,met,farBg:null,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
+  fsLast={ign:{lat:fsIgn.lat,lng:fsIgn.lng},rays,mtt:mttRes,band:bandRes,b0:null,met,farBg:null,draw:{control:[],safe:[],escape:[],assets:[],crit:[],def:null,par:[]}};
   const profileSlot=fsPanel.querySelector(".fs-prof-slot");
   if(profileSlot) profileSlot.innerHTML="";
 }

@@ -1,5 +1,5 @@
 /* ============================================================
-   IrratiGIS · fire-mtt.js  (v8)
+   IrratiGIS · fire-mtt.js  (v9)
    Sute-hedapena: Minimum Travel Time (MTT, Finney 2002 estiloa).
    v8: BIBLIOTEKA: panel propioa desaktibatuta (window.IRRATI_MTT_LEGACY=true bada, panel zaharra). «Suteen bilakaera» panelak
        window.IrratiMTT.runIntegrated(...) erabiltzen du: MTT etapaka (eguraldia ordu-ordutik), erregaia (inbentarioa), terrenoa
@@ -358,7 +358,7 @@
      o: {lat,lng,engine,fuel,FUELS,NOFUEL,features,fuelKeyOf,times,stageMin,reachM,coverM,windFactor,
          weatherAt(t),sunAt(t),terrainAt(lat,lon),moistureAt(w,fuel,ter,sun),windSiteAt(lat,lon,fuel,ter,t)} */
   function runIntegrated(o) {
-    const E = o.engine, times = o.times || [30, 60, 90, 120], stageMin = o.stageMin || 15, windFactor = o.windFactor == null ? 1 : o.windFactor;
+    const E = o.engine, times = o.times || [30, 60, 90, 120], stageMin = o.stageMin || 15, windFactor = o.windFactor == null ? 1 : o.windFactor, mDelta = o.moistureDelta || 0;
     const Tmax = Math.max.apply(null, times);
     const Rwant = Math.min(o.coverM || 5000, Math.max(400, o.reachM || 5000));
     let z = 14, res = 0, Rpx = 0;
@@ -398,7 +398,7 @@
     const getFields = (si) => {
       const mid = ends[si] - stageMin / 2, w = o.weatherAt(mid), sun = o.sunAt ? o.sunAt(mid) : null;
       return makeCellFields(N, codes, fuels, E, { dir: w.dir, spd: w.spd }, windFactor, terrOf,
-        (fuel, ter) => o.moistureAt(w, fuel, ter, sun),
+        (fuel, ter) => o.moistureAt(w, fuel, ter, sun) + mDelta,
         o.windSiteAt ? (fuel, ter, k) => { const ll = cellLL(k); return o.windSiteAt(ll[0], ll[1], fuel, ter, mid); } : null, stats);
     };
     const t0 = (typeof performance !== "undefined" ? performance.now() : Date.now());
@@ -1064,8 +1064,8 @@
     });
   }
   async function init() {
-    if (window.IRRATI_MTT_LEGACY !== true) { console.log("IrratiGIS fire-mtt listo (v8): biblioteka; panel propioa desaktibatuta (MTT «Suteen bilakaera» panelean)."); return; }
-    await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v8, panel zaharra).");
+    if (window.IRRATI_MTT_LEGACY !== true) { console.log("IrratiGIS fire-mtt listo (v9): biblioteka; panel propioa desaktibatuta (MTT «Suteen bilakaera» panelean)."); return; }
+    await waitFor(); map = window.IrratiGISMap; buildPanel(); console.log("IrratiGIS fire-mtt listo (v9, panel zaharra).");
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
