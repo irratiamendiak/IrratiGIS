@@ -2303,7 +2303,8 @@ Object.values(FS_FUELS).forEach(f=>{
 const fsCfg={fuel:"fm5",moistMode:"calc",startH:0,ffmc:85,moist:8,wind:"auto",dir:225,spd:20,temp:25,rh:40,rate:300};
 let fsAlgo="rays";   // hedapen-algoritmoa: "rays" (erradioak) | "mtt" | "both"
 let fsBand=false;    // zalantza-tartea (hezetasuna ± eta haizea ±)
-const FS_BAND={dm:3,wf:0.3};   // hezetasuna ±3 puntu, haizea ±%30
+const FS_BAND={dm:3,wf:0.3,fuelLo:{conifer:"fm8",broad:"fm9"},fuelHi:{conifer:"fm5",broad:"fm5"}};   // hezetasuna ±3 puntu, haizea ±%30, erregai-hipotesiak (sotobosquerik gabe / sotobosquearekin)
+let fsBandFuel=true;
 let fsIgn=null, fsBusy=0, fsLast=null, fsFlat=false;
 let fsTerrainSource="mdt", fsTerrainSamples={mdt:0,terrarium:0};
 let fsFuelSource="";
@@ -3828,7 +3829,8 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div style="${row}"><b>Inbentarioaren erregai-hipotesiak</b> <span style="font-size:10px;color:#65736b">(Baso Inbentarioa erabiltzean soilik)</span></div>`+
    `<div style="${row}">Pinudiak <select class="fs-cf-conifer" style="max-width:100%"><option value="fm8">fm8 · orbel-geruza trinkoa (lehenetsia)</option><option value="fm9">fm9 · orbel-geruza (orratz luzeak)</option><option value="fm6">fm6 · sastraka ertaina (sotobosquedun pinudia)</option><option value="fm5">fm5 · sastraka baxua</option></select></div>`+
    `<div style="${row}">Hostozabalak (eukaliptoa barne) <select class="fs-cf-broad" style="max-width:100%"><option value="fm9">fm9 · hostozabalen orbel-geruza (lehenetsia)</option><option value="fm8">fm8 · orbel-geruza trinkoa</option><option value="fm6">fm6 · sastraka ertaina</option><option value="fm5">fm5 · sastraka baxua</option></select></div>`+
-   `<label style="display:flex;gap:6px;align-items:center;margin:2px 0 6px;font-size:12px"><input type="checkbox" class="fs-band"> <span><b>Zalantza-tartea</b> (hezetasuna ±3 puntu, haizea ±%30)</span></label>`+
+   `<label style="display:flex;gap:6px;align-items:center;margin:2px 0 3px;font-size:12px"><input type="checkbox" class="fs-band"> <span><b>Zalantza-tartea</b> (hezetasuna ±3 puntu, haizea ±%30)</span></label>`+
+   `<label style="display:flex;gap:6px;align-items:center;margin:0 0 6px 18px;font-size:11px"><input type="checkbox" class="fs-band-fuel" checked> <span>Erregai-hipotesia ere sartu (sotobosquerik gabe / sotobosquearekin)</span></label>`+
    `<div class="fs-out" style="color:#65736b">Sakatu «Markatu hasiera» eta egin klik mapan. Ondoren, aukeratu hedapen aurreikusia edo eskuzkoa.</div>`;
   const q=s=>fsPanel.querySelector(s), rerun=()=>{ if(fsIgn) fsRun(); }, num=(e,lo,hi,d)=>Math.min(hi,Math.max(lo,Number(e.target.value)||d));
   q(".fs-x").onclick=()=>map.removeLayer(fsGroup);
@@ -3847,6 +3849,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-cf-conifer").onchange=e=>{ fsClassFuel.conifer=e.target.value; rerun(); };
   q(".fs-cf-broad").onchange=e=>{ fsClassFuel.broad=e.target.value; rerun(); };
   q(".fs-band").onchange=e=>{ fsBand=!!e.target.checked; rerun(); };
+  q(".fs-band-fuel").onchange=e=>{ fsBandFuel=!!e.target.checked; if(fsBand) rerun(); };
   q(".fs-algo").onchange=e=>{ fsAlgo=e.target.value==="mtt"?"mtt":e.target.value==="both"?"both":"rays"; rerun(); };
   q(".fs-mm").onchange=e=>{ fsCfg.moistMode=e.target.value; q(".fs-msl").style.display=fsCfg.moistMode==="man"?"inline":"none"; q(".fs-mff").style.display=fsCfg.moistMode==="ffmc"?"inline":"none"; rerun(); };
   q(".fs-ffmc").onchange=e=>{ fsCfg.ffmc=num(e,30,99,85); rerun(); };
@@ -3960,18 +3963,37 @@ function fsMttHtml(mttRes,mttError,rays,times,raysAreas){
     (warn?`<div style="margin-top:5px">${warn}</div>`:"")+
     `<div style="margin-top:5px;color:#65736b">Erradioek abiapuntutik erradialki aurreratzen dute; haizea edo hezetasuna aldatzean ez dute perimetro osotik berrabiarazten. MTT-k bai (Huygens), eta lurzorua eta erregai-aldaketak hobeto jarraitzen ditu.</div>`);
 }
-/* --- Zalantza-tartea: bi muturreko eszenatokiak (hezeagoa + haize ahulagoa / lehorragoa + haize indartsuagoa) --- */
+/* --- Zalantza-tartea: bi muturreko eszenatokiak (hezeagoa + haize ahulagoa [+ sotobosquerik gabe] / lehorragoa + haize indartsuagoa [+ sotobosquearekin]) --- */
+function fsWithFuel(hyp,fn){
+  if(!hyp) return fn();
+  const old={conifer:fsClassFuel.conifer,broad:fsClassFuel.broad};
+  fsClassFuel.conifer=hyp.conifer; fsClassFuel.broad=hyp.broad;
+  try{ return fn(); } finally { fsClassFuel.conifer=old.conifer; fsClassFuel.broad=old.broad; }
+}
 function fsBandRun(rays,fu,met,inventorySampler,windSampler){
   const fuelAt=inventorySampler&&inventorySampler.fuelAt, windAt=windSampler&&windSampler.windAt, T=[30,60,90,120];
-  const lo={wf:1-FS_BAND.wf,dm:FS_BAND.dm}, hi={wf:1+FS_BAND.wf,dm:-FS_BAND.dm};
-  const rLo=fsSimulate(fu,met,lo,fuelAt,FS_T,windAt), rHi=fsSimulate(fu,met,hi,fuelAt,FS_T,windAt);
-  const out={times:T,rays:{lo:T.map(t=>fsHa(fsPerim(rLo,t))),hi:T.map(t=>fsHa(fsPerim(rHi,t))),perLo:fsPerim(rLo,FS_T),perHi:fsPerim(rHi,FS_T)}};
+  const useFuel=fsBandFuel&&fsFuelSource==="inventory";
+  const lo={wf:1-FS_BAND.wf,dm:FS_BAND.dm,fuel:useFuel?FS_BAND.fuelLo:null}, hi={wf:1+FS_BAND.wf,dm:-FS_BAND.dm,fuel:useFuel?FS_BAND.fuelHi:null};
+  const sim=(sc,dur)=>fsWithFuel(sc.fuel,()=>fsSimulate(fu,met,sc,fuelAt,dur,windAt));
+  const rLo=sim(lo,FS_T), rHi=sim(hi,FS_T);
+  const out={times:T,useFuel,rays:{lo:T.map(t=>fsHa(fsPerim(rLo,t))),hi:T.map(t=>fsHa(fsPerim(rHi,t))),perLo:fsPerim(rLo,FS_T),perHi:fsPerim(rHi,FS_T)}};
   if(fsAlgo!=="rays"){
     try{
-      const mLo=fsRunMTT(rays,fu,met,inventorySampler,windSampler,lo), mHi=fsRunMTT(rHi,fu,met,inventorySampler,windSampler,hi);
+      const mLo=fsWithFuel(lo.fuel,()=>fsRunMTT(rays,fu,met,inventorySampler,windSampler,lo));
+      const mHi=fsWithFuel(hi.fuel,()=>fsRunMTT(rHi,fu,met,inventorySampler,windSampler,hi));
       out.mtt={lo:T.map(t=>mLo.areas[t]),hi:T.map(t=>mHi.areas[t]),ringsLo:mLo.rings[FS_T]||[],ringsHi:mHi.rings[FS_T]||[]};
     }catch(e){ out.mttError=e.message||String(e); }
   }
+  // faktore bakoitzaren eragina bere aldetik (erradioak, 60 min; gainerakoak erdikoan)
+  try{
+    const base=fsHa(fsPerim(rays,60)), a=(sc)=>fsHa(fsPerim(sim(sc,60),60));
+    const rows=[
+      ["Hezetasuna ±"+FS_BAND.dm+" puntu",a({wf:1,dm:FS_BAND.dm}),a({wf:1,dm:-FS_BAND.dm})],
+      ["Haizea ±%"+Math.round(FS_BAND.wf*100),a({wf:1-FS_BAND.wf,dm:0}),a({wf:1+FS_BAND.wf,dm:0})]
+    ];
+    if(useFuel) rows.push(["Erregaia (sotobosquerik gabe / sotobosquearekin)",a({wf:1,dm:0,fuel:FS_BAND.fuelLo}),a({wf:1,dm:0,fuel:FS_BAND.fuelHi})]);
+    out.sens={base,rows};
+  }catch(e){ out.sensError=e.message||String(e); }
   return out;
 }
 function fsBandHtml(band,bandError,times,raysAreas,mttRes){
@@ -3979,7 +4001,8 @@ function fsBandHtml(band,bandError,times,raysAreas,mttRes){
   if(bandError) return box("#fff6e8","#c98a00",`<b>Zalantza-tartea ez da kalkulatu</b><br>${escapeHtml(bandError)}`);
   if(!band) return "";
   const f1=n=>fsDec((+n).toFixed(1)), td='style="text-align:center;padding:3px;border-bottom:1px solid #edf0ed"', th='style="text-align:center;padding:3px;border-bottom:1px solid #dfe5e0"';
-  const mk=(label,lo,hi,cen)=>{
+  const mk=(label,lo0,hi0,cen)=>{
+    const lo=lo0.map((v,i)=>Math.min(v,cen[i])), hi=hi0.map((v,i)=>Math.max(v,cen[i]));
     const row=(n,fn)=>`<tr><td style="padding:3px;border-bottom:1px solid #edf0ed">${n}</td>${times.map((t,i)=>`<td ${td}>${fn(i)}</td>`).join("")}</tr>`;
     const rel=(v,c)=>c>0?"×"+fsDec((v/c).toFixed(2)):"—";
     return `<div style="margin-top:6px"><b>${label}</b></div><table style="width:100%;border-collapse:collapse"><thead><tr><th ${th}></th>${times.map(t=>`<th ${th}>${t} min</th>`).join("")}</tr></thead><tbody>`+
@@ -3990,8 +4013,16 @@ function fsBandHtml(band,bandError,times,raysAreas,mttRes){
   if(fsAlgo!=="mtt") body+=mk("Erradioak",band.rays.lo,band.rays.hi,times.map(t=>raysAreas[t]));
   if(band.mtt&&mttRes&&fsAlgo!=="rays") body+=mk("MTT",band.mtt.lo,band.mtt.hi,times.map(t=>mttRes.areas[t]));
   if(band.mttError) body+=`<div style="margin-top:5px">⚠️ MTT tartea ez da kalkulatu: ${escapeHtml(band.mttError)}</div>`;
-  return box("#f1f6f2","#527c63",`<b>Zalantza-tartea</b> (hezetasuna ±${FS_BAND.dm} puntu · haizea ±%${Math.round(FS_BAND.wf*100)})`+body+
-    `<div style="margin-top:6px;color:#65736b">Bi muturreko eszenatokiak: hezeagoa + haize ahulagoa (baxuena) eta lehorragoa + haize indartsuagoa (altuena). Mapan, 120 minutuko bi perimetro puntuduak. <b>Ez da konfiantza-tarte estatistikoa</b>: erregaiaren esleipena, haizearen tokiko aldaketak, itzalketa eta ereduaren beste erroreak ez daude barne.</div>`);
+  if(band.sens&&band.sens.base>0){
+    const rs=band.sens.rows.map(([n,a,b])=>{ const lo=Math.min(a,b)/band.sens.base, hi=Math.max(a,b)/band.sens.base; return {n,lo,hi,span:Math.log((hi||1e-9)/Math.max(lo,1e-9))}; });
+    const top=rs.reduce((m,q)=>q.span>m.span?q:m,rs[0]);
+    body+=`<div style="margin-top:8px"><b>Zein faktorek pisatzen du gehiago?</b> <span style="color:#65736b">(erradioak, 60 min; gainerakoak erdikoan)</span></div><table style="width:100%;border-collapse:collapse"><tbody>`+
+      rs.map(q=>`<tr><td style="padding:3px;border-bottom:1px solid #edf0ed">${q===top?"<b>"+q.n+"</b>":q.n}</td><td ${td}>${q===top?"<b>":""}×${fsDec(q.lo.toFixed(2))} – ×${fsDec(q.hi.toFixed(2))}${q===top?"</b>":""}</td></tr>`).join("")+`</tbody></table>`+
+      `<div style="margin-top:3px">Eragin handieneko faktorea: <b>${top.n}</b>.</div>`;
+  }
+  const fuelTxt=band.useFuel?` · erregaia: sotobosquerik gabe (pinuak ${FS_BAND.fuelLo.conifer}, hostozabalak ${FS_BAND.fuelLo.broad}) / sotobosquearekin (${FS_BAND.fuelHi.conifer})`:"";
+  return box("#f1f6f2","#527c63",`<b>Zalantza-tartea</b> (hezetasuna ±${FS_BAND.dm} puntu · haizea ±%${Math.round(FS_BAND.wf*100)}${fuelTxt})`+body+
+    `<div style="margin-top:6px;color:#65736b">Bi muturreko eszenatokiak: hezeagoa + haize ahulagoa${band.useFuel?" + sotobosquerik gabe":""} (baxuena) eta lehorragoa + haize indartsuagoa${band.useFuel?" + sotobosquearekin":""} (altuena). Mapan, 120 minutuko bi perimetro puntuduak. <b>Ez da konfiantza-tarte estatistikoa</b>: haizearen tokiko aldaketak, itzalketa eta ereduaren beste erroreak ez daude barne. Erregai-hipotesiak soilik pinudi eta hostozabalen klaseei eragiten die.</div>`);
 }
 async function fsRun(){
   if(!fsIgn) return;
