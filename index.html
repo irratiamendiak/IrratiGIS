@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="eu">mtt
+<html lang="eu">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,viewport-fit=cover">
@@ -3532,10 +3532,23 @@ function fsFuelFromInventoryPropertiesRaw(p){
   if(/mixto|ribera|cantil/.test(use)) return "fm9";
   return null;
 }
-/* Hipotesiak klaseko: "fm8" = konifero-klasea, "fm9" = hostozabal-klasea (Raw funtzioak hauek bakarrik itzultzen ditu horretarako). Panelean aldatu daitezke. */
+/* Hipotesiak klaseko: "fm8" = konifero-klasea, "fm9" = hostozabal-klasea (Raw funtzioak hauek bakarrik itzultzen ditu horretarako). Panelean aldatu daitezke.
+   Rodalaren egoera (EMASA1, 2024ko Baso Mapa): Mozketa/Tala → fm11 (mozketa-hondakinak), Basoberrituak/Repoblado → fm5, Mendi zangarra/Monte Bravo → fm6.
+   Haga basoa/Latizal eta Tantai basoa/Fustal → klase-hipotesia (fm8/fm9). Hipotesi-taula, landa-egiaztapenik gabe. */
 const fsClassFuel={conifer:"fm8",broad:"fm9"};
+const fsStandFuel={tala:"fm11",repoblado:"fm5",bravo:"fm6"};
+let fsUseStand=true;
+function fsStandState(p){
+  const s=String((p&&p.EMASA1)||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  if(/tala|mozketa/.test(s)) return "tala";
+  if(/repobl|basoberri/.test(s)) return "repoblado";
+  if(/bravo|zangarra/.test(s)) return "bravo";
+  return null;
+}
 function fsFuelFromInventoryProperties(p){
   const k=fsFuelFromInventoryPropertiesRaw(p);
+  const forest=k==="fm8"||k==="fm9"||(k===null&&/^bosque/.test(String((p&&p.TIPES_es)||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")));
+  if(forest&&fsUseStand){ const st=fsStandState(p); if(st) return fsStandFuel[st]; }
   if(k==="fm8") return fsClassFuel.conifer;
   if(k==="fm9") return fsClassFuel.broad;
   return k;
@@ -3578,7 +3591,7 @@ async function fsCreateInventoryFuelSampler(ignition){
   const counted=new Set();
   const fuelAt=(lat,lon)=>{
     // Cuadrícula de caché de ~80-100 m: evita repetir consultas en cada paso temporal.
-    const key=fsCfg.fuel+"@z"+FS_INV_ZOOM+"@"+fsClassFuel.conifer+fsClassFuel.broad+"@"+lat.toFixed(3)+","+lon.toFixed(3);
+    const key=fsCfg.fuel+"@z"+FS_INV_ZOOM+"@"+fsClassFuel.conifer+fsClassFuel.broad+(fsUseStand?"S":"s")+"@"+lat.toFixed(3)+","+lon.toFixed(3);
     let value=cache.get(key);
     if(!value){
       const px=gl.project([lon,lat]);
@@ -3827,6 +3840,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
    `<div style="${row}"><b>Hedapen-algoritmoa</b> <select class="fs-algo"><option value="rays">Erradioak (ohikoa)</option><option value="mtt">MTT (iristeko denbora minimoa)</option><option value="both">Biak (alderatzeko)</option></select></div>`+
    `<div style="font-size:10px;color:#65736b;margin:-2px 0 5px">Beste sarrera guztiak (ordua, eguraldia, hezetasuna, terrenoa, erregaia) berdinak dira. MTT-k eguraldi-aldaketak ordu-ordutik jarraitzen ditu perimetro osoan; erradioek ez.</div>`+
    `<div style="${row}"><b>Inbentarioaren erregai-hipotesiak</b> <span style="font-size:10px;color:#65736b">(Baso Inbentarioa erabiltzean soilik)</span></div>`+
+   `<label style="display:flex;gap:6px;align-items:center;margin:2px 0 4px;font-size:11px"><input type="checkbox" class="fs-stand" checked> <span>Rodalaren egoera erabili: mozketa (fm11), repoblazioa (fm5), mendi zangarra (fm6)</span></label>`+
    `<div style="${row}">Pinudiak <select class="fs-cf-conifer" style="max-width:100%"><option value="fm8">fm8 · orbel-geruza trinkoa (lehenetsia)</option><option value="fm9">fm9 · orbel-geruza (orratz luzeak)</option><option value="fm6">fm6 · sastraka ertaina (sotobosquedun pinudia)</option><option value="fm5">fm5 · sastraka baxua</option></select></div>`+
    `<div style="${row}">Hostozabalak (eukaliptoa barne) <select class="fs-cf-broad" style="max-width:100%"><option value="fm9">fm9 · hostozabalen orbel-geruza (lehenetsia)</option><option value="fm8">fm8 · orbel-geruza trinkoa</option><option value="fm6">fm6 · sastraka ertaina</option><option value="fm5">fm5 · sastraka baxua</option></select></div>`+
    `<label style="display:flex;gap:6px;align-items:center;margin:2px 0 3px;font-size:12px"><input type="checkbox" class="fs-band"> <span><b>Zalantza-tartea</b> (hezetasuna ±3 puntu, haizea ±%30)</span></label>`+
@@ -3846,6 +3860,7 @@ L.DomEvent.disableClickPropagation(fsPanel); L.DomEvent.disableScrollPropagation
   q(".fs-start-at").min=q(".fs-start-at").value;
   q(".fs-start-at").onchange=e=>{ const t=new Date(e.target.value).getTime(), delta=(t-Date.now())/3600000; if(!Number.isFinite(t)||delta<0||delta>72){ e.target.value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16); fsCfg.startH=0; alert("Aukeratu hemendik 72 ordura arteko ordu bat."); } else fsCfg.startH=delta; rerun(); };
   q(".fs-now").onclick=()=>{ q(".fs-start-at").value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16); fsCfg.startH=0; rerun(); };
+  q(".fs-stand").onchange=e=>{ fsUseStand=!!e.target.checked; rerun(); };
   q(".fs-cf-conifer").onchange=e=>{ fsClassFuel.conifer=e.target.value; rerun(); };
   q(".fs-cf-broad").onchange=e=>{ fsClassFuel.broad=e.target.value; rerun(); };
   q(".fs-band").onchange=e=>{ fsBand=!!e.target.checked; rerun(); };
