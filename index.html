@@ -5496,7 +5496,7 @@ function closeEskuzkoaTrackAsSurface(){
       const b=manualTrackLayer.getBounds();
       if(b.isValid())map.fitBounds(b.pad(.12));
     }catch(_){}
-    $("message").textContent="Track itxia: "+fmt(areaHa,4)+" ha · "+fmt(perimeterM,2)+" m.";
+    $("message").textContent="Track itxia: "+fmt(areaHa,4)+" ha · "+fmt(areaHa*10000,2)+" m² · "+fmt(perimeterM,2)+" m.";
   }else{
     currentRings=null;
     if(window.recalcFromRings){ window.recalcFromRings([]); }
