@@ -6695,7 +6695,7 @@ function calculate(rings){
   const res = calculate(rings);
       let badge=document.getElementById("geomBadge");
   if(!badge){ badge=document.createElement("div"); badge.id="geomBadge"; badge.style.cssText="position:absolute;right:8px;bottom:22px;z-index:1000;background:rgba(255,255,255,.92);border-radius:8px;padding:5px 10px;box-shadow:0 1px 5px rgba(0,0,0,.25);font:800 12px system-ui;color:#176b43;pointer-events:none"; map.getContainer().appendChild(badge); }
-  badge.innerHTML="📐 Azalera: "+fmt(res.area/10000,2)+" ha · Perimetroa: "+fmt(res.perimeterKm*1000,0)+" m";
+  badge.innerHTML="📐 Azalera: "+fmt(res.area,2)+" m² · "+fmt(res.area/10000,2)+" ha · Perimetroa: "+fmt(res.perimeterKm*1000,0)+" m";
   badge.style.display="block";
   $("pm").textContent=fmt(res.perimeterKm*1000,2)+" m";
   $("pkm").textContent=fmt(res.perimeterKm,3)+" km";
