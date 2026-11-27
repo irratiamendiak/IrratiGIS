@@ -1194,7 +1194,17 @@ async function loadControlledBurns(){
 
     const badge = burnBadge();
     badge.onclick = null; badge.style.pointerEvents = "none"; badge.style.cursor = ""; badge.style.color = "#176b43"; badge.title = "";
-    badge.textContent = `🔥 ${fires.length} erreketa aktibo`;
+    if(data.stale){
+      const hh = data.staleSince ? new Date(data.staleSince).toLocaleTimeString("eu-ES",{hour:"2-digit",minute:"2-digit"}) : "?";
+      badge.innerHTML = `🔥 ${fires.length} erreketa (datu zaharrak, ${hh})` +
+        `<div style="font:600 10px system-ui;color:#8a5a1f;margin-top:3px">GFA ez dago eskuragarri orain. Sakatu berriro saiatzeko</div>`;
+      badge.style.color = "#8a5a1f"; badge.style.pointerEvents = "auto"; badge.style.cursor = "pointer";
+      badge.title = String(data.staleReason || "");
+      badge.onclick = () => { controlledBurnsLoaded = false; loadControlledBurns(); };
+      $("message").textContent = `Erreketak: azken datu ona erakusten da (${hh}); GFA kontsulta huts egin du${data.staleReason ? ": " + data.staleReason : ""}`;
+    } else {
+      badge.textContent = `🔥 ${fires.length} erreketa aktibo`;
+    }
     badge.style.display = map.hasLayer(controlledBurnLayer) ? "block" : "none";
 
   }catch(error){
@@ -5496,7 +5506,7 @@ function closeEskuzkoaTrackAsSurface(){
       const b=manualTrackLayer.getBounds();
       if(b.isValid())map.fitBounds(b.pad(.12));
     }catch(_){}
-    $("message").textContent="Track itxia: "+fmt(areaHa,4)+" ha · "+fmt(areaHa*10000,2)+" m² · "+fmt(perimeterM,2)+" m.";
+    $("message").textContent="Track itxia: "+fmt(areaHa,4)+" ha · "+fmt(perimeterM,2)+" m.";
   }else{
     currentRings=null;
     if(window.recalcFromRings){ window.recalcFromRings([]); }
@@ -6695,7 +6705,7 @@ function calculate(rings){
   const res = calculate(rings);
       let badge=document.getElementById("geomBadge");
   if(!badge){ badge=document.createElement("div"); badge.id="geomBadge"; badge.style.cssText="position:absolute;right:8px;bottom:22px;z-index:1000;background:rgba(255,255,255,.92);border-radius:8px;padding:5px 10px;box-shadow:0 1px 5px rgba(0,0,0,.25);font:800 12px system-ui;color:#176b43;pointer-events:none"; map.getContainer().appendChild(badge); }
-  badge.innerHTML="📐 Azalera: "+fmt(res.area,2)+" m² · "+fmt(res.area/10000,2)+" ha · Perimetroa: "+fmt(res.perimeterKm*1000,0)+" m";
+  badge.innerHTML="📐 Azalera: "+fmt(res.area/10000,2)+" ha · Perimetroa: "+fmt(res.perimeterKm*1000,0)+" m";
   badge.style.display="block";
   $("pm").textContent=fmt(res.perimeterKm*1000,2)+" m";
   $("pkm").textContent=fmt(res.perimeterKm,3)+" km";
