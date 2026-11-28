@@ -1195,7 +1195,11 @@ async function loadControlledBurns(){
     const badge = burnBadge();
     badge.onclick = null; badge.style.pointerEvents = "none"; badge.style.cursor = ""; badge.style.color = "#176b43"; badge.title = "";
     if(data.stale){
-      const hh = data.staleSince ? new Date(data.staleSince).toLocaleTimeString("eu-ES",{hour:"2-digit",minute:"2-digit"}) : "?";
+      let hh = "?";
+      if(data.staleSince){
+        const sd = new Date(data.staleSince), same = sd.toDateString() === new Date().toDateString();
+        hh = same ? sd.toLocaleTimeString("eu-ES",{hour:"2-digit",minute:"2-digit"}) : sd.toLocaleDateString("eu-ES",{day:"2-digit",month:"2-digit"}) + " " + sd.toLocaleTimeString("eu-ES",{hour:"2-digit",minute:"2-digit"});
+      }
       badge.innerHTML = `🔥 ${fires.length} erreketa (datu zaharrak, ${hh})` +
         `<div style="font:600 10px system-ui;color:#8a5a1f;margin-top:3px">GFA ez dago eskuragarri orain. Sakatu berriro saiatzeko</div>`;
       badge.style.color = "#8a5a1f"; badge.style.pointerEvents = "auto"; badge.style.cursor = "pointer";
